@@ -157,8 +157,26 @@ function AutoScaleRow({ children, className = '' }: { children: React.ReactNode,
   );
 }
 
+const DEFAULT_EMPTY_STATS = {
+  totalStocks: 0,
+  maxNetInvested: 0,
+  totalInvestment: 0,
+  totalCurrentValue: 0,
+  totalUnrealizedPnL: 0,
+  unrealizedPnLPercent: 0,
+  totalRealizedPnL: 0,
+  totalPnL: 0,
+  totalPnLPercent: 0,
+  totalDayGain: 0,
+  totalDayGainPercent: 0,
+  totalDividend: 0,
+  totalBrokerage: 0,
+  totalGovtTax: 0,
+  xirr: 0,
+};
+
 export function HomeDashboard() {
-  const { portfolios, setPortfolios, stocks, setIsCreateModalOpen, isCreateModalOpen, fetchData, settings, updateSettings, settingsLoading } = usePortfolioContext();
+  const { portfolios, setPortfolios, stocks, setIsCreateModalOpen, isCreateModalOpen, fetchData, settings, updateSettings, settingsLoading, loading: portfolioDataLoading } = usePortfolioContext();
   const { currencySymbol, formatCurrency: fmtCurrency, formatCurrencyCompact, convert } = useCurrency();
   const navigate = useNavigate();
   const [homeStats, setHomeStats] = useState<any>(null);
@@ -454,9 +472,19 @@ export function HomeDashboard() {
 
   const prevPortfoliosRef = useRef(portfolios);
   useEffect(() => {
-    if (portfolios.length > 0 && selectedSummaryPortfolioIds === null) {
+    if (portfolioDataLoading) return;
+
+    if (portfolios.length === 0) {
+      setSelectedSummaryPortfolioIds([]);
+      setHomeStats(DEFAULT_EMPTY_STATS);
+      setPortfolioSummaries({});
+      setLoading(false);
+      return;
+    }
+
+    if (selectedSummaryPortfolioIds === null) {
       setSelectedSummaryPortfolioIds(portfolios.map(p => p.id));
-    } else if (selectedSummaryPortfolioIds !== null) {
+    } else {
       const prevIds = new Set(prevPortfoliosRef.current.map(p => p.id));
       const newPortfolios = portfolios.filter(p => !prevIds.has(p.id));
       if (newPortfolios.length > 0) {
@@ -464,9 +492,18 @@ export function HomeDashboard() {
       }
     }
     prevPortfoliosRef.current = portfolios;
-  }, [portfolios, selectedSummaryPortfolioIds]);
+  }, [portfolios, selectedSummaryPortfolioIds, portfolioDataLoading]);
 
   useEffect(() => {
+    if (portfolioDataLoading) return;
+
+    if (portfolios.length === 0) {
+      setHomeStats(DEFAULT_EMPTY_STATS);
+      setPortfolioSummaries({});
+      setLoading(false);
+      return;
+    }
+
     if (selectedSummaryPortfolioIds === null) return;
 
     const fetchStats = async () => {
@@ -479,16 +516,17 @@ export function HomeDashboard() {
         }
         const qs = queryParams.toString() ? `?${queryParams.toString()}` : '';
         const result = await api.get(`/api/calculations/dashboard/stats${qs}`);
-        setHomeStats(result?.summary || null);
+        setHomeStats(result?.summary || DEFAULT_EMPTY_STATS);
         setPortfolioSummaries(result?.portfolioSummaries || {});
       } catch (err) {
         console.error('Failed to fetch dashboard stats', err);
+        setHomeStats(DEFAULT_EMPTY_STATS);
       } finally {
         setLoading(false);
       }
     };
     fetchStats();
-  }, [portfolios, stocks, selectedSummaryPortfolioIds]); // Re-fetch when underlying data changes
+  }, [portfolios, stocks, selectedSummaryPortfolioIds, portfolioDataLoading]); // Re-fetch when underlying data changes
 
   const toggleSummaryPortfolioSelection = (id: string) => {
     setSelectedSummaryPortfolioIds(prev => {
@@ -500,11 +538,11 @@ export function HomeDashboard() {
     });
   };
 
-  if (loading) {
-    return <div className="h-full flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-tertiary" /></div>;
+  if (loading || portfolioDataLoading) {
+    return <div className="h-full flex items-center justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-tertiary" /></div>;
   }
 
-  if (!homeStats) return null;
+  const stats = homeStats || DEFAULT_EMPTY_STATS;
 
   // Compute derived global stats for totalStocks and brokerage
   const selectedStocks = stocks.filter(s => {
@@ -528,31 +566,31 @@ export function HomeDashboard() {
       case 'totalPnL': return (
           <div key="totalPnL" className="flex flex-col shrink-0">
             <span className="text-[10px] sm:text-xs text-secondary mb-1 flex items-center gap-1">Total P&L</span>
-            <span className={`text-sm sm:text-[15px] font-semibold ${homeStats.totalPnL >= 0 ? 'text-success' : 'text-danger'}`}>
-              {homeStats.totalPnL >= 0 ? '+' : ''}{fmtCurrency(Math.abs(homeStats.totalPnL))}
-              <span className="ml-1.5 text-[10px] sm:text-xs opacity-90 font-medium">({homeStats.totalPnLPercent >= 0 ? '+' : ''}{homeStats.totalPnLPercent.toFixed(2)}%)</span>
+            <span className={`text-sm sm:text-[15px] font-semibold ${stats.totalPnL >= 0 ? 'text-success' : 'text-danger'}`}>
+              {stats.totalPnL >= 0 ? '+' : ''}{fmtCurrency(Math.abs(stats.totalPnL))}
+              <span className="ml-1.5 text-[10px] sm:text-xs opacity-90 font-medium">({stats.totalPnLPercent >= 0 ? '+' : ''}{stats.totalPnLPercent.toFixed(2)}%)</span>
             </span>
           </div>
       );
       case 'netInvested': return (
           <div key="netInvested" className="flex flex-col shrink-0">
             <span className="text-[10px] sm:text-xs text-secondary mb-1 flex items-center gap-1">Net Invested</span>
-            <span className="text-sm sm:text-[15px] font-semibold text-primary">{fmtCurrency(homeStats.totalInvestment)}</span>
+            <span className="text-sm sm:text-[15px] font-semibold text-primary">{fmtCurrency(stats.totalInvestment)}</span>
           </div>
       );
       case 'maxNetInvested': return (
           <div key="maxNetInvested" className="flex flex-col shrink-0">
             <span className="text-[10px] sm:text-xs text-secondary mb-1 flex items-center gap-1">Max Invested</span>
-            <span className="text-sm sm:text-[15px] font-semibold text-primary">{fmtCurrency(homeStats.maxNetInvested)}</span>
+            <span className="text-sm sm:text-[15px] font-semibold text-primary">{fmtCurrency(stats.maxNetInvested)}</span>
           </div>
       );
       case 'dayGain': return (
           <div key="dayGain" className="flex flex-col shrink-0">
             <span className="text-[10px] sm:text-xs text-secondary mb-1 flex items-center gap-1">Day Gain</span>
-            <span className={`text-sm sm:text-[15px] font-semibold ${homeStats.totalDayGain >= 0 ? 'text-success' : 'text-danger'}`}>
-              {homeStats.totalDayGain >= 0 ? '+' : ''}{fmtCurrency(Math.abs(homeStats.totalDayGain || 0))}
+            <span className={`text-sm sm:text-[15px] font-semibold ${stats.totalDayGain >= 0 ? 'text-success' : 'text-danger'}`}>
+              {stats.totalDayGain >= 0 ? '+' : ''}{fmtCurrency(Math.abs(stats.totalDayGain || 0))}
               <span className="ml-1.5 opacity-90 text-[10px] sm:text-sm font-medium">
-                ({homeStats.totalDayGainPercent >= 0 ? '+' : ''}{(homeStats.totalDayGainPercent || 0).toFixed(2)}%)
+                ({stats.totalDayGainPercent >= 0 ? '+' : ''}{(stats.totalDayGainPercent || 0).toFixed(2)}%)
               </span>
             </span>
           </div>
@@ -560,10 +598,10 @@ export function HomeDashboard() {
       case 'unrealizedPnL': return (
           <div key="unrealizedPnL" className="flex flex-col shrink-0">
             <span className="text-[10px] sm:text-xs text-secondary mb-1 flex items-center gap-1">Unrealized P&L</span>
-            <span className={`text-sm sm:text-[15px] font-semibold ${homeStats.totalUnrealizedPnL >= 0 ? 'text-success' : 'text-danger'}`}>
-              {homeStats.totalUnrealizedPnL >= 0 ? '+' : ''}{fmtCurrency(Math.abs(homeStats.totalUnrealizedPnL))}
+            <span className={`text-sm sm:text-[15px] font-semibold ${stats.totalUnrealizedPnL >= 0 ? 'text-success' : 'text-danger'}`}>
+              {stats.totalUnrealizedPnL >= 0 ? '+' : ''}{fmtCurrency(Math.abs(stats.totalUnrealizedPnL))}
               <span className="ml-1.5 opacity-90 text-[10px] sm:text-sm font-medium">
-                ({homeStats.totalUnrealizedPnL >= 0 ? '+' : ''}{homeStats.totalInvestment > 0 ? ((homeStats.totalUnrealizedPnL / homeStats.totalInvestment) * 100).toFixed(2) : '0.00'}%)
+                ({stats.totalUnrealizedPnL >= 0 ? '+' : ''}{stats.totalInvestment > 0 ? ((stats.totalUnrealizedPnL / stats.totalInvestment) * 100).toFixed(2) : '0.00'}%)
               </span>
             </span>
           </div>
@@ -571,22 +609,22 @@ export function HomeDashboard() {
       case 'realizedPnL': return (
           <div key="realizedPnL" className="flex flex-col shrink-0">
             <span className="text-[10px] sm:text-xs text-secondary mb-1 flex items-center gap-1">Realized P&L</span>
-            <span className={`text-sm sm:text-[15px] font-semibold ${homeStats.totalRealizedPnL >= 0 ? 'text-success' : 'text-danger'}`}>
-              {homeStats.totalRealizedPnL >= 0 ? '+' : ''}{fmtCurrency(Math.abs(homeStats.totalRealizedPnL))}
+            <span className={`text-sm sm:text-[15px] font-semibold ${stats.totalRealizedPnL >= 0 ? 'text-success' : 'text-danger'}`}>
+              {stats.totalRealizedPnL >= 0 ? '+' : ''}{fmtCurrency(Math.abs(stats.totalRealizedPnL))}
             </span>
           </div>
       );
       case 'currentValue': return (
           <div key="currentValue" className="flex flex-col shrink-0">
             <span className="text-[10px] sm:text-xs text-secondary mb-1 flex items-center gap-1">Current Value</span>
-            <span className="text-sm sm:text-[15px] font-semibold text-primary">{fmtCurrency(homeStats.totalCurrentValue)}</span>
+            <span className="text-sm sm:text-[15px] font-semibold text-primary">{fmtCurrency(stats.totalCurrentValue)}</span>
           </div>
       );
       case 'xirr': return (
           <div key="xirr" className="flex flex-col shrink-0">
             <span className="text-[10px] sm:text-xs text-secondary mb-1 flex items-center gap-1">XIRR</span>
-            <span className={`text-sm sm:text-[15px] font-semibold ${(homeStats.xirr || 0) >= 0 ? 'text-success' : 'text-danger'}`}>
-              {(homeStats.xirr || 0) >= 0 ? '+' : ''}{((homeStats.xirr || 0) * 100).toFixed(2)}%
+            <span className={`text-sm sm:text-[15px] font-semibold ${(stats.xirr || 0) >= 0 ? 'text-success' : 'text-danger'}`}>
+              {(stats.xirr || 0) >= 0 ? '+' : ''}{((stats.xirr || 0) * 100).toFixed(2)}%
             </span>
           </div>
       );
@@ -594,9 +632,9 @@ export function HomeDashboard() {
           <div key="totalDividend" className="flex flex-col shrink-0">
             <span className="text-[10px] sm:text-xs text-secondary mb-1 flex items-center gap-1">Total Dividend</span>
             <span className="text-sm sm:text-[15px] font-semibold text-primary">
-              {fmtCurrency(homeStats.totalDividend)}
+              {fmtCurrency(stats.totalDividend)}
               <span className="ml-1.5 opacity-90 text-[10px] sm:text-sm font-medium text-success">
-                ({homeStats.totalInvestment > 0 ? ((homeStats.totalDividend / homeStats.totalInvestment) * 100).toFixed(2) : '0.00'}%)
+                ({stats.totalInvestment > 0 ? ((stats.totalDividend / stats.totalInvestment) * 100).toFixed(2) : '0.00'}%)
               </span>
             </span>
           </div>
@@ -619,27 +657,27 @@ export function HomeDashboard() {
     const cellClass = "px-2 py-2 text-[9px] sm:text-[10px] font-mono text-right whitespace-nowrap";
     switch (id) {
       case 'totalStocks': return <td key={id} className={`${cellClass} text-primary font-bold`}>{totalUniqueStocks}</td>;
-      case 'maxNetInvested': return <td key={id} className={`${cellClass} text-primary font-bold`}>{fmtCurrency(homeStats.maxNetInvested)}</td>;
-      case 'netInvested': return <td key={id} className={`${cellClass} text-primary font-bold`}>{fmtCurrency(homeStats.totalInvestment)}</td>;
-      case 'unrealizedPnL': return <td key={id} className={`${cellClass} ${homeStats.totalUnrealizedPnL >= 0 ? 'text-success' : 'text-danger'} font-bold`}>
-        {homeStats.totalUnrealizedPnL >= 0 ? '+' : ''}{fmtCurrency(Math.abs(homeStats.totalUnrealizedPnL))} <span className="text-[8px] sm:text-[9px] font-medium opacity-80">({homeStats.totalUnrealizedPnL >= 0 ? '+' : ''}{homeStats.totalInvestment > 0 ? ((homeStats.totalUnrealizedPnL / homeStats.totalInvestment) * 100).toFixed(2) : '0.00'}%)</span>
+      case 'maxNetInvested': return <td key={id} className={`${cellClass} text-primary font-bold`}>{fmtCurrency(stats.maxNetInvested)}</td>;
+      case 'netInvested': return <td key={id} className={`${cellClass} text-primary font-bold`}>{fmtCurrency(stats.totalInvestment)}</td>;
+      case 'unrealizedPnL': return <td key={id} className={`${cellClass} ${stats.totalUnrealizedPnL >= 0 ? 'text-success' : 'text-danger'} font-bold`}>
+        {stats.totalUnrealizedPnL >= 0 ? '+' : ''}{fmtCurrency(Math.abs(stats.totalUnrealizedPnL))} <span className="text-[8px] sm:text-[9px] font-medium opacity-80">({stats.totalUnrealizedPnL >= 0 ? '+' : ''}{stats.totalInvestment > 0 ? ((stats.totalUnrealizedPnL / stats.totalInvestment) * 100).toFixed(2) : '0.00'}%)</span>
       </td>;
-      case 'realizedPnL': return <td key={id} className={`${cellClass} ${homeStats.totalRealizedPnL >= 0 ? 'text-success' : 'text-danger'} font-bold`}>
-        {homeStats.totalRealizedPnL >= 0 ? '+' : ''}{fmtCurrency(Math.abs(homeStats.totalRealizedPnL))}
+      case 'realizedPnL': return <td key={id} className={`${cellClass} ${stats.totalRealizedPnL >= 0 ? 'text-success' : 'text-danger'} font-bold`}>
+        {stats.totalRealizedPnL >= 0 ? '+' : ''}{fmtCurrency(Math.abs(stats.totalRealizedPnL))}
       </td>;
       case 'totalDividend': return <td key={id} className={`${cellClass} text-primary font-bold`}>
-        {fmtCurrency(homeStats.totalDividend)} <span className="text-[8px] sm:text-[9px] font-medium opacity-80 text-success">({homeStats.totalInvestment > 0 ? ((homeStats.totalDividend / homeStats.totalInvestment) * 100).toFixed(2) : '0.00'}%)</span>
+        {fmtCurrency(stats.totalDividend)} <span className="text-[8px] sm:text-[9px] font-medium opacity-80 text-success">({stats.totalInvestment > 0 ? ((stats.totalDividend / stats.totalInvestment) * 100).toFixed(2) : '0.00'}%)</span>
       </td>;
-      case 'dayGain': return <td key={id} className={`${cellClass} ${homeStats.totalDayGain >= 0 ? 'text-success' : 'text-danger'} font-bold`}>
-        {homeStats.totalDayGain >= 0 ? '+' : ''}{fmtCurrency(Math.abs(homeStats.totalDayGain || 0))} <span className="text-[8px] sm:text-[9px] font-medium opacity-80">({homeStats.totalDayGainPercent >= 0 ? '+' : ''}{(homeStats.totalDayGainPercent || 0).toFixed(2)}%)</span>
+      case 'dayGain': return <td key={id} className={`${cellClass} ${stats.totalDayGain >= 0 ? 'text-success' : 'text-danger'} font-bold`}>
+        {stats.totalDayGain >= 0 ? '+' : ''}{fmtCurrency(Math.abs(stats.totalDayGain || 0))} <span className="text-[8px] sm:text-[9px] font-medium opacity-80">({stats.totalDayGainPercent >= 0 ? '+' : ''}{(stats.totalDayGainPercent || 0).toFixed(2)}%)</span>
       </td>;
-      case 'totalPnL': return <td key={id} className={`${cellClass} ${homeStats.totalPnL >= 0 ? 'text-success' : 'text-danger'} font-bold`}>
-        {homeStats.totalPnL >= 0 ? '+' : ''}{fmtCurrency(Math.abs(homeStats.totalPnL))} <span className="text-[8px] sm:text-[9px] font-medium opacity-80">({homeStats.totalPnLPercent >= 0 ? '+' : ''}{(homeStats.totalPnLPercent || 0).toFixed(2)}%)</span>
+      case 'totalPnL': return <td key={id} className={`${cellClass} ${stats.totalPnL >= 0 ? 'text-success' : 'text-danger'} font-bold`}>
+        {stats.totalPnL >= 0 ? '+' : ''}{fmtCurrency(Math.abs(stats.totalPnL))} <span className="text-[8px] sm:text-[9px] font-medium opacity-80">({stats.totalPnLPercent >= 0 ? '+' : ''}{(stats.totalPnLPercent || 0).toFixed(2)}%)</span>
       </td>;
-      case 'currentValue': return <td key={id} className={`${cellClass} text-primary font-bold`}>{fmtCurrency(homeStats.totalCurrentValue)}</td>;
+      case 'currentValue': return <td key={id} className={`${cellClass} text-primary font-bold`}>{fmtCurrency(stats.totalCurrentValue)}</td>;
       case 'brokerage': return <td key={id} className={`${cellClass} text-danger font-bold`}>-{fmtCurrency(totalBrokerageAndTax)}</td>;
-      case 'xirr': return <td key={id} className={`${cellClass} ${homeStats.xirr >= 0 ? 'text-success' : 'text-danger'} font-bold`}>
-        {homeStats.xirr >= 0 ? '+' : ''}{((homeStats.xirr || 0) * 100).toFixed(2)}%
+      case 'xirr': return <td key={id} className={`${cellClass} ${stats.xirr >= 0 ? 'text-success' : 'text-danger'} font-bold`}>
+        {stats.xirr >= 0 ? '+' : ''}{((stats.xirr || 0) * 100).toFixed(2)}%
       </td>;
       default: return null;
     }
@@ -1007,12 +1045,19 @@ export function HomeDashboard() {
             </table>
           </div>
         ) : (
-          <div className="flex flex-col items-center justify-center py-12 text-center">
-            <div className="w-12 h-12 bg-surface-hover rounded-xl flex items-center justify-center mb-4">
+          <div className="flex flex-col items-center justify-center py-16 px-4 text-center bg-surface border border-divider rounded-lg shadow-sm">
+            <div className="w-12 h-12 bg-surface-hover rounded-xl flex items-center justify-center mb-4 border border-divider">
               <Briefcase className="w-6 h-6 text-tertiary" />
             </div>
-            <p className="text-sm text-secondary mb-2">No active portfolio.</p>
-            <p className="text-xs text-tertiary max-w-xs mb-4">Create your first portfolio to start tracking your investments.</p>
+            <p className="text-base font-semibold text-primary mb-1">No active portfolios</p>
+            <p className="text-xs text-secondary max-w-sm mb-5">Create your first portfolio to start tracking your stocks, corporate actions, and investments.</p>
+            <button
+              onClick={() => setIsCreateModalOpen(true)}
+              className="flex items-center justify-center gap-1.5 px-4 py-2 text-xs font-semibold bg-primary text-background hover:opacity-90 transition-opacity rounded-md shadow-sm cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Create Portfolio</span>
+            </button>
           </div>
         )}
       </div>
