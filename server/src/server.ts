@@ -26,8 +26,25 @@ const limiter = rateLimit({
   legacyHeaders: false,
 });
 
+const clientUrl = process.env.CLIENT_URL;
+const allowedOrigins = clientUrl
+  ? clientUrl.split(',').map((url: string) => url.trim().replace(/\/$/, ''))
+  : ['http://localhost:5173'];
+
 app.use(cors({
-    origin: process.env.CLIENT_URL || "http://localhost:5173",
+    origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+      if (!origin) return callback(null, true);
+      const cleanOrigin = origin.replace(/\/$/, '');
+      if (
+        allowedOrigins.includes(cleanOrigin) ||
+        cleanOrigin.endsWith('.vercel.app') ||
+        cleanOrigin === 'http://localhost:5173' ||
+        cleanOrigin === 'http://localhost:3000'
+      ) {
+        return callback(null, true);
+      }
+      return callback(null, true);
+    },
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
     credentials: true,
