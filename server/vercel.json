@@ -1,0 +1,14 @@
+{
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/api/index.ts"
+    }
+  ],
+  "crons": [
+    {
+      "path": "/api/cron/sync-corp-actions",
+      "schedule": "30 2 * * *"
+    }
+  ]
+}
