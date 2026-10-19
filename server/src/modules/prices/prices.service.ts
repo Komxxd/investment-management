@@ -73,6 +73,8 @@ export async function fetchPrices(symbols: string[]): Promise<Record<string, Liv
             volume: q.regularMarketVolume,
             avgVolume: q.averageDailyVolume3Month,
             previousClose: q.regularMarketPreviousClose,
+            dma50: q.fiftyDayAverage,
+            dma200: q.twoHundredDayAverage,
           };
 
           result[q.symbol] = priceData;

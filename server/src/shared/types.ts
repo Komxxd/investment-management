@@ -49,6 +49,8 @@ export interface LivePrice {
   volume?: number;
   avgVolume?: number;
   previousClose?: number;
+  dma50?: number;
+  dma200?: number;
 }
 
 export interface SearchResult {
