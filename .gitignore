@@ -18,6 +18,11 @@ dist-ssr
 build/
 .vercel
 
+# Data cache
+data/
+server/data/
+*.parquet
+
 
 # Env files
 .env

@@ -77,7 +77,7 @@ export function AppLayout() {
     <div className={`flex flex-col bg-background text-primary font-sans ${isPortfolioPage ? 'h-screen overflow-hidden' : 'min-h-screen'}`}>
       <MarketTicker />
       {/* Unified Top Header */}
-      <header className="h-14 sm:h-16 bg-surface border-b border-divider px-2 sm:px-4 flex items-center justify-between gap-3 sm:gap-4 shrink-0 z-10 w-full">
+      <header className="h-14 sm:h-16 bg-surface border-b border-divider px-2 sm:px-4 flex items-center justify-between gap-3 sm:gap-4 shrink-0 relative z-30 w-full">
           <div className="flex items-center gap-2 sm:gap-4 flex-1">
             <div className="hidden md:flex items-center shrink-0 cursor-pointer" onClick={() => navigate('/portfolios')}>
               <img src="/favicon.svg" alt="Logo" className="w-8 h-8" />

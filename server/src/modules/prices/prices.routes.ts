@@ -96,7 +96,7 @@ router.get('/indicators/sync-stream', async (req: any, res: any) => {
   const force = req.query.force === 'true';
 
   try {
-    const { syncMultipleStocks } = await import('./historical-storage.service');
+    const { syncMultipleStocks } = await import('./data-storage.service');
     const results = await syncMultipleStocks(symbols, force, (info) => {
       res.write(`data: ${JSON.stringify({ type: 'progress', ...info })}\n\n`);
     });

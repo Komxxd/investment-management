@@ -1851,16 +1851,7 @@ export function PortfolioDashboard() {
                               );
                             })}
                           </SortableContext>
-                          <th className="px-2 py-1.5 text-[9px] sm:text-[10px] text-right bg-surface border-l border-divider/40">
-                            <button
-                              onClick={() => setIsAddIndicatorsModalOpen(true)}
-                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-medium text-secondary hover:text-primary hover:bg-surface-hover transition-colors border border-divider whitespace-nowrap cursor-pointer"
-                              title="Open Technical Indicators Settings (50 DMA, 200 DMA, RSI 14)"
-                            >
-                              <Activity className="w-2.5 h-2.5 text-secondary" />
-                              <span>+ Indicator</span>
-                            </button>
-                          </th>
+                          <th className="px-2 py-1.5 text-[9px] sm:text-[10px] text-right w-8 bg-surface"></th>
                         </tr>
                         {filteredSymbolGroups.length > 0 && (() => {
                           const fmt = (n: any) => (typeof n === 'number' && !isNaN(n)) ? n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0.00';

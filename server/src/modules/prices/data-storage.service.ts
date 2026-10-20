@@ -22,7 +22,7 @@ export interface StockIndicatorResult {
 }
 
 // Directory where contiguous JSON candles are saved per symbol
-const DATA_DIR = path.resolve(__dirname, '../../../data/historical');
+const DATA_DIR = path.resolve(__dirname, '../../../data');
 
 function ensureDataDir() {
   if (!fs.existsSync(DATA_DIR)) {
@@ -87,7 +87,7 @@ export function computeSMA(closes: number[], period: number): number | null {
 }
 
 /**
- * Read candles from local disk.
+ * Read candles from local data storage disk.
  */
 export function readLocalCandles(symbol: string): DailyCandle[] {
   ensureDataDir();
@@ -98,13 +98,13 @@ export function readLocalCandles(symbol: string): DailyCandle[] {
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed : [];
   } catch (err) {
-    console.warn(`[HistoricalStorage] Failed to read ${filePath}:`, (err as Error).message);
+    console.warn(`[DataStorage] Failed to read ${filePath}:`, (err as Error).message);
     return [];
   }
 }
 
 /**
- * Write candles to local disk.
+ * Write candles to local data storage disk.
  */
 export function writeLocalCandles(symbol: string, candles: DailyCandle[]): void {
   ensureDataDir();
@@ -122,18 +122,18 @@ export function writeLocalCandles(symbol: string, candles: DailyCandle[]): void 
     );
     fs.writeFileSync(filePath, JSON.stringify(sorted, null, 2), 'utf-8');
   } catch (err) {
-    console.error(`[HistoricalStorage] Failed to write ${filePath}:`, (err as Error).message);
+    console.error(`[DataStorage] Failed to write ${filePath}:`, (err as Error).message);
   }
 }
 
 /**
- * Sync stock history incrementally:
+ * Sync stock data incrementally:
  * 1. Read existing candles from local disk.
  * 2. If recent candle exists (today or yesterday/weekend), use local cache.
  * 3. Otherwise, fetch missing delta from Yahoo Finance and append to disk.
  * 4. Compute RSI(14), DMA50, DMA200.
  */
-export async function syncStockHistory(symbol: string, force: boolean = false): Promise<StockIndicatorResult> {
+export async function syncStockData(symbol: string, force: boolean = false): Promise<StockIndicatorResult> {
   const existing = force ? [] : readLocalCandles(symbol);
   const today = new Date();
   const todayStr = today.toISOString().split('T')[0];
@@ -195,7 +195,7 @@ export async function syncStockHistory(symbol: string, force: boolean = false): 
         writeLocalCandles(symbol, merged);
       }
     } catch (fetchErr) {
-      console.warn(`[HistoricalStorage] Network fetch failed for ${symbol}:`, (fetchErr as Error).message);
+      console.warn(`[DataStorage] Network fetch failed for ${symbol}:`, (fetchErr as Error).message);
       // Fallback: continue with existing candles if available
     }
   }
@@ -212,6 +212,9 @@ export async function syncStockHistory(symbol: string, force: boolean = false): 
     lastUpdated: allCandles.length > 0 ? allCandles[allCandles.length - 1].date : undefined,
   };
 }
+
+// Alias for backward compatibility
+export const syncStockHistory = syncStockData;
 
 /**
  * Batch sync with progress callback.
@@ -236,9 +239,9 @@ export async function syncMultipleStocks(
     }
 
     try {
-      result[sym] = await syncStockHistory(sym, force);
+      result[sym] = await syncStockData(sym, force);
     } catch (err) {
-      console.error(`[HistoricalStorage] Error syncing ${sym}:`, err);
+      console.error(`[DataStorage] Error syncing ${sym}:`, err);
       result[sym] = { rsi: null, dma50: null, dma200: null };
     }
   }

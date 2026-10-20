@@ -1,10 +1,11 @@
 import {
+  syncStockData,
   syncStockHistory,
   syncMultipleStocks,
   StockIndicatorResult,
   computeWildersRSI,
   computeSMA,
-} from './historical-storage.service';
+} from './data-storage.service';
 
 export interface IndicatorResult {
   rsi: number | null;   // RSI(14) in range [0, 100]
@@ -16,7 +17,7 @@ export interface IndicatorResult {
 }
 
 /**
- * Fetch technical indicators for multiple symbols using the local incremental historical store.
+ * Fetch technical indicators for multiple symbols using the local incremental data store.
  */
 export async function fetchIndicators(
   symbols: string[],
@@ -42,4 +43,4 @@ export async function fetchIndicators(
   return result;
 }
 
-export { syncStockHistory, syncMultipleStocks };
+export { syncStockData, syncStockHistory, syncMultipleStocks };
