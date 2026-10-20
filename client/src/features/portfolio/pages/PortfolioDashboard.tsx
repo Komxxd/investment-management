@@ -935,19 +935,34 @@ export function PortfolioDashboard() {
 
   // Sync active strategies count for badge indicator
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem(`portfolio_strategies_${activePortfolioId || 'global'}`);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) {
-          setActiveStrategiesCount(parsed.filter((r: any) => r.enabled).length);
+    let isMounted = true;
+    const syncCount = async () => {
+      try {
+        const data = await api.get(`/api/strategies?portfolio_id=${activePortfolioId || ''}`);
+        if (Array.isArray(data) && isMounted) {
+          setActiveStrategiesCount(data.filter((r: any) => r.enabled && r.id !== 'rule-default').length);
           return;
         }
+      } catch {
+        // fallback to localStorage
       }
-      setActiveStrategiesCount(0);
-    } catch {
-      setActiveStrategiesCount(0);
-    }
+      try {
+        const saved = localStorage.getItem(`portfolio_strategies_${activePortfolioId || 'global'}`);
+        if (saved && isMounted) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed)) {
+            setActiveStrategiesCount(parsed.filter((r: any) => r.enabled && r.id !== 'rule-default').length);
+            return;
+          }
+        }
+        if (isMounted) setActiveStrategiesCount(0);
+      } catch {
+        if (isMounted) setActiveStrategiesCount(0);
+      }
+    };
+
+    syncCount();
+    return () => { isMounted = false; };
   }, [activePortfolioId, isStrategyBuilderModalOpen]);
 
   const indicatorColumnsVisible = (

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Check, Plus, Trash2 } from 'lucide-react';
+import { X, Check, Plus, Trash2, Loader2 } from 'lucide-react';
+import { api } from '../../../services/api/client';
 
 export type SizingType = 'QTY' | 'VALUE' | 'INCREASE_PCT' | 'DECREASE_PCT';
 export type ActionType = 'BUY' | 'SELL' | 'ALERT';
@@ -11,11 +12,11 @@ export type LogicalConnector = 'AND' | 'OR';
 export interface StrategyCondition {
   id: string;
   connector?: LogicalConnector;
-  leftIndicator: IndicatorType;
-  operator: ComparisonOperator;
+  leftIndicator: IndicatorType | '';
+  operator: ComparisonOperator | '';
   rightType: 'value' | 'indicator';
-  rightValue: number;
-  rightIndicator: IndicatorType;
+  rightValue?: number | '';
+  rightIndicator?: IndicatorType | '';
 }
 
 export interface StrategyRule {
@@ -23,9 +24,9 @@ export interface StrategyRule {
   name: string;
   scope: 'global' | 'stock';
   targetSymbol?: string;
-  action: ActionType;
-  sizingType: SizingType;
-  sizingValue: number;
+  action?: ActionType | '';
+  sizingType?: SizingType | '';
+  sizingValue?: number | '';
   conditions: StrategyCondition[];
   enabled: boolean;
   createdAt: string;
@@ -43,171 +44,69 @@ interface StrategyBuilderModalProps {
   currencySymbol?: string;
 }
 
-const DEFAULT_RULE: StrategyRule = {
-  id: 'rule-default',
-  name: 'Portfolio Strategy',
+export const BLANK_RULE: StrategyRule = {
+  id: '',
+  name: '',
   scope: 'global',
   targetSymbol: 'ALL',
-  action: 'BUY',
-  sizingType: 'QTY',
-  sizingValue: 10,
-  conditions: [
-    {
-      id: 'cond-1',
-      leftIndicator: 'rsi',
-      operator: '<',
-      rightType: 'value',
-      rightValue: 30,
-      rightIndicator: 'dma200',
-    },
-    {
-      id: 'cond-2',
-      connector: 'OR',
-      leftIndicator: 'dma50',
-      operator: 'CROSSINGOVER',
-      rightType: 'indicator',
-      rightValue: 0,
-      rightIndicator: 'dma200',
-    }
-  ],
+  action: '',
+  sizingType: '',
+  sizingValue: '',
+  conditions: [],
   enabled: true,
-  createdAt: new Date().toISOString(),
+  createdAt: '',
   frequency: 'daily'
 };
 
-const PRESET_TEMPLATES: Array<{
-  name: string;
-  formula: string;
-  rule: Partial<StrategyRule>;
-}> = [
-  {
-    name: 'Dip Buy or Momentum Cross',
-    formula: 'BUY RELIANCE QTY(10) IF RSI(day)<30 OR DMA(50) CROSSINGOVER DMA(200)',
-    rule: {
-      name: 'RSI Dip or DMA Golden Cross',
-      scope: 'global',
-      action: 'BUY',
-      sizingType: 'QTY',
-      sizingValue: 10,
-      conditions: [
-        {
-          id: 'p-1',
-          leftIndicator: 'rsi',
-          operator: '<',
-          rightType: 'value',
-          rightValue: 30,
-          rightIndicator: 'dma200',
-        },
-        {
-          id: 'p-2',
-          connector: 'OR',
-          leftIndicator: 'dma50',
-          operator: 'CROSSINGOVER',
-          rightType: 'indicator',
-          rightValue: 0,
-          rightIndicator: 'dma200',
-        }
-      ]
-    }
-  },
-  {
-    name: 'RSI Oversold Capital Accumulator',
-    formula: 'BUY ALL_PORTFOLIO VALUE(10000) IF RSI(day)<30',
-    rule: {
-      name: 'RSI < 30 Capital Allocation',
-      scope: 'global',
-      action: 'BUY',
-      sizingType: 'VALUE',
-      sizingValue: 10000,
-      conditions: [
-        {
-          id: 'p-3',
-          leftIndicator: 'rsi',
-          operator: '<',
-          rightType: 'value',
-          rightValue: 30,
-          rightIndicator: 'dma200',
-        }
-      ]
-    }
-  },
-  {
-    name: '50/200 DMA Golden Cross Boost',
-    formula: 'BUY ALL_PORTFOLIO INCREASE%(20) IF DMA(50) CROSSINGOVER DMA(200)',
-    rule: {
-      name: '50/200 DMA Golden Cross Boost',
-      scope: 'global',
-      action: 'BUY',
-      sizingType: 'INCREASE_PCT',
-      sizingValue: 20,
-      conditions: [
-        {
-          id: 'p-4',
-          leftIndicator: 'dma50',
-          operator: 'CROSSINGOVER',
-          rightType: 'indicator',
-          rightValue: 0,
-          rightIndicator: 'dma200',
-        }
-      ]
-    }
-  },
-  {
-    name: 'Overbought Profit Trimmer',
-    formula: 'SELL ALL_PORTFOLIO DECREASE%(25) IF RSI(day)>75',
-    rule: {
-      name: 'RSI > 75 Profit Taking Signal',
-      scope: 'global',
-      action: 'SELL',
-      sizingType: 'DECREASE_PCT',
-      sizingValue: 25,
-      conditions: [
-        {
-          id: 'p-5',
-          leftIndicator: 'rsi',
-          operator: '>',
-          rightType: 'value',
-          rightValue: 75,
-          rightIndicator: 'dma200',
-        }
-      ]
-    }
-  }
-];
-
 export function formatRuleFormula(rule: StrategyRule): string {
-  const action = rule.action;
-  const target = rule.scope === 'global' ? 'ALL_PORTFOLIO' : (rule.targetSymbol || 'RELIANCE');
+  const hasAction = !!rule.action;
+  const hasSizing = !!rule.sizingType || (rule.sizingValue !== '' && rule.sizingValue !== undefined);
+  const hasConditions = rule.conditions && rule.conditions.length > 0;
+
+  if (!hasAction && !hasSizing && !hasConditions && !rule.name) {
+    return 'Configure strategy parameters above to preview formula';
+  }
+
+  const action = rule.action || '[ACTION]';
+  const target = rule.scope === 'global' ? 'ALL_PORTFOLIO' : (rule.targetSymbol || 'TARGET');
   
   let sizing = '';
-  if (rule.sizingType === 'QTY') sizing = `QTY(${rule.sizingValue})`;
-  else if (rule.sizingType === 'VALUE') sizing = `VALUE(${rule.sizingValue})`;
-  else if (rule.sizingType === 'INCREASE_PCT') sizing = `INCREASE%(${rule.sizingValue})`;
-  else if (rule.sizingType === 'DECREASE_PCT') sizing = `DECREASE%(${rule.sizingValue})`;
+  if (rule.sizingType === 'QTY') sizing = `QTY(${rule.sizingValue !== '' && rule.sizingValue !== undefined ? rule.sizingValue : '?'})`;
+  else if (rule.sizingType === 'VALUE') sizing = `VALUE(${rule.sizingValue !== '' && rule.sizingValue !== undefined ? rule.sizingValue : '?'})`;
+  else if (rule.sizingType === 'INCREASE_PCT') sizing = `INCREASE%(${rule.sizingValue !== '' && rule.sizingValue !== undefined ? rule.sizingValue : '?'})`;
+  else if (rule.sizingType === 'DECREASE_PCT') sizing = `DECREASE%(${rule.sizingValue !== '' && rule.sizingValue !== undefined ? rule.sizingValue : '?'})`;
+  else if (rule.sizingValue !== '' && rule.sizingValue !== undefined) sizing = `(${rule.sizingValue})`;
+  else sizing = '[SIZING]';
+
+  if (!hasConditions) {
+    return `${action} ${target} ${sizing} IF [CONDITIONS]`;
+  }
 
   const conditionsStr = rule.conditions.map((cond, idx) => {
     const conn = idx > 0 ? ` ${cond.connector || 'AND'} ` : '';
     
-    let left = 'RSI(day)';
+    let left = cond.leftIndicator ? cond.leftIndicator : '[INDICATOR]';
     if (cond.leftIndicator === 'rsi') left = 'RSI(day)';
     else if (cond.leftIndicator === 'dma50') left = 'DMA(50)';
     else if (cond.leftIndicator === 'dma200') left = 'DMA(200)';
     else if (cond.leftIndicator === 'price') left = 'PRICE';
     else if (cond.leftIndicator === 'changePct') left = 'CHANGE%';
 
-    const op = cond.operator;
+    const op = cond.operator || '[OP]';
     
     let right = '';
     if (cond.rightType === 'indicator') {
       if (cond.rightIndicator === 'dma200') right = 'DMA(200)';
       else if (cond.rightIndicator === 'dma50') right = 'DMA(50)';
       else if (cond.rightIndicator === 'rsi') right = 'RSI(day)';
-      else right = 'PRICE';
+      else if (cond.rightIndicator === 'price') right = 'PRICE';
+      else right = cond.rightIndicator ? cond.rightIndicator : '[INDICATOR]';
     } else {
-      right = String(cond.rightValue);
+      right = (cond.rightValue !== '' && cond.rightValue !== undefined) ? String(cond.rightValue) : '[VALUE]';
     }
 
-    return `${conn}${left}${op === 'CROSSINGOVER' || op === 'CROSSINGUNDER' ? ` ${op} ` : op}${right}`;
+    const opFormatted = (op === 'CROSSINGOVER' || op === 'CROSSINGUNDER') ? ` ${op} ` : op;
+    return `${conn}${left}${opFormatted.startsWith(' ') ? '' : ' '}${opFormatted}${opFormatted.endsWith(' ') ? '' : ' '}${right}`;
   }).join('');
 
   return `${action} ${target} ${sizing} IF ${conditionsStr}`;
@@ -215,7 +114,6 @@ export function formatRuleFormula(rule: StrategyRule): string {
 
 const CATEGORIES = [
   { id: 'builder', name: 'Global Strategy' },
-  { id: 'templates', name: 'Templates' },
   { id: 'active', name: 'Saved Strategies' },
   { id: 'stock_specific', name: 'Stock Specific' }
 ];
@@ -233,42 +131,75 @@ export function StrategyBuilderModal({
   
   const storageKey = `portfolio_strategies_${portfolioId || 'global'}`;
 
-  const [currentRule, setCurrentRule] = useState<StrategyRule>(() => {
-    try {
-      const saved = localStorage.getItem(storageKey);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed[0];
-        }
-      }
-    } catch {
-      // ignore
-    }
-    return DEFAULT_RULE;
-  });
+  const [currentRule, setCurrentRule] = useState<StrategyRule>(() => BLANK_RULE);
 
   const [savedRules, setSavedRules] = useState<StrategyRule[]>(() => {
     try {
       const saved = localStorage.getItem(storageKey);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
+        if (Array.isArray(parsed)) {
+          return parsed.filter((r: any) => r.id !== 'rule-default');
+        }
       }
     } catch {
       // ignore
     }
-    return [DEFAULT_RULE];
+    return [];
   });
 
   const [copied, setCopied] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [apiNotice, setApiNotice] = useState<string | null>(null);
+
+  // Load strategies from backend with localStorage fallback
+  const loadStrategies = async () => {
+    setIsLoading(true);
+    setApiNotice(null);
+    try {
+      const data = await api.get(`/api/strategies?portfolio_id=${portfolioId || ''}`);
+      if (Array.isArray(data)) {
+        const cleaned = data.filter((r: any) => r.id !== 'rule-default');
+        setSavedRules(cleaned);
+        try {
+          localStorage.setItem(storageKey, JSON.stringify(cleaned));
+        } catch {}
+        setIsLoading(false);
+        return;
+      } else if (data && data.warning) {
+        setApiNotice(data.warning);
+      }
+    } catch (err: any) {
+      console.warn('Could not load strategies from server, using local storage cache', err);
+    } finally {
+      setIsLoading(false);
+    }
+
+    // Fallback to localStorage if API unavailable
+    try {
+      const saved = localStorage.getItem(storageKey);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          setSavedRules(parsed.filter((r: any) => r.id !== 'rule-default'));
+        }
+      }
+    } catch {}
+  };
+
+  useEffect(() => {
+    if (isOpen) {
+      loadStrategies();
+    }
+  }, [isOpen, portfolioId]);
 
   useEffect(() => {
     try {
       localStorage.setItem(storageKey, JSON.stringify(savedRules));
     } catch (e) {
-      console.error('Failed to save strategies', e);
+      console.error('Failed to save strategies locally', e);
     }
   }, [savedRules, storageKey]);
 
@@ -283,39 +214,75 @@ export function StrategyBuilderModal({
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleSaveRule = () => {
-    const updated = {
-      ...currentRule,
-      id: currentRule.id || `rule-${Date.now()}`,
-      createdAt: new Date().toISOString()
-    };
-    
-    setSavedRules(prev => {
-      const existingIdx = prev.findIndex(r => r.id === updated.id);
-      if (existingIdx >= 0) {
-        const next = [...prev];
-        next[existingIdx] = updated;
-        return next;
-      }
-      return [updated, ...prev];
-    });
+  const handleSaveRule = async () => {
+    setIsSaving(true);
+    setApiNotice(null);
 
-    setSaveSuccess(true);
-    setTimeout(() => {
-      setSaveSuccess(false);
-      setActiveTab('active');
-    }, 800);
+    const isGlobal = currentRule.scope === 'global' || !portfolioId;
+    const payload = {
+      portfolio_id: isGlobal ? null : portfolioId,
+      name: currentRule.name.trim() || 'Untitled Strategy',
+      scope: currentRule.scope || 'global',
+      target_symbol: currentRule.targetSymbol || 'ALL',
+      action: currentRule.action || 'BUY',
+      sizing_type: currentRule.sizingType || 'QTY',
+      sizing_value: currentRule.sizingValue !== '' && currentRule.sizingValue !== undefined ? Number(currentRule.sizingValue) : null,
+      conditions: currentRule.conditions || [],
+      enabled: currentRule.enabled ?? true,
+      frequency: currentRule.frequency || 'daily'
+    };
+
+    let savedRule: StrategyRule | null = null;
+    try {
+      const isExisting = currentRule.id && savedRules.some(r => r.id === currentRule.id);
+      if (isExisting && !currentRule.id.startsWith('local-')) {
+        savedRule = await api.put(`/api/strategies/${currentRule.id}`, payload);
+      } else {
+        savedRule = await api.post('/api/strategies', payload);
+      }
+    } catch (err: any) {
+      console.warn('API save failed, saving locally', err);
+      savedRule = {
+        ...currentRule,
+        id: currentRule.id || `local-${Date.now()}`,
+        name: currentRule.name.trim() || 'Untitled Strategy',
+        createdAt: currentRule.createdAt || new Date().toISOString()
+      };
+      setApiNotice('Saved locally. Run the Supabase SQL script to enable database sync.');
+    }
+
+    if (savedRule) {
+      const finalRule = savedRule;
+      setSavedRules(prev => {
+        const existingIdx = prev.findIndex(r => r.id === finalRule.id);
+        if (existingIdx >= 0) {
+          const next = [...prev];
+          next[existingIdx] = finalRule;
+          return next;
+        }
+        return [finalRule, ...prev];
+      });
+
+      setCurrentRule(finalRule);
+      setSaveSuccess(true);
+      setTimeout(() => {
+        setSaveSuccess(false);
+        setActiveTab('active');
+      }, 700);
+    }
+
+    setIsSaving(false);
   };
 
   const handleAddCondition = () => {
     const newCond: StrategyCondition = {
       id: `cond-${Date.now()}`,
-      connector: 'OR',
-      leftIndicator: 'rsi',
-      operator: '<',
+      connector: currentRule.conditions.length > 0 ? 'AND' : undefined,
+      leftIndicator: '',
+      operator: '',
       rightType: 'value',
-      rightValue: 30,
-      rightIndicator: 'dma200',
+      rightValue: '',
+      rightIndicator: '',
     };
     setCurrentRule(prev => ({
       ...prev,
@@ -324,7 +291,6 @@ export function StrategyBuilderModal({
   };
 
   const handleRemoveCondition = (id: string) => {
-    if (currentRule.conditions.length <= 1) return;
     setCurrentRule(prev => ({
       ...prev,
       conditions: prev.conditions.filter(c => c.id !== id)
@@ -338,22 +304,34 @@ export function StrategyBuilderModal({
     }));
   };
 
-  const handleLoadTemplate = (templateRule: Partial<StrategyRule>) => {
-    setCurrentRule({
-      ...DEFAULT_RULE,
-      ...templateRule,
-      id: `rule-${Date.now()}`,
-      conditions: templateRule.conditions || DEFAULT_RULE.conditions
-    });
-    setActiveTab('builder');
-  };
-
-  const handleDeleteSavedRule = (id: string) => {
+  const handleDeleteSavedRule = async (id: string) => {
     setSavedRules(prev => prev.filter(r => r.id !== id));
+    if (currentRule.id === id) {
+      setCurrentRule(BLANK_RULE);
+    }
+    try {
+      if (!id.startsWith('local-')) {
+        await api.delete(`/api/strategies/${id}`);
+      }
+    } catch (err) {
+      console.error('Failed to delete strategy on server', err);
+    }
   };
 
-  const handleToggleRuleStatus = (id: string) => {
-    setSavedRules(prev => prev.map(r => r.id === id ? { ...r, enabled: !r.enabled } : r));
+  const handleToggleRuleStatus = async (id: string) => {
+    const target = savedRules.find(r => r.id === id);
+    if (!target) return;
+    const newStatus = !target.enabled;
+
+    setSavedRules(prev => prev.map(r => r.id === id ? { ...r, enabled: newStatus } : r));
+
+    try {
+      if (!id.startsWith('local-')) {
+        await api.put(`/api/strategies/${id}`, { enabled: newStatus });
+      }
+    } catch (err) {
+      console.error('Failed to toggle strategy on server', err);
+    }
   };
 
   // Only render after all hooks are evaluated
@@ -415,11 +393,22 @@ export function StrategyBuilderModal({
               <div className="space-y-4">
                 
                 {/* Section Header */}
-                <div className="mb-2 shrink-0">
-                  <h3 className="text-xs sm:text-sm font-medium text-primary mb-0.5 sm:mb-1">Global Strategy</h3>
-                  <p className="text-[10px] sm:text-xs text-secondary">
-                    Configure signal-based portfolio conditions and monitoring rules.
-                  </p>
+                <div className="flex items-center justify-between mb-2 shrink-0">
+                  <div>
+                    <h3 className="text-xs sm:text-sm font-medium text-primary mb-0.5 sm:mb-1">Global Strategy</h3>
+                    <p className="text-[10px] sm:text-xs text-secondary">
+                      Configure signal-based portfolio conditions and monitoring rules.
+                    </p>
+                  </div>
+                  {(currentRule.name || currentRule.action || currentRule.sizingType || (currentRule.sizingValue !== '' && currentRule.sizingValue !== undefined) || currentRule.conditions.length > 0) && (
+                    <button
+                      type="button"
+                      onClick={() => setCurrentRule(BLANK_RULE)}
+                      className="text-xs text-secondary hover:text-primary transition-colors cursor-pointer"
+                    >
+                      Clear
+                    </button>
+                  )}
                 </div>
 
                 {/* Scope & Name */}
@@ -471,7 +460,7 @@ export function StrategyBuilderModal({
                     <div className="inline-flex items-center p-0.5 bg-surface border border-divider rounded-lg">
                       <button
                         type="button"
-                        onClick={() => setCurrentRule(prev => ({ ...prev, action: 'BUY' }))}
+                        onClick={() => setCurrentRule(prev => ({ ...prev, action: prev.action === 'BUY' ? '' : 'BUY' }))}
                         className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
                           currentRule.action === 'BUY'
                             ? 'bg-primary text-surface font-semibold'
@@ -482,7 +471,7 @@ export function StrategyBuilderModal({
                       </button>
                       <button
                         type="button"
-                        onClick={() => setCurrentRule(prev => ({ ...prev, action: 'SELL' }))}
+                        onClick={() => setCurrentRule(prev => ({ ...prev, action: prev.action === 'SELL' ? '' : 'SELL' }))}
                         className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
                           currentRule.action === 'SELL'
                             ? 'bg-primary text-surface font-semibold'
@@ -493,7 +482,7 @@ export function StrategyBuilderModal({
                       </button>
                       <button
                         type="button"
-                        onClick={() => setCurrentRule(prev => ({ ...prev, action: 'ALERT' }))}
+                        onClick={() => setCurrentRule(prev => ({ ...prev, action: prev.action === 'ALERT' ? '' : 'ALERT' }))}
                         className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
                           currentRule.action === 'ALERT'
                             ? 'bg-primary text-surface font-semibold'
@@ -508,7 +497,7 @@ export function StrategyBuilderModal({
                     <div className="inline-flex items-center p-0.5 bg-surface border border-divider rounded-lg">
                       <button
                         type="button"
-                        onClick={() => setCurrentRule(prev => ({ ...prev, sizingType: 'QTY' }))}
+                        onClick={() => setCurrentRule(prev => ({ ...prev, sizingType: prev.sizingType === 'QTY' ? '' : 'QTY' }))}
                         className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
                           currentRule.sizingType === 'QTY'
                             ? 'bg-primary text-surface font-semibold'
@@ -519,7 +508,7 @@ export function StrategyBuilderModal({
                       </button>
                       <button
                         type="button"
-                        onClick={() => setCurrentRule(prev => ({ ...prev, sizingType: 'VALUE' }))}
+                        onClick={() => setCurrentRule(prev => ({ ...prev, sizingType: prev.sizingType === 'VALUE' ? '' : 'VALUE' }))}
                         className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
                           currentRule.sizingType === 'VALUE'
                             ? 'bg-primary text-surface font-semibold'
@@ -530,7 +519,7 @@ export function StrategyBuilderModal({
                       </button>
                       <button
                         type="button"
-                        onClick={() => setCurrentRule(prev => ({ ...prev, sizingType: 'INCREASE_PCT' }))}
+                        onClick={() => setCurrentRule(prev => ({ ...prev, sizingType: prev.sizingType === 'INCREASE_PCT' ? '' : 'INCREASE_PCT' }))}
                         className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
                           currentRule.sizingType === 'INCREASE_PCT'
                             ? 'bg-primary text-surface font-semibold'
@@ -541,7 +530,7 @@ export function StrategyBuilderModal({
                       </button>
                       <button
                         type="button"
-                        onClick={() => setCurrentRule(prev => ({ ...prev, sizingType: 'DECREASE_PCT' }))}
+                        onClick={() => setCurrentRule(prev => ({ ...prev, sizingType: prev.sizingType === 'DECREASE_PCT' ? '' : 'DECREASE_PCT' }))}
                         className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
                           currentRule.sizingType === 'DECREASE_PCT'
                             ? 'bg-primary text-surface font-semibold'
@@ -557,8 +546,9 @@ export function StrategyBuilderModal({
                       <input
                         type="number"
                         min="1"
-                        value={currentRule.sizingValue}
-                        onChange={e => setCurrentRule(prev => ({ ...prev, sizingValue: Number(e.target.value) || 0 }))}
+                        value={currentRule.sizingValue !== undefined && currentRule.sizingValue !== null ? currentRule.sizingValue : ''}
+                        onChange={e => setCurrentRule(prev => ({ ...prev, sizingValue: e.target.value === '' ? '' : Number(e.target.value) }))}
+                        placeholder="Value"
                         className="w-20 bg-surface border border-divider rounded-lg px-2.5 py-1 text-xs text-primary font-mono focus:outline-none focus:border-primary"
                       />
                       <span className="text-xs text-secondary font-mono">
@@ -580,122 +570,137 @@ export function StrategyBuilderModal({
                     <button
                       type="button"
                       onClick={handleAddCondition}
-                      className="text-xs font-medium text-secondary hover:text-primary transition-colors flex items-center gap-1"
+                      className="text-xs font-medium text-secondary hover:text-primary transition-colors flex items-center gap-1 cursor-pointer"
                     >
                       <Plus className="w-3.5 h-3.5" />
                       <span>Add Condition</span>
                     </button>
                   </div>
 
-                  <div className="space-y-2">
-                    {currentRule.conditions.map((cond, idx) => (
-                      <div key={cond.id} className="space-y-1.5">
-                        {idx > 0 && (
-                          <div className="flex items-center gap-2 pl-2">
-                            <button
-                              type="button"
-                              onClick={() => handleUpdateCondition(cond.id, {
-                                connector: cond.connector === 'OR' ? 'AND' : 'OR'
-                              })}
-                              className="px-2 py-0.5 rounded text-[10px] font-mono border border-divider bg-surface text-secondary hover:text-primary transition-colors"
-                            >
-                              {cond.connector || 'OR'}
-                            </button>
-                            <div className="h-[1px] flex-1 bg-divider" />
-                          </div>
-                        )}
-
-                        <div className="flex flex-wrap items-center gap-2 p-2.5 bg-surface border border-divider rounded-lg">
-                          {/* Left Indicator */}
-                          <select
-                            value={cond.leftIndicator}
-                            onChange={e => handleUpdateCondition(cond.id, { leftIndicator: e.target.value as any })}
-                            className="bg-surface border border-divider rounded-lg px-2.5 py-1.5 text-xs text-primary focus:outline-none focus:border-primary"
-                          >
-                            <option value="rsi">RSI(14, day)</option>
-                            <option value="dma50">DMA(50)</option>
-                            <option value="dma200">DMA(200)</option>
-                            <option value="price">Current Price</option>
-                            <option value="changePct">Day Change %</option>
-                          </select>
-
-                          {/* Operator */}
-                          <select
-                            value={cond.operator}
-                            onChange={e => handleUpdateCondition(cond.id, { operator: e.target.value as any })}
-                            className="bg-surface border border-divider rounded-lg px-2.5 py-1.5 text-xs font-mono text-primary focus:outline-none focus:border-primary"
-                          >
-                            <option value="<">&lt;</option>
-                            <option value=">">&gt;</option>
-                            <option value="<=">&lt;=</option>
-                            <option value=">=">&gt;=</option>
-                            <option value="CROSSINGOVER">CROSSINGOVER</option>
-                            <option value="CROSSINGUNDER">CROSSINGUNDER</option>
-                            <option value="==">==</option>
-                          </select>
-
-                          {/* Right Type Toggle */}
-                          <div className="inline-flex items-center p-0.5 bg-surface border border-divider rounded-lg">
-                            <button
-                              type="button"
-                              onClick={() => handleUpdateCondition(cond.id, { rightType: 'value' })}
-                              className={`px-2 py-1 rounded text-[10px] font-medium transition-colors ${
-                                cond.rightType === 'value'
-                                  ? 'bg-primary text-surface font-semibold'
-                                  : 'text-secondary hover:text-primary'
-                              }`}
-                            >
-                              Value
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleUpdateCondition(cond.id, { rightType: 'indicator' })}
-                              className={`px-2 py-1 rounded text-[10px] font-medium transition-colors ${
-                                cond.rightType === 'indicator'
-                                  ? 'bg-primary text-surface font-semibold'
-                                  : 'text-secondary hover:text-primary'
-                              }`}
-                            >
-                              Indicator
-                            </button>
-                          </div>
-
-                          {/* Right Value or Select */}
-                          {cond.rightType === 'value' ? (
-                            <input
-                              type="number"
-                              value={cond.rightValue}
-                              onChange={e => handleUpdateCondition(cond.id, { rightValue: Number(e.target.value) || 0 })}
-                              placeholder="Value"
-                              className="w-20 bg-surface border border-divider rounded-lg px-2.5 py-1.5 text-xs text-primary font-mono focus:outline-none focus:border-primary"
-                            />
-                          ) : (
-                            <select
-                              value={cond.rightIndicator}
-                              onChange={e => handleUpdateCondition(cond.id, { rightIndicator: e.target.value as any })}
-                              className="bg-surface border border-divider rounded-lg px-2.5 py-1.5 text-xs text-primary focus:outline-none focus:border-primary"
-                            >
-                              <option value="dma200">DMA(200)</option>
-                              <option value="dma50">DMA(50)</option>
-                              <option value="rsi">RSI(14)</option>
-                              <option value="price">Current Price</option>
-                            </select>
+                  {currentRule.conditions.length === 0 ? (
+                    <div className="p-4 border border-dashed border-divider rounded-lg text-center space-y-2">
+                      <p className="text-xs text-secondary">No conditions configured yet.</p>
+                      <button
+                        type="button"
+                        onClick={handleAddCondition}
+                        className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-primary border border-divider rounded-md hover:bg-surface-hover transition-colors cursor-pointer"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Add Condition</span>
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {currentRule.conditions.map((cond, idx) => (
+                        <div key={cond.id} className="space-y-1.5">
+                          {idx > 0 && (
+                            <div className="flex items-center gap-2 pl-2">
+                              <button
+                                type="button"
+                                onClick={() => handleUpdateCondition(cond.id, {
+                                  connector: cond.connector === 'OR' ? 'AND' : 'OR'
+                                })}
+                                className="px-2 py-0.5 rounded text-[10px] font-mono border border-divider bg-surface text-secondary hover:text-primary transition-colors"
+                              >
+                                {cond.connector || 'AND'}
+                              </button>
+                              <div className="h-[1px] flex-1 bg-divider" />
+                            </div>
                           )}
 
-                          {currentRule.conditions.length > 1 && (
+                          <div className="flex flex-wrap items-center gap-2 p-2.5 bg-surface border border-divider rounded-lg">
+                            {/* Left Indicator */}
+                            <select
+                              value={cond.leftIndicator || ''}
+                              onChange={e => handleUpdateCondition(cond.id, { leftIndicator: e.target.value as any })}
+                              className="bg-surface border border-divider rounded-lg px-2.5 py-1.5 text-xs text-primary focus:outline-none focus:border-primary"
+                            >
+                              <option value="" disabled>Select Indicator</option>
+                              <option value="rsi">RSI(14, day)</option>
+                              <option value="dma50">DMA(50)</option>
+                              <option value="dma200">DMA(200)</option>
+                              <option value="price">Current Price</option>
+                              <option value="changePct">Day Change %</option>
+                            </select>
+
+                            {/* Operator */}
+                            <select
+                              value={cond.operator || ''}
+                              onChange={e => handleUpdateCondition(cond.id, { operator: e.target.value as any })}
+                              className="bg-surface border border-divider rounded-lg px-2.5 py-1.5 text-xs font-mono text-primary focus:outline-none focus:border-primary"
+                            >
+                              <option value="" disabled>Select Operator</option>
+                              <option value="<">&lt;</option>
+                              <option value=">">&gt;</option>
+                              <option value="<=">&lt;=</option>
+                              <option value=">=">&gt;=</option>
+                              <option value="CROSSINGOVER">CROSSINGOVER</option>
+                              <option value="CROSSINGUNDER">CROSSINGUNDER</option>
+                              <option value="==">==</option>
+                            </select>
+
+                            {/* Right Type Toggle */}
+                            <div className="inline-flex items-center p-0.5 bg-surface border border-divider rounded-lg">
+                              <button
+                                type="button"
+                                onClick={() => handleUpdateCondition(cond.id, { rightType: 'value' })}
+                                className={`px-2 py-1 rounded text-[10px] font-medium transition-colors ${
+                                  cond.rightType === 'value'
+                                    ? 'bg-primary text-surface font-semibold'
+                                    : 'text-secondary hover:text-primary'
+                                }`}
+                              >
+                                Value
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleUpdateCondition(cond.id, { rightType: 'indicator' })}
+                                className={`px-2 py-1 rounded text-[10px] font-medium transition-colors ${
+                                  cond.rightType === 'indicator'
+                                    ? 'bg-primary text-surface font-semibold'
+                                    : 'text-secondary hover:text-primary'
+                                }`}
+                              >
+                                Indicator
+                              </button>
+                            </div>
+
+                            {/* Right Value or Select */}
+                            {cond.rightType === 'value' ? (
+                              <input
+                                type="number"
+                                value={cond.rightValue !== undefined && cond.rightValue !== null ? cond.rightValue : ''}
+                                onChange={e => handleUpdateCondition(cond.id, { rightValue: e.target.value === '' ? '' : Number(e.target.value) })}
+                                placeholder="Value"
+                                className="w-20 bg-surface border border-divider rounded-lg px-2.5 py-1.5 text-xs text-primary font-mono focus:outline-none focus:border-primary"
+                              />
+                            ) : (
+                              <select
+                                value={cond.rightIndicator || ''}
+                                onChange={e => handleUpdateCondition(cond.id, { rightIndicator: e.target.value as any })}
+                                className="bg-surface border border-divider rounded-lg px-2.5 py-1.5 text-xs text-primary focus:outline-none focus:border-primary"
+                              >
+                                <option value="" disabled>Select Indicator</option>
+                                <option value="dma200">DMA(200)</option>
+                                <option value="dma50">DMA(50)</option>
+                                <option value="rsi">RSI(14)</option>
+                                <option value="price">Current Price</option>
+                              </select>
+                            )}
+
                             <button
                               type="button"
                               onClick={() => handleRemoveCondition(cond.id)}
-                              className="ml-auto p-1.5 text-secondary hover:text-primary rounded transition-colors"
-                              title="Remove"
+                              className="ml-auto p-1.5 text-secondary hover:text-primary rounded transition-colors cursor-pointer"
+                              title="Remove condition"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
-                          )}
+                          </div>
                         </div>
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 {/* Clean Formula Preview */}
@@ -718,41 +723,7 @@ export function StrategyBuilderModal({
               </div>
             )}
 
-            {/* TAB 2: TEMPLATES */}
-            {activeTab === 'templates' && (
-              <div className="space-y-3">
-                <div className="mb-2 shrink-0">
-                  <h3 className="text-xs sm:text-sm font-medium text-primary mb-0.5 sm:mb-1">Templates</h3>
-                  <p className="text-[10px] sm:text-xs text-secondary">
-                    Select a pre-built template to load into the builder.
-                  </p>
-                </div>
-
-                <div className="space-y-2">
-                  {PRESET_TEMPLATES.map((tpl, i) => (
-                    <div
-                      key={i}
-                      className="p-3 rounded-lg border border-divider bg-surface hover:border-primary/50 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-2.5"
-                    >
-                      <div className="space-y-0.5">
-                        <div className="text-xs sm:text-sm font-medium text-primary">{tpl.name}</div>
-                        <div className="text-xs font-mono text-secondary">{tpl.formula}</div>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => handleLoadTemplate(tpl.rule)}
-                        className="px-3 py-1.5 text-xs font-medium text-secondary hover:text-primary border border-divider rounded-lg hover:bg-surface-hover transition-colors whitespace-nowrap self-start sm:self-auto"
-                      >
-                        Use Template
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* TAB 3: ACTIVE STRATEGIES */}
+            {/* TAB 2: ACTIVE STRATEGIES */}
             {activeTab === 'active' && (
               <div className="space-y-3">
                 <div className="flex items-center justify-between mb-2 shrink-0">
@@ -764,14 +735,28 @@ export function StrategyBuilderModal({
                   </div>
                   <button
                     type="button"
-                    onClick={() => setActiveTab('builder')}
-                    className="px-2.5 py-1 text-xs font-medium text-secondary hover:text-primary border border-divider rounded-lg hover:bg-surface-hover transition-colors"
+                    onClick={() => {
+                      setCurrentRule(BLANK_RULE);
+                      setActiveTab('builder');
+                    }}
+                    className="px-2.5 py-1 text-xs font-medium text-secondary hover:text-primary border border-divider rounded-lg hover:bg-surface-hover transition-colors cursor-pointer"
                   >
                     + New
                   </button>
                 </div>
 
-                {savedRules.length === 0 ? (
+                {apiNotice && (
+                  <div className="p-2.5 rounded-lg border border-divider bg-surface-hover/60 text-[11px] text-secondary">
+                    {apiNotice}
+                  </div>
+                )}
+
+                {isLoading ? (
+                  <div className="p-8 flex flex-col items-center justify-center gap-2 text-xs text-secondary">
+                    <Loader2 className="w-5 h-5 animate-spin text-primary" />
+                    <span>Loading strategies...</span>
+                  </div>
+                ) : savedRules.length === 0 ? (
                   <div className="p-8 text-center text-xs text-secondary border border-divider rounded-lg">
                     No strategies saved yet.
                   </div>
@@ -786,7 +771,7 @@ export function StrategyBuilderModal({
                           <div className="flex items-center gap-2">
                             <span className="text-xs sm:text-sm font-medium text-primary truncate">{rule.name}</span>
                             <span className="text-[10px] text-secondary font-mono">
-                              ({rule.scope === 'global' ? 'Global' : rule.targetSymbol})
+                              ({rule.scope === 'global' ? 'Global' : (rule.targetSymbol || 'All')})
                             </span>
                           </div>
                           <div className="text-xs font-mono text-secondary truncate">
@@ -798,7 +783,11 @@ export function StrategyBuilderModal({
                           <button
                             type="button"
                             onClick={() => handleToggleRuleStatus(rule.id)}
-                            className="px-2 py-1 rounded text-[10px] font-medium border border-divider text-secondary hover:text-primary transition-colors"
+                            className={`px-2 py-1 rounded text-[10px] font-medium border border-divider transition-colors cursor-pointer ${
+                              rule.enabled
+                                ? 'bg-primary/10 text-primary border-primary/30'
+                                : 'text-secondary hover:text-primary'
+                            }`}
                           >
                             {rule.enabled ? 'Active' : 'Paused'}
                           </button>
@@ -809,7 +798,7 @@ export function StrategyBuilderModal({
                               setCurrentRule(rule);
                               setActiveTab('builder');
                             }}
-                            className="px-2 py-1 text-xs text-secondary hover:text-primary transition-colors"
+                            className="px-2 py-1 text-xs text-secondary hover:text-primary transition-colors cursor-pointer"
                           >
                             Edit
                           </button>
@@ -817,7 +806,7 @@ export function StrategyBuilderModal({
                           <button
                             type="button"
                             onClick={() => handleDeleteSavedRule(rule.id)}
-                            className="p-1 text-secondary hover:text-primary transition-colors"
+                            className="p-1 text-secondary hover:text-primary transition-colors cursor-pointer"
                             title="Delete"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -868,10 +857,16 @@ export function StrategyBuilderModal({
             </button>
             <button
               type="button"
+              disabled={isSaving}
               onClick={handleSaveRule}
-              className="px-5 py-2 rounded-lg bg-primary hover:opacity-90 text-surface text-xs font-semibold shadow transition-colors flex items-center gap-1.5 cursor-pointer"
+              className="px-5 py-2 rounded-lg bg-primary hover:opacity-90 disabled:opacity-50 text-surface text-xs font-semibold shadow transition-colors flex items-center gap-1.5 cursor-pointer"
             >
-              {saveSuccess ? (
+              {isSaving ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-surface" />
+                  <span>Saving...</span>
+                </>
+              ) : saveSuccess ? (
                 <>
                   <Check className="w-3.5 h-3.5 stroke-[3] text-surface" />
                   <span>Saved</span>
