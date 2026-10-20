@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react'
 import * as XLSX from 'xlsx'
 import { calculateXIRR } from '../../../utils/xirr'
-import { Plus, Briefcase, Trash2, Pencil, ChevronDown, ChevronRight, ChevronUp, ArrowUpCircle, ArrowDownCircle, PanelLeftClose, PanelLeftOpen, Copy, FilterX, ArrowUpDown, Columns, Check, Info, User, LogOut, Folder, Download, Upload, Home, LayoutDashboard, RefreshCw, Sun, Moon, GripVertical, MoreVertical, Activity } from 'lucide-react'
+import { Plus, Briefcase, Trash2, Pencil, ChevronDown, ChevronRight, ChevronUp, ArrowUpCircle, ArrowDownCircle, PanelLeftClose, PanelLeftOpen, Copy, FilterX, ArrowUpDown, Columns, Check, Info, User, LogOut, Folder, Download, Upload, Home, LayoutDashboard, RefreshCw, Sun, Moon, GripVertical, MoreVertical, Activity, Sliders } from 'lucide-react'
 import {
   DndContext,
   closestCenter,
@@ -276,6 +276,10 @@ const ALL_COLUMNS = [
   { id: 'dayGainPct', label: 'Day Gain %' },
 ];
 
+const DEFAULT_VISIBLE_COLUMNS = new Set(
+  ALL_COLUMNS.map(c => c.id).filter(id => !['dma50', 'dma200', 'rsi'].includes(id))
+);
+
 
 
 interface Stock {
@@ -526,12 +530,6 @@ export function PortfolioDashboard() {
         const result: Record<string, Set<string>> = {};
         for (const key in settings.portfolioVisibleColumns) {
           const colSet = new Set<string>((settings.portfolioVisibleColumns[key] || []) as string[]);
-          // If this saved portfolio settings predated indicators, include them by default
-          if (!colSet.has('dma50') && !colSet.has('dma200') && !colSet.has('rsi')) {
-            colSet.add('dma50');
-            colSet.add('dma200');
-            colSet.add('rsi');
-          }
           result[key] = colSet;
         }
         setPortfolioVisibleColumns(result);
@@ -617,15 +615,9 @@ export function PortfolioDashboard() {
 
   const visibleColumns = (() => {
     if (activePortfolioId && portfolioVisibleColumns[activePortfolioId]) {
-      const set = portfolioVisibleColumns[activePortfolioId];
-      if (!set.has('dma50') && !set.has('dma200') && !set.has('rsi')) {
-        set.add('dma50');
-        set.add('dma200');
-        set.add('rsi');
-      }
-      return set;
+      return portfolioVisibleColumns[activePortfolioId];
     }
-    return new Set(ALL_COLUMNS.map(c => c.id));
+    return new Set(DEFAULT_VISIBLE_COLUMNS);
   })();
 
   const activeColumnOrder = (() => {
@@ -676,7 +668,7 @@ export function PortfolioDashboard() {
   const toggleColumn = (colId: string) => {
     if (!activePortfolioId) return;
     setPortfolioVisibleColumns(prev => {
-      const current = prev[activePortfolioId] || new Set(ALL_COLUMNS.map(c => c.id));
+      const current = prev[activePortfolioId] || new Set(DEFAULT_VISIBLE_COLUMNS);
       const next = new Set(current);
       if (next.has(colId)) next.delete(colId);
       else next.add(colId);
@@ -707,7 +699,7 @@ export function PortfolioDashboard() {
     if (!activePortfolioId) return;
     
     const currentOrder = activeColumnOrder;
-    const currentVisible = portfolioVisibleColumns[activePortfolioId] || new Set(ALL_COLUMNS.map(c => c.id));
+    const currentVisible = portfolioVisibleColumns[activePortfolioId] || new Set(DEFAULT_VISIBLE_COLUMNS);
     const currentWidths = portfolioColumnWidths[activePortfolioId] || {};
 
     const newOrderState: Record<string, string[]> = {};
@@ -989,7 +981,7 @@ export function PortfolioDashboard() {
     setPortfolioVisibleColumns(prev => {
       const current = prev[activePortfolioId] 
         ? new Set(prev[activePortfolioId]) 
-        : new Set(ALL_COLUMNS.map(c => c.id));
+        : new Set(DEFAULT_VISIBLE_COLUMNS);
       const next = new Set(current);
       if (next.has(indId)) {
         next.delete(indId);
@@ -1679,10 +1671,30 @@ export function PortfolioDashboard() {
                       </button>
                     )}
                     
+                    {/* Technical Indicators Trigger Button */}
+                    <button
+                      onClick={() => setIsAddIndicatorsModalOpen(true)}
+                      className="flex items-center gap-1 px-2 py-1 bg-surface border border-divider rounded-md text-[10px] font-medium text-secondary hover:text-primary transition-colors"
+                      title="Technical Indicators (50 DMA, 200 DMA, RSI 14)"
+                    >
+                      <Activity className="w-3 h-3" />
+                      <span>Add Indicators</span>
+                    </button>
+
+                    {/* Strategy Builder Trigger Button */}
+                    <button
+                      onClick={() => setIsStrategyBuilderModalOpen(true)}
+                      className="flex items-center gap-1 px-2 py-1 bg-surface border border-divider rounded-md text-[10px] font-medium text-secondary hover:text-primary transition-colors"
+                      title="Strategy Builder"
+                    >
+                      <Sliders className="w-3 h-3" />
+                      <span>Add Strategy</span>
+                    </button>
+
                     <div className="relative">
                       <button
                         onClick={() => setIsColumnsDropdownOpen(!isColumnsDropdownOpen)}
-                        className="flex items-center gap-1 px-2 py-1 bg-surface border border-divider rounded-md  text-[10px] font-medium text-secondary hover:text-primary transition-colors"
+                        className="flex items-center gap-1 px-2 py-1 bg-surface border border-divider rounded-md text-[10px] font-medium text-secondary hover:text-primary transition-colors"
                       >
                         <Columns className="w-3 h-3" />
                         Columns
@@ -1730,35 +1742,6 @@ export function PortfolioDashboard() {
                         </>
                       )}
                     </div>
-
-                    {/* Technical Indicators Trigger Button */}
-                    <button
-                      onClick={() => setIsAddIndicatorsModalOpen(true)}
-                      className="flex items-center gap-1 px-2 py-1 bg-surface border border-divider rounded-md text-[10px] font-medium text-secondary hover:text-primary transition-colors"
-                      title="Technical Indicators (50 DMA, 200 DMA, RSI 14)"
-                    >
-                      <Activity className="w-3 h-3" />
-                      <span>+ Indicators</span>
-                      {selectedIndicatorsCount > 0 && (
-                        <span className="px-1.5 py-0.2 text-[9px] bg-surface-hover text-secondary border border-divider rounded font-mono font-medium leading-none">
-                          {selectedIndicatorsCount}
-                        </span>
-                      )}
-                    </button>
-
-                    {/* Strategy Builder Trigger Button */}
-                    <button
-                      onClick={() => setIsStrategyBuilderModalOpen(true)}
-                      className="flex items-center gap-1 px-2 py-1 bg-surface border border-divider rounded-md text-[10px] font-medium text-secondary hover:text-primary transition-colors"
-                      title="Strategy Builder"
-                    >
-                      <span>+ Strategy</span>
-                      {activeStrategiesCount > 0 && (
-                        <span className="px-1.5 py-0.2 text-[9px] bg-surface-hover text-secondary border border-divider rounded font-mono font-medium leading-none">
-                          {activeStrategiesCount}
-                        </span>
-                      )}
-                    </button>
                   </div>
                   <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                     <button
@@ -2768,7 +2751,7 @@ export function PortfolioDashboard() {
           setPortfolioVisibleColumns(prev => {
             const current = prev[activePortfolioId] 
               ? new Set(prev[activePortfolioId]) 
-              : new Set(ALL_COLUMNS.map(c => c.id));
+              : new Set(DEFAULT_VISIBLE_COLUMNS);
             ['dma50', 'dma200', 'rsi'].forEach(ind => {
               if (selectedIds.includes(ind)) current.add(ind);
               else current.delete(ind);

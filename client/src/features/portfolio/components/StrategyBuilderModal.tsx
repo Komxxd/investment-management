@@ -361,9 +361,9 @@ export function StrategyBuilderModal({
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* Dark backdrop with blur matching SettingsModal & AddIndicatorsModal */}
+      {/* Dark backdrop */}
       <div 
-        className="absolute inset-0 bg-black/60 backdrop-blur-[2px] transition-opacity" 
+        className="absolute inset-0 bg-black/60 transition-opacity" 
         onClick={onClose} 
       />
 

@@ -1,658 +1,516 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Check, Activity, Sliders, ChevronUp, ChevronDown, RefreshCw } from 'lucide-react';
+import { X, Check, Activity, Sliders, Loader2 } from 'lucide-react';
 
-interface AddIndicatorsModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  visibleColumns: Set<string>;
-  onApplyIndicators: (selectedIds: string[]) => void;
-  symbols: string[];
-  onIndicatorsUpdated?: (indicators: Record<string, any>) => void;
-}
-
-type CategoryType = 'Momentum' | 'Trend' | 'Volatility';
-
-interface IndicatorItem {
+export interface IndicatorDefinition {
   id: string;
   name: string;
-  category: CategoryType;
-  badgeCode: string;
+  category: 'Momentum' | 'Trend';
+  badge: string;
   description: string;
-  isAvailable: boolean;
-  defaultPeriod: number;
+  status: 'available' | 'requires-sync' | 'coming-soon';
+  columnId: string;
 }
 
-const INDICATORS: IndicatorItem[] = [
-  // Momentum
+export interface IndicatorConfig {
+  rsiPeriod: number;
+  rsiOverbought: number;
+  rsiOversold: number;
+}
+
+export const DEFAULT_INDICATOR_CONFIG: IndicatorConfig = {
+  rsiPeriod: 14,
+  rsiOverbought: 70,
+  rsiOversold: 30
+};
+
+export const AVAILABLE_INDICATORS: IndicatorDefinition[] = [
   {
     id: 'rsi',
-    name: 'RSI (14)',
+    name: 'RSI',
     category: 'Momentum',
-    badgeCode: "WILDER'S 14D",
-    description: "Relative Strength Index. Identifies momentum conditions and potential price reversal zones from historical candles.",
-    isAvailable: true,
-    defaultPeriod: 14,
+    badge: 'Momentum Oscillator',
+    description: 'Relative Strength Index. Identifies momentum conditions and potential price reversal zones from historical candles.',
+    status: 'requires-sync',
+    columnId: 'rsi'
   },
-  {
-    id: 'macd',
-    name: 'MACD (12, 26, 9)',
-    category: 'Momentum',
-    badgeCode: 'MACD',
-    description: 'Moving Average Convergence Divergence with 9-period signal line.',
-    isAvailable: false,
-    defaultPeriod: 26,
-  },
-  {
-    id: 'stoch',
-    name: 'Stochastic Oscillator',
-    category: 'Momentum',
-    badgeCode: 'STOCH',
-    description: 'Compares a particular closing price to a range of prices over a certain period.',
-    isAvailable: false,
-    defaultPeriod: 14,
-  },
-
-  // Trend
   {
     id: 'dma50',
     name: '50 DMA',
     category: 'Trend',
-    badgeCode: 'MEDIUM TERM',
-    description: '50-day Simple Moving Average. Identifies medium-term trend direction and key dynamic support/resistance.',
-    isAvailable: true,
-    defaultPeriod: 50,
+    badge: '50-Day Avg',
+    description: '50-Day Moving Average. Evaluates intermediate-term market trend and dynamic support/resistance.',
+    status: 'available',
+    columnId: 'dma50'
   },
   {
     id: 'dma200',
     name: '200 DMA',
     category: 'Trend',
-    badgeCode: 'LONG TERM',
-    description: '200-day Simple Moving Average. The primary macro bull/bear regime filter for equities.',
-    isAvailable: true,
-    defaultPeriod: 200,
-  },
-  {
-    id: 'ema20',
-    name: '20 EMA',
-    category: 'Trend',
-    badgeCode: '20 EMA',
-    description: '20-period Exponential Moving Average for short-term momentum and dynamic support.',
-    isAvailable: false,
-    defaultPeriod: 20,
-  },
-
-  // Volatility
-  {
-    id: 'bbands',
-    name: 'Bollinger Bands',
-    category: 'Volatility',
-    badgeCode: 'BB',
-    description: '20-day SMA with upper and lower bands set 2 standard deviations away.',
-    isAvailable: false,
-    defaultPeriod: 20,
-  },
-  {
-    id: 'atr',
-    name: 'Average True Range (ATR)',
-    category: 'Volatility',
-    badgeCode: 'ATR',
-    description: 'Measures market volatility by decomposing the entire range of an asset price.',
-    isAvailable: false,
-    defaultPeriod: 14,
-  },
+    badge: '200-Day Avg',
+    description: '200-Day Moving Average. The gold standard for institutional long-term bull vs. bear market regime.',
+    status: 'available',
+    columnId: 'dma200'
+  }
 ];
 
-const CATEGORIES: { name: CategoryType; count: number }[] = [
-  { name: 'Momentum', count: 1 },
-  { name: 'Trend', count: 2 },
-  { name: 'Volatility', count: 0 },
-];
+const CATEGORIES = ['Momentum', 'Trend'] as const;
+
+export interface AddIndicatorsModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  symbols?: string[];
+  visibleColumns: Set<string>;
+  config?: Partial<IndicatorConfig>;
+  onApplyIndicators: (selectedColumnIds: string[], config?: IndicatorConfig) => void;
+  onIndicatorsUpdated?: (indicators: Record<string, any>) => void;
+  onSyncComplete?: (results: Record<string, any>) => void;
+}
 
 export function AddIndicatorsModal({
   isOpen,
   onClose,
+  symbols = [],
   visibleColumns,
+  config,
   onApplyIndicators,
-  symbols,
   onIndicatorsUpdated,
+  onSyncComplete
 }: AddIndicatorsModalProps) {
-  const [activeCategory, setActiveCategory] = useState<CategoryType>('Momentum');
-
-  // Track selected indicators
+  const [activeCategory, setActiveCategory] = useState<typeof CATEGORIES[number]>('Momentum');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => {
     const initial = new Set<string>();
-    if (visibleColumns.has('rsi')) initial.add('rsi');
-    if (visibleColumns.has('dma50')) initial.add('dma50');
-    if (visibleColumns.has('dma200')) initial.add('dma200');
-    if (initial.size === 0) {
-      initial.add('rsi');
-      initial.add('dma50');
-      initial.add('dma200');
-    }
+    AVAILABLE_INDICATORS.forEach(ind => {
+      if (visibleColumns.has(ind.columnId)) {
+        initial.add(ind.id);
+      }
+    });
     return initial;
   });
 
-  // Configurable parameters
-  const [rsiPeriod, setRsiPeriod] = useState<number>(14);
-  const [rsiOverbought, setRsiOverbought] = useState<number>(70);
-  const [rsiOversold, setRsiOversold] = useState<number>(30);
-
-  // Sync / progress states
-  const [isSyncing, setIsSyncing] = useState<boolean>(false);
-  const [syncProgress, setSyncProgress] = useState<number>(0);
-  const [currentSyncSymbol, setCurrentSyncSymbol] = useState<string>('');
-  const [syncStatusLines, setSyncStatusLines] = useState<string[]>([]);
-  const [isComplete, setIsComplete] = useState<boolean>(false);
-
-  // Synchronize with active visible columns whenever modal opens
+  // Sync selection when modal opens
   useEffect(() => {
     if (isOpen) {
       const initial = new Set<string>();
-      if (visibleColumns.has('rsi')) initial.add('rsi');
-      if (visibleColumns.has('dma50')) initial.add('dma50');
-      if (visibleColumns.has('dma200')) initial.add('dma200');
-      if (initial.size === 0) {
-        initial.add('rsi');
-        initial.add('dma50');
-        initial.add('dma200');
-      }
+      AVAILABLE_INDICATORS.forEach(ind => {
+        if (visibleColumns.has(ind.columnId)) {
+          initial.add(ind.id);
+        }
+      });
       setSelectedIds(initial);
-      setIsSyncing(false);
-      setSyncProgress(0);
-      setIsComplete(false);
-      setSyncStatusLines([]);
-      setCurrentSyncSymbol('');
     }
   }, [isOpen, visibleColumns]);
 
+  // Configurable RSI state
+  const [rsiPeriod, setRsiPeriod] = useState<number>(config?.rsiPeriod || 14);
+  const [rsiOverbought, setRsiOverbought] = useState<number>(config?.rsiOverbought || 70);
+  const [rsiOversold, setRsiOversold] = useState<number>(config?.rsiOversold || 30);
+
+  useEffect(() => {
+    if (config?.rsiPeriod) setRsiPeriod(config.rsiPeriod);
+    if (config?.rsiOverbought) setRsiOverbought(config.rsiOverbought);
+    if (config?.rsiOversold) setRsiOversold(config.rsiOversold);
+  }, [config]);
+
+  // Sync / progress states
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncProgress, setSyncProgress] = useState(0);
+  const [syncStatusText, setSyncStatusText] = useState('');
+
   if (!isOpen) return null;
 
-  const handleToggle = (id: string, isAvailable: boolean) => {
-    if (!isAvailable) return;
+  const toggleIndicator = (id: string, status: string) => {
+    if (status === 'coming-soon' || isSyncing) return;
     setSelectedIds(prev => {
       const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   };
 
   const handleApply = async () => {
-    const chosenList = Array.from(selectedIds);
-    onApplyIndicators(chosenList);
+    const activeConfig: IndicatorConfig = {
+      rsiPeriod: Math.max(2, Math.min(100, Number(rsiPeriod) || 14)),
+      rsiOverbought: Math.max(50, Math.min(95, Number(rsiOverbought) || 70)),
+      rsiOversold: Math.max(5, Math.min(50, Number(rsiOversold) || 30))
+    };
 
-    // If RSI is selected and we have symbols, run the incremental sync stream with visual progress
-    if (symbols && symbols.length > 0 && selectedIds.has('rsi')) {
-      setIsSyncing(true);
-      setSyncProgress(10);
-      setIsComplete(false);
+    const selectedColumns = AVAILABLE_INDICATORS
+      .filter(ind => selectedIds.has(ind.id) && ind.status !== 'coming-soon')
+      .map(ind => ind.columnId);
 
-      const initialStatus: string[] = [];
-      if (selectedIds.has('dma50')) initialStatus.push('• 50 DMA: Ready via Live Quotes ✅');
-      if (selectedIds.has('dma200')) initialStatus.push('• 200 DMA: Ready via Live Quotes ✅');
-      if (selectedIds.has('rsi')) initialStatus.push(`• RSI (14): Starting incremental sync (${symbols.length} stocks)... ⏳`);
-      setSyncStatusLines(initialStatus);
+    // Check if RSI is selected and we have symbols to sync
+    const needsRsiSync = selectedIds.has('rsi') && symbols.length > 0;
 
-      try {
-        const apiBase = import.meta.env.VITE_API_URL || 'http://localhost:5001';
-        const url = `${apiBase}/api/prices/indicators/sync-stream?symbols=${encodeURIComponent(symbols.join(','))}`;
-        const evtSource = new EventSource(url);
+    if (!needsRsiSync) {
+      onApplyIndicators(selectedColumns, activeConfig);
+      onClose();
+      return;
+    }
 
-        evtSource.onmessage = (e) => {
-          try {
-            const data = JSON.parse(e.data);
-            if (data.type === 'progress') {
-              setCurrentSyncSymbol(data.symbol);
-              setSyncProgress(Math.max(15, data.percent));
-              setSyncStatusLines(prev => {
-                const updated = [...prev];
-                const rsiIdx = updated.findIndex(line => line.startsWith('• RSI'));
-                const newLine = `• RSI (14): Syncing ${data.symbol} (${data.current}/${data.total} stocks)... ⏳`;
-                if (rsiIdx !== -1) updated[rsiIdx] = newLine;
-                else updated.push(newLine);
-                return updated;
-              });
-            } else if (data.type === 'complete') {
-              setSyncProgress(100);
-              setCurrentSyncSymbol('');
-              setIsComplete(true);
-              setSyncStatusLines(prev => {
-                const updated = [...prev];
-                const rsiIdx = updated.findIndex(line => line.startsWith('• RSI'));
-                const newLine = `• RSI (14): All ${symbols.length} stocks synced & cached to disk ✅`;
-                if (rsiIdx !== -1) updated[rsiIdx] = newLine;
-                else updated.push(newLine);
-                return updated;
-              });
-              if (onIndicatorsUpdated && data.indicators) {
-                onIndicatorsUpdated(data.indicators);
-              }
-              evtSource.close();
-              setTimeout(() => {
-                setIsSyncing(false);
-                onClose();
-              }, 1000);
+    // Start SSE progress stream for historical candle & RSI sync
+    setIsSyncing(true);
+    setSyncProgress(5);
+    setSyncStatusText(`Preparing local cache for ${symbols.length} assets (RSI ${activeConfig.rsiPeriod})...`);
+
+    const apiBase = import.meta.env.VITE_API_URL || 'http://localhost:5001';
+    const querySymbols = encodeURIComponent(symbols.join(','));
+    const url = `${apiBase}/api/prices/indicators/sync-stream?symbols=${querySymbols}&rsiPeriod=${activeConfig.rsiPeriod}`;
+
+    try {
+      const evtSource = new EventSource(url, { withCredentials: true });
+
+      evtSource.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+
+          if (data.type === 'start') {
+            setSyncStatusText(data.message || `Syncing ${data.total} assets...`);
+            setSyncProgress(10);
+          } else if (data.type === 'progress') {
+            setSyncProgress(data.percent || 15);
+            setSyncStatusText(data.message || `Processing ${data.symbol || ''}...`);
+          } else if (data.type === 'complete') {
+            setSyncProgress(100);
+            setSyncStatusText('All indicators computed & cached successfully!');
+            evtSource.close();
+
+            if (data.indicators && onIndicatorsUpdated) {
+              onIndicatorsUpdated(data.indicators);
             }
-          } catch (err) {
-            console.error('Failed to parse sync progress', err);
-          }
-        };
+            if (data.results && onSyncComplete) {
+              onSyncComplete(data.results);
+            }
 
-        evtSource.onerror = () => {
-          evtSource.close();
-          fetch(`${apiBase}/api/prices/indicators?symbols=${encodeURIComponent(symbols.join(','))}`)
-            .then(r => r.json())
-            .then(data => {
-              if (onIndicatorsUpdated) onIndicatorsUpdated(data);
-              setSyncProgress(100);
-              setIsComplete(true);
-              setTimeout(() => {
-                setIsSyncing(false);
-                onClose();
-              }, 600);
-            })
-            .catch(() => {
+            setTimeout(() => {
               setIsSyncing(false);
+              onApplyIndicators(selectedColumns, activeConfig);
               onClose();
-            });
-        };
-      } catch (err) {
-        setIsSyncing(false);
-        onClose();
-      }
-    } else {
+            }, 600);
+          }
+        } catch (parseErr) {
+          console.error('Failed to parse sync progress', parseErr);
+        }
+      };
+
+      evtSource.onerror = (err) => {
+        console.error('SSE sync error:', err);
+        evtSource.close();
+
+        // Fallback fetch
+        fetch(`${apiBase}/api/prices/indicators?symbols=${querySymbols}`)
+          .then(r => r.json())
+          .then(data => {
+            if (onIndicatorsUpdated) onIndicatorsUpdated(data);
+          })
+          .catch(() => { })
+          .finally(() => {
+            setIsSyncing(false);
+            onApplyIndicators(selectedColumns, activeConfig);
+            onClose();
+          });
+      };
+    } catch (err: any) {
+      console.error('Failed to initiate sync', err);
+      setIsSyncing(false);
+      onApplyIndicators(selectedColumns, activeConfig);
       onClose();
     }
   };
 
-  const currentCategoryIndicators = INDICATORS.filter(ind => ind.category === activeCategory);
+  const categoryIndicators = AVAILABLE_INDICATORS.filter(ind => ind.category === activeCategory);
 
   return createPortal(
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-      {/* Dark backdrop with blur matching Indices Setting UI */}
-      <div 
-        className="absolute inset-0 bg-black/60 backdrop-blur-[2px] transition-opacity" 
-        onClick={!isSyncing ? onClose : undefined} 
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div
+        className="absolute inset-0 bg-black/60 transition-opacity"
+        onClick={() => !isSyncing && onClose()}
       />
 
-      {/* Modal Dialog Matching Indices Setting UI */}
-      <div className="relative w-full max-w-2xl sm:max-w-3xl h-[85vh] md:h-[540px] max-h-[calc(100vh-2rem)] bg-surface border border-divider rounded-xl shadow-2xl flex flex-col overflow-hidden text-primary">
-        
+      <div className="relative w-full max-w-2xl h-[85vh] md:h-[540px] bg-surface border border-divider rounded-xl shadow-2xl flex flex-col overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 sm:px-6 sm:py-4 border-b border-divider shrink-0 bg-surface">
-          <h2 className="text-base sm:text-lg font-semibold text-primary">Technical Indicators</h2>
-          {!isSyncing && (
-            <button
-              onClick={onClose}
-              className="p-1.5 sm:p-2 -mr-1 sm:-mr-2 text-secondary hover:text-primary hover:bg-surface-hover rounded-lg transition-colors"
-            >
-              <X className="w-4 h-4 sm:w-5 sm:h-5" />
-            </button>
-          )}
-        </div>
-
-        {/* Body (Two Column Layout) */}
-        <div className="p-4 sm:p-6 overflow-hidden flex-1 flex flex-row gap-3 sm:gap-6 min-h-0 bg-surface">
-          
-          {/* Left Column: Categories List */}
-          <div className="w-28 sm:w-40 md:w-48 shrink-0 flex flex-col min-h-0 pr-2 sm:pr-4 border-r border-divider">
-            <h3 className="text-xs sm:text-sm font-medium text-primary mb-2 sm:mb-3 px-2 sm:px-3">Categories</h3>
-            <div className="flex flex-col gap-1 overflow-y-auto no-scrollbar flex-1 pb-4">
-              {CATEGORIES.map(cat => {
-                const isActive = activeCategory === cat.name;
-                return (
-                  <button
-                    key={cat.name}
-                    onClick={() => setActiveCategory(cat.name)}
-                    className={`text-left px-2 py-1.5 sm:px-3 sm:py-2 rounded-lg text-xs sm:text-sm transition-colors whitespace-nowrap ${
-                      isActive
-                        ? 'bg-primary/10 text-primary font-medium'
-                        : 'text-secondary hover:bg-surface-hover hover:text-primary'
-                    }`}
-                  >
-                    {cat.name}
-                  </button>
-                );
-              })}
+        <div className="flex items-center justify-between px-4 py-3 sm:px-6 sm:py-4 border-b border-divider shrink-0">
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center text-primary">
+              <Activity className="w-4 h-4" />
+            </div>
+            <div>
+              <h2 className="text-base sm:text-lg font-semibold text-primary">Technical Indicators</h2>
+              <p className="text-[10px] sm:text-xs text-secondary">Configure periods, thresholds, and customize portfolio technical views.</p>
             </div>
           </div>
+          <button
+            onClick={onClose}
+            disabled={isSyncing}
+            className="p-1.5 sm:p-2 -mr-1 sm:-mr-2 text-secondary hover:text-primary hover:bg-surface-hover rounded-lg transition-colors disabled:opacity-50"
+          >
+            <X className="w-4 h-4 sm:w-5 sm:h-5" />
+          </button>
+        </div>
 
-          {/* Right Column: Indicators & Configurations */}
-          <div className="flex-1 min-w-0 flex flex-col min-h-0 overflow-y-auto pr-1 pb-2">
-            <div className="mb-3 sm:mb-4 shrink-0">
-              <h3 className="text-xs sm:text-sm font-medium text-primary mb-0.5 sm:mb-1">{activeCategory} Indicators</h3>
-              <p className="text-[10px] sm:text-xs text-secondary">
-                Select indicators and fine-tune their input parameters.
-              </p>
+        {/* Body (Two Column Layout matching SettingsModal) */}
+        <div className="p-4 sm:p-6 overflow-hidden flex-1 flex flex-col min-h-0">
+          <div className="flex flex-row gap-3 sm:gap-6 flex-1 min-h-0">
+            {/* Left Column: Categories List */}
+            <div className="w-28 sm:w-40 md:w-44 flex-shrink-0 border-r border-divider pr-2 sm:pr-4 flex flex-col min-h-0">
+              <h3 className="text-xs sm:text-sm font-medium text-primary mb-2 sm:mb-3 px-2 sm:px-3">Categories</h3>
+              <div className="flex flex-col gap-1 overflow-y-auto no-scrollbar flex-1 pb-4">
+                {CATEGORIES.map(cat => {
+                  const count = AVAILABLE_INDICATORS.filter(ind => ind.category === cat && selectedIds.has(ind.id)).length;
+                  return (
+                    <button
+                      key={cat}
+                      onClick={() => setActiveCategory(cat)}
+                      disabled={isSyncing}
+                      className={`text-left px-2.5 py-2 rounded-lg text-xs sm:text-sm transition-colors flex items-center justify-between ${activeCategory === cat
+                          ? 'bg-primary/10 text-primary font-medium'
+                          : 'text-secondary hover:bg-surface-hover hover:text-primary'
+                        }`}
+                    >
+                      <span>{cat}</span>
+                      {count > 0 && (
+                        <span className="w-4 h-4 rounded-full bg-primary/20 text-primary text-[10px] font-semibold flex items-center justify-center">
+                          {count}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
-            <div className="space-y-3 pb-2">
-              {currentCategoryIndicators.map(ind => {
-                const isChecked = selectedIds.has(ind.id);
-                const isAvail = ind.isAvailable;
+            {/* Right Column: Indicator Cards List */}
+            <div className="flex-1 min-w-0 flex flex-col min-h-0 overflow-y-auto pr-1 pb-4">
+              <div className="mb-3 shrink-0 flex items-center justify-between">
+                <div>
+                  <h3 className="text-xs sm:text-sm font-medium text-primary">{activeCategory} Indicators</h3>
+                  <p className="text-[10px] sm:text-xs text-secondary">Select indicators and fine-tune their input parameters.</p>
+                </div>
+              </div>
 
-                return (
-                  <div
-                    key={ind.id}
-                    onClick={() => handleToggle(ind.id, isAvail)}
-                    className={`rounded-xl border transition-all p-3.5 sm:p-4 ${
-                      !isAvail
-                        ? 'border-divider/50 bg-surface opacity-50 cursor-not-allowed'
-                        : isChecked
-                          ? 'border-primary/40 bg-surface-hover/60 cursor-pointer shadow-xs'
-                          : 'border-divider bg-surface hover:border-primary/50 cursor-pointer'
-                    }`}
-                  >
-                    {/* Top Row: Checkbox, Name, Badges */}
-                    <div className="flex items-start gap-3">
-                      <div
-                        className={`mt-0.5 w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-colors ${
-                          !isAvail
-                            ? 'border-divider bg-surface'
-                            : isChecked
-                              ? 'bg-primary border-primary text-surface'
-                              : 'border-secondary bg-surface'
+              <div className="flex flex-col gap-2.5">
+                {categoryIndicators.map(ind => {
+                  const isSelected = selectedIds.has(ind.id);
+                  const isComingSoon = ind.status === 'coming-soon';
+
+                  return (
+                    <div
+                      key={ind.id}
+                      className={`p-3 rounded-lg border transition-all ${isComingSoon
+                          ? 'border-divider/50 bg-background/50 opacity-60'
+                          : isSelected
+                            ? 'border-primary/60 bg-primary/5 shadow-xs'
+                            : 'border-divider bg-surface hover:border-primary/40'
                         }`}
+                    >
+                      <div
+                        onClick={() => toggleIndicator(ind.id, ind.status)}
+                        className={`flex items-start gap-3 ${isComingSoon ? 'cursor-not-allowed' : 'cursor-pointer'}`}
                       >
-                        {isChecked && <Check className="w-3 h-3 stroke-[2.5]" />}
-                      </div>
+                        <div
+                          className={`mt-0.5 w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-colors ${isSelected
+                              ? 'bg-primary border-primary text-surface'
+                              : isComingSoon
+                                ? 'border-divider bg-background'
+                                : 'border-secondary bg-surface'
+                            }`}
+                        >
+                          {isSelected && <Check className="w-3 h-3" />}
+                        </div>
 
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-xs sm:text-sm font-medium text-primary">{ind.name}</span>
-                            <span className="px-2 py-0.5 rounded bg-surface-hover text-secondary text-[10px] font-mono font-medium tracking-wide border border-divider">
-                              {ind.badgeCode}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-xs sm:text-sm font-semibold text-primary truncate">
+                              {ind.id === 'rsi' ? `RSI (${rsiPeriod})` : ind.name}
                             </span>
-                            {isAvail && (
-                              <span className="px-2 py-0.5 rounded bg-blue-500/15 text-blue-400 text-[10px] font-mono font-semibold tracking-wide border border-blue-500/30">
-                                LOCAL SYNC
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-mono uppercase tracking-wider bg-surface-hover border border-divider text-secondary">
+                              {ind.id === 'rsi' ? `Wilder's ${rsiPeriod}D` : ind.badge}
+                            </span>
+                            {isComingSoon && (
+                              <span className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-500 font-semibold border border-amber-500/20">
+                                Upcoming
+                              </span>
+                            )}
+                            {ind.status === 'requires-sync' && (
+                              <span className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-500 font-medium">
+                                Local Sync
                               </span>
                             )}
                           </div>
-                          {!isAvail && (
-                            <span className="text-[10px] px-2 py-0.5 rounded bg-surface-hover text-tertiary font-medium border border-divider">
-                              Coming Soon
-                            </span>
-                          )}
+                          <p className="text-[10px] sm:text-xs text-secondary leading-relaxed">{ind.description}</p>
                         </div>
+                      </div>
 
-                        <p className="text-xs text-secondary mt-1.5 sm:mt-2 leading-relaxed">
-                          {ind.description}
-                        </p>
+                      {/* Configurable RSI Settings Drawer */}
+                      {isSelected && ind.id === 'rsi' && (
+                        <div
+                          className="mt-3 pt-3 border-t border-divider/60 space-y-2.5 animate-fadeIn"
+                          onClick={e => e.stopPropagation()}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] sm:text-xs font-semibold text-primary flex items-center gap-1">
+                              <Sliders className="w-3 h-3 text-primary" />
+                              RSI Configuration
+                            </span>
+                            <span className="text-[9px] text-tertiary">User-Centric Customization</span>
+                          </div>
 
-                        {/* ── RSI Configuration Panel ── */}
-                        {ind.id === 'rsi' && isChecked && (
-                          <div
-                            onClick={(e) => e.stopPropagation()}
-                            className="mt-4 pt-3 border-t border-divider space-y-3"
-                          >
-                            {/* Inner section header */}
+                          {/* Period Setting */}
+                          <div className="bg-background/80 p-2.5 rounded-md border border-divider/60 space-y-1.5">
                             <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-1.5 text-xs font-semibold text-primary">
-                                <Sliders className="w-3.5 h-3.5 text-secondary" />
-                                <span>RSI Configuration</span>
+                              <label className="text-[10px] text-secondary font-medium">
+                                Lookback Period (Days)
+                              </label>
+                              <div className="flex items-center gap-1">
+                                {[7, 14, 21].map(p => (
+                                  <button
+                                    key={p}
+                                    type="button"
+                                    onClick={() => setRsiPeriod(p)}
+                                    className={`px-1.5 py-0.5 rounded text-[9px] font-mono transition-colors ${rsiPeriod === p
+                                        ? 'bg-primary text-surface font-semibold'
+                                        : 'bg-surface hover:bg-surface-hover text-secondary border border-divider'
+                                      }`}
+                                  >
+                                    {p}D
+                                  </button>
+                                ))}
                               </div>
-                              <span className="text-[10px] text-tertiary font-normal">
-                                User-Centric Customization
-                              </span>
                             </div>
+                            <input
+                              type="number"
+                              min={2}
+                              max={100}
+                              value={rsiPeriod}
+                              onChange={e => setRsiPeriod(Math.max(2, Math.min(100, parseInt(e.target.value) || 14)))}
+                              className="w-full bg-surface border border-divider rounded px-2 py-1 text-xs text-primary font-mono focus:outline-none focus:border-primary"
+                            />
+                            <p className="text-[9px] text-tertiary">Standard is 14. Use 7 for sensitive swing signals, or 21 for smooth trend-filtering.</p>
+                          </div>
 
-                            {/* Lookback Period Box with [7D] [14D] [21D] presets */}
-                            <div className="p-3 rounded-lg bg-background border border-divider">
-                              <div className="flex items-center justify-between mb-1.5 gap-2">
-                                <span className="text-xs font-medium text-secondary whitespace-nowrap">
-                                  Lookback Period (Days)
-                                </span>
-                                <div className="flex items-center gap-1 shrink-0">
-                                  {[7, 14, 21].map(d => {
-                                    const isPillActive = rsiPeriod === d;
-                                    return (
-                                      <button
-                                        key={d}
-                                        type="button"
-                                        onClick={() => setRsiPeriod(d)}
-                                        className={`px-2 py-0.5 rounded text-[10px] font-mono transition-colors ${
-                                          isPillActive
-                                            ? 'bg-primary text-surface font-bold shadow-xs'
-                                            : 'bg-surface text-secondary hover:text-primary border border-divider'
+                          {/* Thresholds Setting */}
+                          <div className="grid grid-cols-2 gap-2">
+                            <div className="bg-background/80 p-2 rounded-md border border-divider/60">
+                              <div className="flex items-center justify-between mb-1">
+                                <label className="text-[10px] text-danger font-medium">Overbought (&gt;)</label>
+                                <div className="flex gap-1">
+                                  {[70, 75, 80].map(v => (
+                                    <button
+                                      key={v}
+                                      type="button"
+                                      onClick={() => setRsiOverbought(v)}
+                                      className={`px-1 py-0.5 rounded text-[8px] font-mono ${rsiOverbought === v ? 'bg-danger text-white' : 'text-secondary hover:text-primary'
                                         }`}
-                                      >
-                                        {d}D
-                                      </button>
-                                    );
-                                  })}
+                                    >
+                                      {v}
+                                    </button>
+                                  ))}
                                 </div>
                               </div>
-
-                              {/* Input with custom up/down spinner arrows */}
-                              <div className="relative flex items-center mt-2">
-                                <input
-                                  type="number"
-                                  min={2}
-                                  max={50}
-                                  value={rsiPeriod}
-                                  onChange={(e) => setRsiPeriod(Math.max(2, Math.min(50, Number(e.target.value) || 14)))}
-                                  className="w-full pl-3 pr-8 py-1.5 bg-surface border border-divider rounded-lg text-sm text-primary font-mono focus:border-primary focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                                />
-                                <div className="absolute right-1.5 flex flex-col items-center justify-center -space-y-0.5 text-secondary">
-                                  <button
-                                    type="button"
-                                    onClick={() => setRsiPeriod(prev => Math.min(50, prev + 1))}
-                                    className="p-0.5 hover:text-primary transition-colors"
-                                  >
-                                    <ChevronUp className="w-3 h-3" />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => setRsiPeriod(prev => Math.max(2, prev - 1))}
-                                    className="p-0.5 hover:text-primary transition-colors"
-                                  >
-                                    <ChevronDown className="w-3 h-3" />
-                                  </button>
-                                </div>
-                              </div>
-                              <p className="text-[10px] text-tertiary mt-1.5">
-                                Standard is 14. Use 7 for sensitive swing signals, or 21 for smooth trend-filtering.
-                              </p>
+                              <input
+                                type="number"
+                                min={50}
+                                max={95}
+                                value={rsiOverbought}
+                                onChange={e => setRsiOverbought(Math.max(50, Math.min(95, parseInt(e.target.value) || 70)))}
+                                className="w-full bg-surface border border-divider rounded px-2 py-1 text-xs text-primary font-mono focus:outline-none focus:border-danger"
+                              />
                             </div>
 
-                            {/* Overbought and Oversold 2-Column Grid */}
-                            <div className="grid grid-cols-2 gap-3">
-                              {/* Overbought (>) */}
-                              <div className="p-3 rounded-lg bg-background border border-divider min-w-0">
-                                <div className="flex items-center justify-between mb-1.5 gap-1.5">
-                                  <span className="text-xs font-medium text-rose-400 whitespace-nowrap shrink-0">
-                                    Overbought (&gt;)
-                                  </span>
-                                  <div className="flex items-center gap-1 shrink-0">
-                                    {[70, 75, 80].map(v => {
-                                      const isObActive = rsiOverbought === v;
-                                      return (
-                                        <button
-                                          key={v}
-                                          type="button"
-                                          onClick={() => setRsiOverbought(v)}
-                                          className={`px-1.5 sm:px-2 py-0.5 rounded text-[10px] font-mono transition-colors shrink-0 ${
-                                            isObActive
-                                              ? 'bg-rose-500/20 text-rose-400 border border-rose-500/40 font-bold'
-                                              : 'bg-surface text-secondary hover:text-primary border border-divider'
-                                          }`}
-                                        >
-                                          {v}
-                                        </button>
-                                      );
-                                    })}
-                                  </div>
-                                </div>
-
-                                <div className="relative flex items-center mt-2">
-                                  <input
-                                    type="number"
-                                    min={50}
-                                    max={95}
-                                    value={rsiOverbought}
-                                    onChange={(e) => setRsiOverbought(Math.max(50, Math.min(95, Number(e.target.value) || 70)))}
-                                    className="w-full pl-3 pr-8 py-1.5 bg-surface border border-divider rounded-lg text-sm text-primary font-mono focus:border-rose-500/50 focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                                  />
-                                  <div className="absolute right-1.5 flex flex-col items-center justify-center -space-y-0.5 text-secondary">
+                            <div className="bg-background/80 p-2 rounded-md border border-divider/60">
+                              <div className="flex items-center justify-between mb-1">
+                                <label className="text-[10px] text-success font-medium">Oversold (&lt;)</label>
+                                <div className="flex gap-1">
+                                  {[20, 25, 30].map(v => (
                                     <button
+                                      key={v}
                                       type="button"
-                                      onClick={() => setRsiOverbought(prev => Math.min(95, prev + 1))}
-                                      className="p-0.5 hover:text-primary transition-colors"
+                                      onClick={() => setRsiOversold(v)}
+                                      className={`px-1 py-0.5 rounded text-[8px] font-mono ${rsiOversold === v ? 'bg-success text-white' : 'text-secondary hover:text-primary'
+                                        }`}
                                     >
-                                      <ChevronUp className="w-3 h-3" />
+                                      {v}
                                     </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => setRsiOverbought(prev => Math.max(50, prev - 1))}
-                                      className="p-0.5 hover:text-primary transition-colors"
-                                    >
-                                      <ChevronDown className="w-3 h-3" />
-                                    </button>
-                                  </div>
+                                  ))}
                                 </div>
                               </div>
-
-                              {/* Oversold (<) */}
-                              <div className="p-3 rounded-lg bg-background border border-divider min-w-0">
-                                <div className="flex items-center justify-between mb-1.5 gap-1.5">
-                                  <span className="text-xs font-medium text-emerald-400 whitespace-nowrap shrink-0">
-                                    Oversold (&lt;)
-                                  </span>
-                                  <div className="flex items-center gap-1 shrink-0">
-                                    {[20, 25, 30].map(v => {
-                                      const isOsActive = rsiOversold === v;
-                                      return (
-                                        <button
-                                          key={v}
-                                          type="button"
-                                          onClick={() => setRsiOversold(v)}
-                                          className={`px-1.5 sm:px-2 py-0.5 rounded text-[10px] font-mono transition-colors shrink-0 ${
-                                            isOsActive
-                                              ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 font-bold'
-                                              : 'bg-surface text-secondary hover:text-primary border border-divider'
-                                          }`}
-                                        >
-                                          {v}
-                                        </button>
-                                      );
-                                    })}
-                                  </div>
-                                </div>
-
-                                <div className="relative flex items-center mt-2">
-                                  <input
-                                    type="number"
-                                    min={5}
-                                    max={50}
-                                    value={rsiOversold}
-                                    onChange={(e) => setRsiOversold(Math.max(5, Math.min(50, Number(e.target.value) || 30)))}
-                                    className="w-full pl-3 pr-8 py-1.5 bg-surface border border-divider rounded-lg text-sm text-primary font-mono focus:border-emerald-500/50 focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                                  />
-                                  <div className="absolute right-1.5 flex flex-col items-center justify-center -space-y-0.5 text-secondary">
-                                    <button
-                                      type="button"
-                                      onClick={() => setRsiOversold(prev => Math.min(50, prev + 1))}
-                                      className="p-0.5 hover:text-primary transition-colors"
-                                    >
-                                      <ChevronUp className="w-3 h-3" />
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => setRsiOversold(prev => Math.max(5, prev - 1))}
-                                      className="p-0.5 hover:text-primary transition-colors"
-                                    >
-                                      <ChevronDown className="w-3 h-3" />
-                                    </button>
-                                  </div>
-                                </div>
-                              </div>
+                              <input
+                                type="number"
+                                min={5}
+                                max={50}
+                                value={rsiOversold}
+                                onChange={e => setRsiOversold(Math.max(5, Math.min(50, parseInt(e.target.value) || 30)))}
+                                className="w-full bg-surface border border-divider rounded px-2 py-1 text-xs text-primary font-mono focus:outline-none focus:border-success"
+                              />
                             </div>
                           </div>
-                        )}
-                      </div>
+                        </div>
+                      )}
                     </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Sync Progress Bar UX inside Modal */}
-            {isSyncing && (
-              <div className="mt-2 p-3 rounded-xl border border-divider bg-surface-hover/80 animate-in fade-in duration-150">
-                <div className="flex items-center justify-between text-xs font-semibold text-primary mb-1.5">
-                  <div className="flex items-center gap-2">
-                    <RefreshCw className="w-3.5 h-3.5 text-blue-400 animate-spin" />
-                    <span>Fetching & calculating indicators...</span>
-                  </div>
-                  <span className="font-mono text-blue-400">{syncProgress}%</span>
-                </div>
-
-                <div className="w-full h-1.5 rounded-full bg-divider overflow-hidden mb-2">
-                  <div
-                    className="h-full bg-primary transition-all duration-300 ease-out rounded-full"
-                    style={{ width: `${syncProgress}%` }}
-                  />
-                </div>
-
-                <div className="space-y-0.5 text-[10px] font-mono text-secondary">
-                  {syncStatusLines.map((line, idx) => (
-                    <div key={idx} className={line.includes('Ready') || line.includes('✅') ? 'text-emerald-400' : 'text-primary'}>
-                      {line}
-                    </div>
-                  ))}
-                </div>
+                  );
+                })}
               </div>
-            )}
+            </div>
           </div>
         </div>
 
-        {/* Footer Matching Indices Setting UI */}
-        <div className="px-6 py-3.5 border-t border-divider bg-surface flex items-center justify-between shrink-0">
-          <div className="text-xs text-secondary">
-            {selectedIds.size} indicators selected
-          </div>
+        {/* Footer with Progress Bar & Action Buttons */}
+        <div className="p-4 border-t border-divider bg-surface/50 shrink-0 flex flex-col gap-3">
+          {isSyncing && (
+            <div className="space-y-1.5 bg-surface border border-divider rounded-lg p-2.5">
+              <div className="flex items-center justify-between text-[10px] sm:text-xs">
+                <span className="font-medium text-primary flex items-center gap-1.5 truncate">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-primary" />
+                  {syncStatusText}
+                </span>
+                <span className="font-mono font-semibold text-primary shrink-0 ml-2">{syncProgress}%</span>
+              </div>
+              <div className="w-full bg-divider/60 rounded-full h-1.5 overflow-hidden">
+                <div
+                  className="bg-primary h-full rounded-full transition-all duration-300 ease-out"
+                  style={{ width: `${syncProgress}%` }}
+                />
+              </div>
+            </div>
+          )}
 
-          <div className="flex items-center gap-3">
-            {!isSyncing && (
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] sm:text-xs text-tertiary">
+              {selectedIds.size} indicator{selectedIds.size === 1 ? '' : 's'} selected
+            </span>
+            <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2 text-xs font-medium text-secondary hover:text-primary transition-colors"
+                disabled={isSyncing}
+                className="px-3 py-1.5 text-xs font-medium text-secondary hover:text-primary hover:bg-surface-hover rounded-md transition-colors disabled:opacity-50"
               >
                 Cancel
               </button>
-            )}
-            <button
-              type="button"
-              onClick={handleApply}
-              disabled={isSyncing}
-              className="px-5 py-2 rounded-lg bg-primary hover:opacity-90 text-surface text-xs font-semibold shadow transition-colors flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
-            >
-              {isSyncing ? (
-                <>
-                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-surface" />
-                  <span>Syncing...</span>
-                </>
-              ) : isComplete ? (
-                <>
-                  <Check className="w-3.5 h-3.5 stroke-[3] text-surface" />
-                  <span>Applied</span>
-                </>
-              ) : (
-                <span>Apply Indicators</span>
-              )}
-            </button>
+              <button
+                type="button"
+                onClick={handleApply}
+                disabled={isSyncing}
+                className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold bg-primary text-surface rounded-md hover:bg-primary/90 transition-colors shadow-sm disabled:opacity-50"
+              >
+                {isSyncing ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    Calculating...
+                  </>
+                ) : (
+                  'Apply Indicators'
+                )}
+              </button>
+            </div>
           </div>
         </div>
-
       </div>
     </div>,
     document.body
   );
 }
+
+// Export alias as well for compatibility
+export { AddIndicatorsModal as IndicatorsModal };
