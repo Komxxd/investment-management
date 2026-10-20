@@ -29,6 +29,8 @@ export function usePortfolioData() {
     volume?: number;
     avgVolume?: number;
     previousClose?: number;
+    dma50?: number;
+    dma200?: number;
   }>>({});
   const [pricesLoading, setPricesLoading] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);

@@ -28,7 +28,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px] transition-opacity" onClick={onClose} />
       
       <div className="relative w-full max-w-2xl h-[85vh] md:h-[500px] bg-surface border border-divider rounded-xl shadow-2xl flex flex-col">
         <div className="flex items-center justify-between px-4 py-3 sm:px-6 sm:py-4 border-b border-divider shrink-0">

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react'
 import * as XLSX from 'xlsx'
 import { calculateXIRR } from '../../../utils/xirr'
-import { Plus, Briefcase, Trash2, Pencil, ChevronDown, ChevronRight, ChevronUp, ArrowUpCircle, ArrowDownCircle, PanelLeftClose, PanelLeftOpen, Copy, FilterX, ArrowUpDown, Columns, Check, Info, User, LogOut, Folder, Download, Upload, Home, LayoutDashboard, RefreshCw, Sun, Moon, GripVertical, MoreVertical } from 'lucide-react'
+import { Plus, Briefcase, Trash2, Pencil, ChevronDown, ChevronRight, ChevronUp, ArrowUpCircle, ArrowDownCircle, PanelLeftClose, PanelLeftOpen, Copy, FilterX, ArrowUpDown, Columns, Check, Info, User, LogOut, Folder, Download, Upload, Home, LayoutDashboard, RefreshCw, Sun, Moon, GripVertical, MoreVertical, Activity } from 'lucide-react'
 import {
   DndContext,
   closestCenter,
@@ -37,6 +37,7 @@ import { AssetSearch } from '../../stocks/components/AssetSearch'
 import { PortfolioInfoModal } from '../components/PortfolioInfoModal'
 import { RebalanceModal } from '../../stocks/components/RebalanceModal'
 import { ConfirmationModal } from '../../../components/ui/ConfirmationModal'
+import { AddIndicatorsModal } from '../components/AddIndicatorsModal'
 
 const ALL_SUMMARY_STATS = [
   { id: 'totalStocks', label: 'Total Stocks' },
@@ -244,6 +245,9 @@ const ALL_COLUMNS = [
   { id: 'avgBuyPrice', label: 'Avg Buy' },
   { id: 'netCostBasis', label: 'Invested' },
   { id: 'livePrice', label: 'Live Price' },
+  { id: 'dma50', label: '50 DMA' },
+  { id: 'dma200', label: '200 DMA' },
+  { id: 'rsi', label: 'RSI (14)' },
   { id: 'currentValue', label: 'Current Value' },
   { id: 'unrealizedPnL', label: 'Unrealized PnL' },
   { id: 'unrealizedPnLPct', label: 'Unrealized %' },
@@ -268,7 +272,7 @@ const ALL_COLUMNS = [
   { id: 'avgVolume', label: 'Avg Volume (3M)' },
   { id: 'tradeValue', label: 'Trade Value' },
   { id: 'dayGain', label: 'Day Gain' },
-  { id: 'dayGainPct', label: 'Day Gain %' }
+  { id: 'dayGainPct', label: 'Day Gain %' },
 ];
 
 
@@ -520,7 +524,14 @@ export function PortfolioDashboard() {
       if (settings?.portfolioVisibleColumns) {
         const result: Record<string, Set<string>> = {};
         for (const key in settings.portfolioVisibleColumns) {
-          result[key] = new Set(settings.portfolioVisibleColumns[key]);
+          const colSet = new Set<string>((settings.portfolioVisibleColumns[key] || []) as string[]);
+          // If this saved portfolio settings predated indicators, include them by default
+          if (!colSet.has('dma50') && !colSet.has('dma200') && !colSet.has('rsi')) {
+            colSet.add('dma50');
+            colSet.add('dma200');
+            colSet.add('rsi');
+          }
+          result[key] = colSet;
         }
         setPortfolioVisibleColumns(result);
       }
@@ -604,9 +615,16 @@ export function PortfolioDashboard() {
   const [draggedColId, setDraggedColId] = useState<string | null>(null);
 
   const visibleColumns = (() => {
-    return (activePortfolioId && portfolioVisibleColumns[activePortfolioId]) 
-      ? new Set(portfolioVisibleColumns[activePortfolioId]) 
-      : new Set(ALL_COLUMNS.map(c => c.id));
+    if (activePortfolioId && portfolioVisibleColumns[activePortfolioId]) {
+      const set = portfolioVisibleColumns[activePortfolioId];
+      if (!set.has('dma50') && !set.has('dma200') && !set.has('rsi')) {
+        set.add('dma50');
+        set.add('dma200');
+        set.add('rsi');
+      }
+      return set;
+    }
+    return new Set(ALL_COLUMNS.map(c => c.id));
   })();
 
   const activeColumnOrder = (() => {
@@ -627,6 +645,23 @@ export function PortfolioDashboard() {
         } else if (missingCol === 'totalPnLPct') {
           const idx = order.indexOf('totalPnL');
           if (idx !== -1) { order.splice(idx + 1, 0, missingCol); inserted = true; }
+        } else if (missingCol === 'dma50') {
+          const idx = order.indexOf('livePrice');
+          if (idx !== -1) { order.splice(idx + 1, 0, missingCol); inserted = true; }
+        } else if (missingCol === 'dma200') {
+          const idx = order.indexOf('dma50');
+          if (idx !== -1) { order.splice(idx + 1, 0, missingCol); inserted = true; }
+          else {
+            const pIdx = order.indexOf('livePrice');
+            if (pIdx !== -1) { order.splice(pIdx + 1, 0, missingCol); inserted = true; }
+          }
+        } else if (missingCol === 'rsi') {
+          const idx = order.indexOf('dma200');
+          if (idx !== -1) { order.splice(idx + 1, 0, missingCol); inserted = true; }
+          else {
+            const pIdx = order.indexOf('livePrice');
+            if (pIdx !== -1) { order.splice(pIdx + 1, 0, missingCol); inserted = true; }
+          }
         }
         
         if (!inserted) {
@@ -897,6 +932,59 @@ export function PortfolioDashboard() {
     return () => evtSource.close();
   }, [allStockSymbols]);
 
+  // ── Technical indicators (RSI, 50 DMA, 200 DMA via Python & Parquet) ──
+  type IndicatorData = { rsi: number | null; dma50: number | null; dma200: number | null; source?: string };
+  const [indicators, setIndicators] = useState<Record<string, IndicatorData>>({});
+  const [indicatorsLoading, setIndicatorsLoading] = useState(false);
+  const [isAddIndicatorsModalOpen, setIsAddIndicatorsModalOpen] = useState(false);
+
+  const indicatorColumnsVisible = (
+    visibleColumns.has('rsi') || visibleColumns.has('dma50') || visibleColumns.has('dma200')
+  );
+
+  const selectedIndicatorsCount = (
+    (visibleColumns.has('dma50') ? 1 : 0) +
+    (visibleColumns.has('dma200') ? 1 : 0) +
+    (visibleColumns.has('rsi') ? 1 : 0)
+  );
+
+  const fetchPortfolioIndicators = (force: boolean = false) => {
+    if (!allStockSymbols) return;
+    setIndicatorsLoading(true);
+    const apiBase = import.meta.env.VITE_API_URL || 'http://localhost:5001';
+    fetch(`${apiBase}/api/prices/indicators?symbols=${encodeURIComponent(allStockSymbols)}&force=${force}`, { credentials: 'include' })
+      .then(r => r.json())
+      .then(data => {
+        setIndicators(prev => ({ ...prev, ...data }));
+        setIndicatorsLoading(false);
+      })
+      .catch(err => {
+        console.error('Failed to fetch indicators', err);
+        setIndicatorsLoading(false);
+      });
+  };
+
+  const toggleIndicator = (indId: 'dma50' | 'dma200' | 'rsi') => {
+    if (!activePortfolioId) return;
+    setPortfolioVisibleColumns(prev => {
+      const current = prev[activePortfolioId] 
+        ? new Set(prev[activePortfolioId]) 
+        : new Set(ALL_COLUMNS.map(c => c.id));
+      const next = new Set(current);
+      if (next.has(indId)) {
+        next.delete(indId);
+      } else {
+        next.add(indId);
+      }
+      return { ...prev, [activePortfolioId]: next };
+    });
+  };
+
+  useEffect(() => {
+    if (!allStockSymbols || !indicatorColumnsVisible) return;
+    fetchPortfolioIndicators(false);
+  }, [allStockSymbols, indicatorColumnsVisible]);
+
   const toggleSymbol = (symbol: string) => {
     setExpandedSymbols(prev => {
       const next = new Set(prev);
@@ -1030,6 +1118,15 @@ export function PortfolioDashboard() {
       } else if (sortField === 'tradeValue') {
         valA = (a.liveData?.volume || 0) * (a.liveData?.price || 0);
         valB = (b.liveData?.volume || 0) * (b.liveData?.price || 0);
+      } else if (sortField === 'rsi') {
+        valA = indicators[a.symbol]?.rsi ?? -1;
+        valB = indicators[b.symbol]?.rsi ?? -1;
+      } else if (sortField === 'dma50') {
+        valA = a.liveData?.dma50 ?? indicators[a.symbol]?.dma50 ?? -1;
+        valB = b.liveData?.dma50 ?? indicators[b.symbol]?.dma50 ?? -1;
+      } else if (sortField === 'dma200') {
+        valA = a.liveData?.dma200 ?? indicators[a.symbol]?.dma200 ?? -1;
+        valB = b.liveData?.dma200 ?? indicators[b.symbol]?.dma200 ?? -1;
       }
 
       // Handle nulls/undefined safely for all number comparisons
@@ -1100,7 +1197,10 @@ export function PortfolioDashboard() {
         'Current Value': currentValue,
         'P&L': pnl,
         'P&L %': pnlPct,
-        'Total Dividend': group.totalDividend
+        'Total Dividend': group.totalDividend,
+        '50 DMA': group.liveData?.dma50 ?? indicators[group.symbol]?.dma50 ?? '—',
+        '200 DMA': group.liveData?.dma200 ?? indicators[group.symbol]?.dma200 ?? '—',
+        'RSI (14)': indicators[group.symbol]?.rsi ?? '—'
       };
     });
 
@@ -1593,7 +1693,8 @@ export function PortfolioDashboard() {
                             >
                               <SortableContext items={activeColumnOrder} strategy={verticalListSortingStrategy}>
                                 {activeColumnOrder.map(colId => {
-                                  const col = ALL_COLUMNS.find(c => c.id === colId)!;
+                                  const col = ALL_COLUMNS.find(c => c.id === colId);
+                                  if (!col) return null; // skip stale/unknown column IDs
                                   return (
                                     <SortableColumnMenuItem
                                       key={col.id}
@@ -1609,6 +1710,21 @@ export function PortfolioDashboard() {
                         </>
                       )}
                     </div>
+
+                    {/* Technical Indicators Trigger Button */}
+                    <button
+                      onClick={() => setIsAddIndicatorsModalOpen(true)}
+                      className="flex items-center gap-1 px-2 py-1 bg-surface border border-divider rounded-md text-[10px] font-medium text-secondary hover:text-primary transition-colors"
+                      title="Technical Indicators (50 DMA, 200 DMA, RSI 14)"
+                    >
+                      <Activity className="w-3 h-3" />
+                      <span>+ Indicators</span>
+                      {selectedIndicatorsCount > 0 && (
+                        <span className="px-1.5 py-0.2 text-[9px] bg-surface-hover text-secondary border border-divider rounded font-mono font-medium leading-none">
+                          {selectedIndicatorsCount}
+                        </span>
+                      )}
+                    </button>
                   </div>
                   <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                     <button
@@ -1844,6 +1960,10 @@ export function PortfolioDashboard() {
                                         </span>
                                       </td>
                                     );
+                                  case 'rsi':
+                                  case 'dma50':
+                                  case 'dma200':
+                                    return <td key={colId} className="px-2 py-1.5 text-[9px] sm:text-[10px] text-right font-mono text-tertiary">—</td>;
                                   default:
                                     return <td key={colId} className="px-2 py-1.5 text-[9px] sm:text-[10px] text-right font-mono text-tertiary">—</td>;
                                 }
@@ -2101,6 +2221,123 @@ export function PortfolioDashboard() {
                                           {dayGainPct >= 0 ? '+' : ''}{dayGainPct.toFixed(2)}%
                                         </td>
                                       );
+                                    case 'rsi': {
+                                      const rsiVal = indicators[group.symbol]?.rsi;
+                                      const rsiColor = rsiVal == null
+                                        ? 'text-tertiary'
+                                        : rsiVal >= 70
+                                          ? 'text-danger'      // overbought
+                                          : rsiVal <= 30
+                                            ? 'text-success'   // oversold
+                                            : 'text-primary';
+                                      return (
+                                        <td
+                                          key="rsi"
+                                          className={`px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right font-medium truncate ${rsiColor}`}
+                                          title={rsiVal != null ? `RSI(14): ${rsiVal.toFixed(2)} (${rsiVal >= 70 ? 'Overbought >= 70' : rsiVal <= 30 ? 'Oversold <= 30' : 'Neutral 30-70'})` : undefined}
+                                        >
+                                          {indicatorsLoading && rsiVal == null ? (
+                                            <span className="text-tertiary animate-pulse">…</span>
+                                          ) : rsiVal != null ? (
+                                            <div className="flex items-center justify-end gap-1">
+                                              <span>{rsiVal.toFixed(2)}</span>
+                                              {rsiVal >= 70 && (
+                                                <span className="text-[8px] font-sans px-1 rounded bg-danger/20 text-danger font-semibold" title="Overbought (>= 70)">
+                                                  OB
+                                                </span>
+                                              )}
+                                              {rsiVal <= 30 && (
+                                                <span className="text-[8px] font-sans px-1 rounded bg-success/20 text-success font-semibold" title="Oversold (<= 30)">
+                                                  OS
+                                                </span>
+                                              )}
+                                            </div>
+                                          ) : (
+                                            '—'
+                                          )}
+                                        </td>
+                                      );
+                                    }
+                                    case 'dma50': {
+                                      const dma50Val = group.liveData?.dma50 ?? indicators[group.symbol]?.dma50;
+                                      const liveP = group.livePrice || 0;
+                                      const dma50Color = dma50Val == null
+                                        ? 'text-tertiary'
+                                        : liveP >= dma50Val
+                                          ? 'text-success'
+                                          : 'text-danger';
+                                      const diffPct50 = dma50Val && liveP ? ((liveP - dma50Val) / dma50Val) * 100 : 0;
+                                      const tooltip50 = dma50Val && liveP
+                                        ? `${diffPct50 >= 0 ? '+' : ''}${diffPct50.toFixed(2)}% ${liveP >= dma50Val ? 'above' : 'below'} 50 DMA (Live: ${fmtCurrency(liveP, group.liveData?.currency)})`
+                                        : undefined;
+
+                                      return (
+                                        <td
+                                          key="dma50"
+                                          className={`px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right font-medium truncate ${dma50Color}`}
+                                          title={tooltip50}
+                                        >
+                                          {indicatorsLoading && dma50Val == null ? (
+                                            <span className="text-tertiary animate-pulse">…</span>
+                                          ) : dma50Val != null ? (
+                                            <div className="flex items-center justify-end gap-1">
+                                              <span>{fmtCurrency(dma50Val, group.liveData?.currency)}</span>
+                                              {liveP > 0 && (
+                                                <span
+                                                  className={`text-[8px] font-sans px-1 rounded font-semibold ${
+                                                    liveP >= dma50Val ? 'bg-success/15 text-success' : 'bg-danger/15 text-danger'
+                                                  }`}
+                                                >
+                                                  {diffPct50 >= 0 ? '+' : ''}{diffPct50.toFixed(1)}%
+                                                </span>
+                                              )}
+                                            </div>
+                                          ) : (
+                                            '—'
+                                          )}
+                                        </td>
+                                      );
+                                    }
+                                    case 'dma200': {
+                                      const dma200Val = group.liveData?.dma200 ?? indicators[group.symbol]?.dma200;
+                                      const liveP2 = group.livePrice || 0;
+                                      const dma200Color = dma200Val == null
+                                        ? 'text-tertiary'
+                                        : liveP2 >= dma200Val
+                                          ? 'text-success'
+                                          : 'text-danger';
+                                      const diffPct200 = dma200Val && liveP2 ? ((liveP2 - dma200Val) / dma200Val) * 100 : 0;
+                                      const tooltip200 = dma200Val && liveP2
+                                        ? `${diffPct200 >= 0 ? '+' : ''}${diffPct200.toFixed(2)}% ${liveP2 >= dma200Val ? 'above' : 'below'} 200 DMA (Live: ${fmtCurrency(liveP2, group.liveData?.currency)})`
+                                        : undefined;
+
+                                      return (
+                                        <td
+                                          key="dma200"
+                                          className={`px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right font-medium truncate ${dma200Color}`}
+                                          title={tooltip200}
+                                        >
+                                          {indicatorsLoading && dma200Val == null ? (
+                                            <span className="text-tertiary animate-pulse">…</span>
+                                          ) : dma200Val != null ? (
+                                            <div className="flex items-center justify-end gap-1">
+                                              <span>{fmtCurrency(dma200Val, group.liveData?.currency)}</span>
+                                              {liveP2 > 0 && (
+                                                <span
+                                                  className={`text-[8px] font-sans px-1 rounded font-semibold ${
+                                                    liveP2 >= dma200Val ? 'bg-success/15 text-success' : 'bg-danger/15 text-danger'
+                                                  }`}
+                                                >
+                                                  {diffPct200 >= 0 ? '+' : ''}{diffPct200.toFixed(1)}%
+                                                </span>
+                                              )}
+                                            </div>
+                                          ) : (
+                                            '—'
+                                          )}
+                                        </td>
+                                      );
+                                    }
                                     default:
                                       return null;
                                   }
@@ -2483,6 +2720,27 @@ export function PortfolioDashboard() {
         totalCurrentValue={totalCurrentValue}
         onSuccess={() => {
           fetchData();
+        }}
+      />
+
+      <AddIndicatorsModal
+        isOpen={isAddIndicatorsModalOpen}
+        onClose={() => setIsAddIndicatorsModalOpen(false)}
+        visibleColumns={visibleColumns}
+        symbols={activeSymbols}
+        onIndicatorsUpdated={(data) => setIndicators(prev => ({ ...prev, ...data }))}
+        onApplyIndicators={(selectedIds) => {
+          if (!activePortfolioId) return;
+          setPortfolioVisibleColumns(prev => {
+            const current = prev[activePortfolioId] 
+              ? new Set(prev[activePortfolioId]) 
+              : new Set(ALL_COLUMNS.map(c => c.id));
+            ['dma50', 'dma200', 'rsi'].forEach(ind => {
+              if (selectedIds.includes(ind)) current.add(ind);
+              else current.delete(ind);
+            });
+            return { ...prev, [activePortfolioId]: current };
+          });
         }}
       />
     </>
