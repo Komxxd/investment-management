@@ -38,6 +38,7 @@ import { PortfolioInfoModal } from '../components/PortfolioInfoModal'
 import { RebalanceModal } from '../../stocks/components/RebalanceModal'
 import { ConfirmationModal } from '../../../components/ui/ConfirmationModal'
 import { AddIndicatorsModal } from '../components/AddIndicatorsModal'
+import { StrategyBuilderModal } from '../components/StrategyBuilderModal'
 
 const ALL_SUMMARY_STATS = [
   { id: 'totalStocks', label: 'Total Stocks' },
@@ -937,6 +938,25 @@ export function PortfolioDashboard() {
   const [indicators, setIndicators] = useState<Record<string, IndicatorData>>({});
   const [indicatorsLoading, setIndicatorsLoading] = useState(false);
   const [isAddIndicatorsModalOpen, setIsAddIndicatorsModalOpen] = useState(false);
+  const [isStrategyBuilderModalOpen, setIsStrategyBuilderModalOpen] = useState(false);
+  const [activeStrategiesCount, setActiveStrategiesCount] = useState(0);
+
+  // Sync active strategies count for badge indicator
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(`portfolio_strategies_${activePortfolioId || 'global'}`);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          setActiveStrategiesCount(parsed.filter((r: any) => r.enabled).length);
+          return;
+        }
+      }
+      setActiveStrategiesCount(0);
+    } catch {
+      setActiveStrategiesCount(0);
+    }
+  }, [activePortfolioId, isStrategyBuilderModalOpen]);
 
   const indicatorColumnsVisible = (
     visibleColumns.has('rsi') || visibleColumns.has('dma50') || visibleColumns.has('dma200')
@@ -1722,6 +1742,20 @@ export function PortfolioDashboard() {
                       {selectedIndicatorsCount > 0 && (
                         <span className="px-1.5 py-0.2 text-[9px] bg-surface-hover text-secondary border border-divider rounded font-mono font-medium leading-none">
                           {selectedIndicatorsCount}
+                        </span>
+                      )}
+                    </button>
+
+                    {/* Strategy Builder Trigger Button */}
+                    <button
+                      onClick={() => setIsStrategyBuilderModalOpen(true)}
+                      className="flex items-center gap-1 px-2 py-1 bg-surface border border-divider rounded-md text-[10px] font-medium text-secondary hover:text-primary transition-colors"
+                      title="Strategy Builder"
+                    >
+                      <span>+ Strategy</span>
+                      {activeStrategiesCount > 0 && (
+                        <span className="px-1.5 py-0.2 text-[9px] bg-surface-hover text-secondary border border-divider rounded font-mono font-medium leading-none">
+                          {activeStrategiesCount}
                         </span>
                       )}
                     </button>
@@ -2742,6 +2776,17 @@ export function PortfolioDashboard() {
             return { ...prev, [activePortfolioId]: current };
           });
         }}
+      />
+
+      <StrategyBuilderModal
+        isOpen={isStrategyBuilderModalOpen}
+        onClose={() => setIsStrategyBuilderModalOpen(false)}
+        portfolioId={activePortfolioId || ''}
+        portfolioName={activePortfolio?.name || 'Portfolio'}
+        stocks={activeStocks}
+        indicators={indicators}
+        livePrices={livePrices}
+        currencySymbol={currencySymbol}
       />
     </>
   )
