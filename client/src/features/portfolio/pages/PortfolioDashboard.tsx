@@ -1053,6 +1053,27 @@ export function PortfolioDashboard() {
     filteredSymbolGroups = filteredSymbolGroups.filter((g: any) => searchSelectedSymbols.includes(g.symbol));
   }
 
+  // Open stocks in active portfolio (net quantity > 0)
+  const openPortfolioStocks = useMemo(() => {
+    if (symbolGroups && symbolGroups.length > 0) {
+      const openSymbols = new Set(
+        symbolGroups.filter((g: any) => (g.netQty || 0) > 0).map((g: any) => g.symbol)
+      );
+      return activeStocks.filter(s => openSymbols.has(s.symbol));
+    }
+
+    const soldQtyBySymbol: Record<string, number> = {};
+    activeSoldStocks.forEach(s => {
+      soldQtyBySymbol[s.symbol] = (soldQtyBySymbol[s.symbol] || 0) + (Number(s.quantity) || 0);
+    });
+    const boughtQtyBySymbol: Record<string, number> = {};
+    activeStocks.forEach(s => {
+      boughtQtyBySymbol[s.symbol] = (boughtQtyBySymbol[s.symbol] || 0) + (Number(s.quantity) || 0);
+    });
+
+    return activeStocks.filter(s => (boughtQtyBySymbol[s.symbol] || 0) > (soldQtyBySymbol[s.symbol] || 0));
+  }, [symbolGroups, activeStocks, activeSoldStocks]);
+
   const summary = serverStats?.summary || {
     totalStocks: 0,
     maxNetInvested: 0,
@@ -2781,7 +2802,7 @@ export function PortfolioDashboard() {
         onClose={() => setIsStrategyBuilderModalOpen(false)}
         portfolioId={activePortfolioId || ''}
         portfolioName={activePortfolio?.name || 'Portfolio'}
-        stocks={activeStocks}
+        stocks={openPortfolioStocks}
         indicators={indicators}
         livePrices={livePrices}
         currencySymbol={currencySymbol}

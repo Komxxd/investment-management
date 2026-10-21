@@ -114,8 +114,7 @@ export function formatRuleFormula(rule: StrategyRule): string {
 
 const CATEGORIES = [
   { id: 'builder', name: 'Global Strategy' },
-  { id: 'active', name: 'Saved Strategies' },
-  { id: 'stock_specific', name: 'Stock Specific' }
+  { id: 'active', name: 'Saved Strategies' }
 ];
 
 export function StrategyBuilderModal({
@@ -204,7 +203,7 @@ export function StrategyBuilderModal({
   }, [savedRules, storageKey]);
 
   const uniqueSymbols = useMemo(() => {
-    return Array.from(new Set(stocks.map(s => s.symbol)));
+    return Array.from(new Set(stocks.map(s => s.symbol).filter(Boolean))).sort();
   }, [stocks]);
 
   const handleCopyFormula = () => {
@@ -446,6 +445,9 @@ export function StrategyBuilderModal({
                       {uniqueSymbols.map(sym => (
                         <option key={sym} value={sym}>{sym}</option>
                       ))}
+                      {currentRule.scope === 'stock' && currentRule.targetSymbol && !uniqueSymbols.includes(currentRule.targetSymbol) && (
+                        <option value={currentRule.targetSymbol}>{currentRule.targetSymbol} (Closed / Inactive)</option>
+                      )}
                     </select>
                   </div>
                 </div>
@@ -816,25 +818,6 @@ export function StrategyBuilderModal({
                     ))}
                   </div>
                 )}
-              </div>
-            )}
-
-            {/* TAB 4: STOCK SPECIFIC */}
-            {activeTab === 'stock_specific' && (
-              <div className="p-6 text-center border border-divider rounded-lg space-y-2">
-                <h3 className="text-xs sm:text-sm font-medium text-primary">Individual Stock Strategy</h3>
-                <p className="text-xs text-secondary max-w-sm mx-auto">
-                  Individual stock strategy allows custom parameters per stock. For now, you can select any individual stock under Target Scope in Global Strategy.
-                </p>
-                <div className="pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab('builder')}
-                    className="px-3 py-1.5 bg-primary text-surface text-xs font-semibold rounded-lg hover:opacity-90 transition-opacity"
-                  >
-                    Go to Strategy Builder
-                  </button>
-                </div>
               </div>
             )}
 
