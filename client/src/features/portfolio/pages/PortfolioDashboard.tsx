@@ -1016,6 +1016,29 @@ export function PortfolioDashboard() {
     });
   };
 
+  // Track daily strategy action executions per portfolio (YYYY-MM-DD): only 1 action per stock per day
+  const getTodayDateKey = () => new Date().toISOString().split('T')[0];
+
+  const [todayExecutions, setTodayExecutions] = useState<Record<string, { action: string; quantity: number; price: number; timestamp: number }>>(() => {
+    try {
+      const storageKey = `portfolio_strategy_executions_${portfolioId || 'global'}_${getTodayDateKey()}`;
+      const saved = localStorage.getItem(storageKey);
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  useEffect(() => {
+    try {
+      const storageKey = `portfolio_strategy_executions_${activePortfolioId || 'global'}_${getTodayDateKey()}`;
+      const saved = localStorage.getItem(storageKey);
+      setTodayExecutions(saved ? JSON.parse(saved) : {});
+    } catch {
+      setTodayExecutions({});
+    }
+  }, [activePortfolioId]);
+
   const [executingSignalSymbol, setExecutingSignalSymbol] = useState<string | null>(null);
 
   const handleExecuteStrategySignal = async (
@@ -1026,6 +1049,13 @@ export function PortfolioDashboard() {
     if (!activePortfolioId || executingSignalSymbol) return;
 
     const symbol = group.symbol;
+
+    // Enforce 1 strategy execution per stock per day
+    if (todayExecutions[symbol]) {
+      alert(`Strategy action for ${symbol} has already been executed today.`);
+      return;
+    }
+
     const currentPrice = group.livePrice || livePrices[symbol]?.price || group.avgBuyPrice || 1;
 
     // Calculate sizing / quantity according to strategy configuration
@@ -1055,7 +1085,7 @@ export function PortfolioDashboard() {
     setExecutingSignalSymbol(symbol);
 
     try {
-      const today = new Date().toISOString().split('T')[0];
+      const today = getTodayDateKey();
 
       if (action === 'BUY') {
         await api.post('/api/stocks', {
@@ -1078,6 +1108,25 @@ export function PortfolioDashboard() {
           exit_date: today
         });
       }
+
+      // Record execution for today to transition signal to 'Executed'
+      const executionRecord = {
+        action,
+        quantity: qty,
+        price: currentPrice,
+        timestamp: Date.now()
+      };
+
+      setTodayExecutions(prev => {
+        const next = { ...prev, [symbol]: executionRecord };
+        try {
+          const storageKey = `portfolio_strategy_executions_${activePortfolioId || 'global'}_${today}`;
+          localStorage.setItem(storageKey, JSON.stringify(next));
+        } catch (e) {
+          console.error('Failed to save strategy execution locally', e);
+        }
+        return next;
+      });
 
       await fetchData();
     } catch (err: any) {
@@ -1300,9 +1349,10 @@ export function PortfolioDashboard() {
         valB = b.liveData?.dma200 ?? indicators[b.symbol]?.dma200 ?? -1;
       } else if (sortField === 'strategy') {
         const getWeight = (sym: string) => {
+          if (todayExecutions[sym]) return 2;
           const res = getStockStrategyEvaluation(sym);
-          if (res.signal === 'BUY') return 3;
-          if (res.signal === 'SELL') return 2;
+          if (res.signal === 'BUY') return 4;
+          if (res.signal === 'SELL') return 3;
           if (res.hasActiveStrategy) return 1;
           return 0;
         };
@@ -2026,7 +2076,7 @@ export function PortfolioDashboard() {
                                   key={col.id}
                                   field={col.id}
                                   label={col.label}
-                                  width={activeColumnWidths[col.id] || (col.id === 'strategy' ? 140 : 100)}
+                                  width={col.id === 'strategy' ? Math.max(activeColumnWidths[col.id] || 0, 165) : (activeColumnWidths[col.id] || 100)}
                                   isNumber={col.id !== 'symbol'}
                                   sortField={sortField}
                                   sortDirection={sortDirection}
@@ -2526,16 +2576,17 @@ export function PortfolioDashboard() {
                                     }
                                     case 'strategy': {
                                       const stratStatus = getStockStrategyEvaluation(group.symbol);
+                                      const executedToday = todayExecutions[group.symbol];
                                       return (
                                         <td
                                           key="strategy"
-                                          className="px-1 py-1 text-[9px] sm:text-[10px] border-r border-divider text-center align-middle"
+                                          className="px-2 py-1 text-[9px] sm:text-[10px] border-r border-divider text-center align-middle"
                                         >
                                           <div className="grid grid-cols-2 divide-x divide-divider/70 items-center justify-center text-center h-full min-h-[24px]">
-                                            <div className="px-1 flex items-center justify-center">
+                                            <div className="px-1.5 flex items-center justify-center">
                                               {stratStatus.hasActiveStrategy ? (
                                                 <span
-                                                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 text-[8px] sm:text-[9px] font-semibold tracking-wide"
+                                                  className="inline-flex items-center justify-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 text-[8px] sm:text-[9px] font-semibold tracking-wide whitespace-nowrap"
                                                   title={`Active Strategy: ${stratStatus.strategyName || 'Global Strategy'}`}
                                                 >
                                                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0 shadow-[0_0_4px_rgba(52,211,153,0.8)]"></span>
@@ -2545,8 +2596,16 @@ export function PortfolioDashboard() {
                                                 <span className="text-tertiary font-mono text-xs">—</span>
                                               )}
                                             </div>
-                                            <div className="px-1 flex items-center justify-center">
-                                              {stratStatus.signal === 'BUY' ? (
+                                            <div className="px-1.5 flex items-center justify-center">
+                                              {executedToday ? (
+                                                <span
+                                                  className="inline-flex items-center justify-center gap-1 px-2 py-0.5 rounded text-[8px] sm:text-[9px] font-medium bg-surface-hover text-secondary border border-divider cursor-default select-none tracking-normal whitespace-nowrap"
+                                                  title={`Executed today (${executedToday.action} ${executedToday.quantity || ''} shares @ ₹${executedToday.price || ''}) — 1 action per day limit`}
+                                                >
+                                                  <Check className="w-2.5 h-2.5 text-emerald-400 shrink-0" />
+                                                  Executed
+                                                </span>
+                                              ) : stratStatus.signal === 'BUY' ? (
                                                 <button
                                                   type="button"
                                                   disabled={executingSignalSymbol === group.symbol}
