@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react'
 import * as XLSX from 'xlsx'
 import { calculateXIRR } from '../../../utils/xirr'
-import { Plus, Briefcase, Trash2, Pencil, ChevronDown, ChevronRight, ChevronUp, ArrowUpCircle, ArrowDownCircle, PanelLeftClose, PanelLeftOpen, Copy, FilterX, ArrowUpDown, Columns, Check, Info, User, LogOut, Folder, Download, Upload, Home, LayoutDashboard, RefreshCw, Sun, Moon, GripVertical, MoreVertical, Activity, Sliders } from 'lucide-react'
+import { Plus, Briefcase, Trash2, Pencil, ChevronDown, ChevronRight, ChevronUp, ArrowUpCircle, ArrowDownCircle, PanelLeftClose, PanelLeftOpen, Copy, FilterX, ArrowUpDown, Columns, Check, Info, User, LogOut, Folder, Download, Upload, Home, LayoutDashboard, RefreshCw, Sun, Moon, GripVertical, MoreVertical, Activity, Sliders, Loader2 } from 'lucide-react'
 import {
   DndContext,
   closestCenter,
@@ -39,6 +39,8 @@ import { RebalanceModal } from '../../stocks/components/RebalanceModal'
 import { ConfirmationModal } from '../../../components/ui/ConfirmationModal'
 import { AddIndicatorsModal } from '../components/AddIndicatorsModal'
 import { StrategyBuilderModal } from '../components/StrategyBuilderModal'
+import type { StrategyRule } from '../components/StrategyBuilderModal'
+import { evaluateStockStrategies } from '../utils/strategyEvaluator'
 
 const ALL_SUMMARY_STATS = [
   { id: 'totalStocks', label: 'Total Stocks' },
@@ -214,14 +216,31 @@ function SortableHeaderCell({
         onSort(field);
       }}
     >
-      <div className={`flex items-center gap-1 overflow-hidden ${isNumber ? 'justify-end' : 'justify-start'}`}>
-        <span className="truncate">{label}</span>
-        {sortField === field ? (
-          sortDirection === 'asc' ? <ChevronUp className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-primary shrink-0" /> : <ChevronDown className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-primary shrink-0" />
-        ) : (
-          <ArrowUpDown className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-tertiary group-hover:text-secondary transition-colors shrink-0" />
-        )}
-      </div>
+      {field === 'strategy' ? (
+        <div className="flex flex-col w-full select-none -my-0.5">
+          <div className="flex items-center justify-center gap-1 pb-0.5 border-b border-divider/60">
+            <span className="font-semibold text-primary truncate">Strategy</span>
+            {sortField === field ? (
+              sortDirection === 'asc' ? <ChevronUp className="w-2.5 h-2.5 text-primary shrink-0" /> : <ChevronDown className="w-2.5 h-2.5 text-primary shrink-0" />
+            ) : (
+              <ArrowUpDown className="w-2.5 h-2.5 text-tertiary group-hover:text-secondary transition-colors shrink-0" />
+            )}
+          </div>
+          <div className="grid grid-cols-2 text-[8px] sm:text-[9px] text-tertiary divide-x divide-divider/60 pt-0.5 font-medium normal-case tracking-normal text-center">
+            <span className="truncate px-0.5">Status</span>
+            <span className="truncate px-0.5">Signal</span>
+          </div>
+        </div>
+      ) : (
+        <div className={`flex items-center gap-1 overflow-hidden ${isNumber ? 'justify-end' : 'justify-start'}`}>
+          <span className="truncate">{label}</span>
+          {sortField === field ? (
+            sortDirection === 'asc' ? <ChevronUp className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-primary shrink-0" /> : <ChevronDown className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-primary shrink-0" />
+          ) : (
+            <ArrowUpDown className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-tertiary group-hover:text-secondary transition-colors shrink-0" />
+          )}
+        </div>
+      )}
       
       <div className="absolute left-1/2 -translate-x-1/2 top-full mt-1 hidden group-hover:block z-50 whitespace-nowrap bg-surface text-primary text-[8px] sm:text-[10px] font-medium px-2 py-1 rounded border border-divider pointer-events-none normal-case tracking-normal">
         {label}
@@ -249,6 +268,7 @@ const ALL_COLUMNS = [
   { id: 'dma50', label: '50 DMA' },
   { id: 'dma200', label: '200 DMA' },
   { id: 'rsi', label: 'RSI (14)' },
+  { id: 'strategy', label: 'Strategy' },
   { id: 'currentValue', label: 'Current Value' },
   { id: 'unrealizedPnL', label: 'Unrealized PnL' },
   { id: 'unrealizedPnLPct', label: 'Unrealized %' },
@@ -530,6 +550,9 @@ export function PortfolioDashboard() {
         const result: Record<string, Set<string>> = {};
         for (const key in settings.portfolioVisibleColumns) {
           const colSet = new Set<string>((settings.portfolioVisibleColumns[key] || []) as string[]);
+          if (!colSet.has('strategy')) {
+            colSet.add('strategy');
+          }
           result[key] = colSet;
         }
         setPortfolioVisibleColumns(result);
@@ -650,6 +673,13 @@ export function PortfolioDashboard() {
           }
         } else if (missingCol === 'rsi') {
           const idx = order.indexOf('dma200');
+          if (idx !== -1) { order.splice(idx + 1, 0, missingCol); inserted = true; }
+          else {
+            const pIdx = order.indexOf('livePrice');
+            if (pIdx !== -1) { order.splice(pIdx + 1, 0, missingCol); inserted = true; }
+          }
+        } else if (missingCol === 'strategy') {
+          const idx = order.indexOf('rsi');
           if (idx !== -1) { order.splice(idx + 1, 0, missingCol); inserted = true; }
           else {
             const pIdx = order.indexOf('livePrice');
@@ -932,15 +962,18 @@ export function PortfolioDashboard() {
   const [isAddIndicatorsModalOpen, setIsAddIndicatorsModalOpen] = useState(false);
   const [isStrategyBuilderModalOpen, setIsStrategyBuilderModalOpen] = useState(false);
   const [activeStrategiesCount, setActiveStrategiesCount] = useState(0);
+  const [portfolioStrategies, setPortfolioStrategies] = useState<StrategyRule[]>([]);
 
-  // Sync active strategies count for badge indicator
+  // Sync active strategies for badge indicator and strategy column evaluation
   useEffect(() => {
     let isMounted = true;
     const syncCount = async () => {
       try {
         const data = await api.get(`/api/strategies?portfolio_id=${activePortfolioId || ''}`);
         if (Array.isArray(data) && isMounted) {
-          setActiveStrategiesCount(data.filter((r: any) => r.enabled && r.id !== 'rule-default').length);
+          const valid = data.filter((r: any) => r.id !== 'rule-default');
+          setPortfolioStrategies(valid);
+          setActiveStrategiesCount(valid.filter((r: any) => r.enabled).length);
           return;
         }
       } catch {
@@ -951,19 +984,109 @@ export function PortfolioDashboard() {
         if (saved && isMounted) {
           const parsed = JSON.parse(saved);
           if (Array.isArray(parsed)) {
-            setActiveStrategiesCount(parsed.filter((r: any) => r.enabled && r.id !== 'rule-default').length);
+            const valid = parsed.filter((r: any) => r.id !== 'rule-default');
+            setPortfolioStrategies(valid);
+            setActiveStrategiesCount(valid.filter((r: any) => r.enabled).length);
             return;
           }
         }
-        if (isMounted) setActiveStrategiesCount(0);
+        if (isMounted) {
+          setPortfolioStrategies([]);
+          setActiveStrategiesCount(0);
+        }
       } catch {
-        if (isMounted) setActiveStrategiesCount(0);
+        if (isMounted) {
+          setPortfolioStrategies([]);
+          setActiveStrategiesCount(0);
+        }
       }
     };
 
     syncCount();
     return () => { isMounted = false; };
   }, [activePortfolioId, isStrategyBuilderModalOpen]);
+
+  const getStockStrategyEvaluation = (symbol: string) => {
+    const livePrice = livePrices[symbol]?.price || 0;
+    const changePercent = livePrices[symbol]?.changePercent || 0;
+    return evaluateStockStrategies(portfolioStrategies, symbol, {
+      livePrice,
+      changePercent,
+      indicators: indicators[symbol] || {}
+    });
+  };
+
+  const [executingSignalSymbol, setExecutingSignalSymbol] = useState<string | null>(null);
+
+  const handleExecuteStrategySignal = async (
+    group: any,
+    action: 'BUY' | 'SELL',
+    matchedRule?: StrategyRule
+  ) => {
+    if (!activePortfolioId || executingSignalSymbol) return;
+
+    const symbol = group.symbol;
+    const currentPrice = group.livePrice || livePrices[symbol]?.price || group.avgBuyPrice || 1;
+
+    // Calculate sizing / quantity according to strategy configuration
+    let qty = 1;
+    const sizingType = matchedRule?.sizingType || 'QTY';
+    const sizingVal = Number(matchedRule?.sizingValue) || 0;
+
+    if (sizingType === 'QTY' && sizingVal > 0) {
+      qty = sizingVal;
+    } else if (sizingType === 'VALUE' && sizingVal > 0 && currentPrice > 0) {
+      qty = Math.max(1, Math.floor(sizingVal / currentPrice));
+    } else if (sizingType === 'INCREASE_PCT' && sizingVal > 0) {
+      qty = Math.max(1, Math.round(((group.netQty || 1) * sizingVal) / 100));
+    } else if (sizingType === 'DECREASE_PCT' && sizingVal > 0) {
+      qty = Math.max(1, Math.round(((group.netQty || 1) * sizingVal) / 100));
+    }
+
+    if (action === 'SELL') {
+      const available = group.netQty || 0;
+      if (available <= 0) {
+        alert(`Cannot execute SELL: No open shares available for ${symbol}.`);
+        return;
+      }
+      qty = Math.min(qty, available);
+    }
+
+    setExecutingSignalSymbol(symbol);
+
+    try {
+      const today = new Date().toISOString().split('T')[0];
+
+      if (action === 'BUY') {
+        await api.post('/api/stocks', {
+          portfolio_id: activePortfolioId,
+          symbol,
+          quantity: qty,
+          entry_price: currentPrice,
+          brokerage: 0,
+          govt_tax: 0,
+          entry_date: today
+        });
+      } else if (action === 'SELL') {
+        await api.post('/api/sold-stocks', {
+          portfolio_id: activePortfolioId,
+          symbol,
+          quantity: qty,
+          exit_price: currentPrice,
+          brokerage: 0,
+          govt_tax: 0,
+          exit_date: today
+        });
+      }
+
+      await fetchData();
+    } catch (err: any) {
+      console.error('Failed to execute strategy action:', err);
+      alert(`Failed to execute strategy ${action} for ${symbol}: ${err?.message || 'Unknown error'}`);
+    } finally {
+      setExecutingSignalSymbol(null);
+    }
+  };
 
   const indicatorColumnsVisible = (
     visibleColumns.has('rsi') || visibleColumns.has('dma50') || visibleColumns.has('dma200')
@@ -1175,6 +1298,16 @@ export function PortfolioDashboard() {
       } else if (sortField === 'dma200') {
         valA = a.liveData?.dma200 ?? indicators[a.symbol]?.dma200 ?? -1;
         valB = b.liveData?.dma200 ?? indicators[b.symbol]?.dma200 ?? -1;
+      } else if (sortField === 'strategy') {
+        const getWeight = (sym: string) => {
+          const res = getStockStrategyEvaluation(sym);
+          if (res.signal === 'BUY') return 3;
+          if (res.signal === 'SELL') return 2;
+          if (res.hasActiveStrategy) return 1;
+          return 0;
+        };
+        valA = getWeight(a.symbol);
+        valB = getWeight(b.symbol);
       }
 
       // Handle nulls/undefined safely for all number comparisons
@@ -1893,7 +2026,7 @@ export function PortfolioDashboard() {
                                   key={col.id}
                                   field={col.id}
                                   label={col.label}
-                                  width={activeColumnWidths[col.id] || 100}
+                                  width={activeColumnWidths[col.id] || (col.id === 'strategy' ? 140 : 100)}
                                   isNumber={col.id !== 'symbol'}
                                   sortField={sortField}
                                   sortDirection={sortDirection}
@@ -2388,6 +2521,80 @@ export function PortfolioDashboard() {
                                           ) : (
                                             '—'
                                           )}
+                                        </td>
+                                      );
+                                    }
+                                    case 'strategy': {
+                                      const stratStatus = getStockStrategyEvaluation(group.symbol);
+                                      return (
+                                        <td
+                                          key="strategy"
+                                          className="px-1 py-1 text-[9px] sm:text-[10px] border-r border-divider text-center align-middle"
+                                        >
+                                          <div className="grid grid-cols-2 divide-x divide-divider/70 items-center justify-center text-center h-full min-h-[24px]">
+                                            <div className="px-1 flex items-center justify-center">
+                                              {stratStatus.hasActiveStrategy ? (
+                                                <span
+                                                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 text-[8px] sm:text-[9px] font-semibold tracking-wide"
+                                                  title={`Active Strategy: ${stratStatus.strategyName || 'Global Strategy'}`}
+                                                >
+                                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0 shadow-[0_0_4px_rgba(52,211,153,0.8)]"></span>
+                                                  Active
+                                                </span>
+                                              ) : (
+                                                <span className="text-tertiary font-mono text-xs">—</span>
+                                              )}
+                                            </div>
+                                            <div className="px-1 flex items-center justify-center">
+                                              {stratStatus.signal === 'BUY' ? (
+                                                <button
+                                                  type="button"
+                                                  disabled={executingSignalSymbol === group.symbol}
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleExecuteStrategySignal(group, 'BUY', stratStatus.matchedRule);
+                                                  }}
+                                                  className={`group/sig relative inline-flex items-center justify-center gap-1 px-2.5 py-0.5 rounded font-bold text-[8px] sm:text-[9px] bg-emerald-500/25 text-emerald-300 border border-emerald-500/60 uppercase tracking-wider transition-all cursor-pointer shadow-[0_0_10px_rgba(16,185,129,0.35)] hover:bg-emerald-500 hover:text-white hover:shadow-[0_0_14px_rgba(16,185,129,0.7)] active:scale-95 ${
+                                                    executingSignalSymbol === group.symbol ? 'opacity-60 cursor-wait' : 'animate-pulse'
+                                                  }`}
+                                                  title={`Click to automatically BUY ${stratStatus.matchedRule?.sizingValue ? `(${stratStatus.matchedRule.sizingType}: ${stratStatus.matchedRule.sizingValue})` : ''} via ${stratStatus.strategyName || 'strategy'}`}
+                                                >
+                                                  {executingSignalSymbol === group.symbol ? (
+                                                    <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                                                  ) : (
+                                                    <>
+                                                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 group-hover/sig:bg-white animate-ping mr-0.5"></span>
+                                                      BUY
+                                                    </>
+                                                  )}
+                                                </button>
+                                              ) : stratStatus.signal === 'SELL' ? (
+                                                <button
+                                                  type="button"
+                                                  disabled={executingSignalSymbol === group.symbol}
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleExecuteStrategySignal(group, 'SELL', stratStatus.matchedRule);
+                                                  }}
+                                                  className={`group/sig relative inline-flex items-center justify-center gap-1 px-2.5 py-0.5 rounded font-bold text-[8px] sm:text-[9px] bg-rose-500/25 text-rose-300 border border-rose-500/60 uppercase tracking-wider transition-all cursor-pointer shadow-[0_0_10px_rgba(244,63,94,0.35)] hover:bg-rose-500 hover:text-white hover:shadow-[0_0_14px_rgba(244,63,94,0.7)] active:scale-95 ${
+                                                    executingSignalSymbol === group.symbol ? 'opacity-60 cursor-wait' : 'animate-pulse'
+                                                  }`}
+                                                  title={`Click to automatically SELL ${stratStatus.matchedRule?.sizingValue ? `(${stratStatus.matchedRule.sizingType}: ${stratStatus.matchedRule.sizingValue})` : ''} via ${stratStatus.strategyName || 'strategy'}`}
+                                                >
+                                                  {executingSignalSymbol === group.symbol ? (
+                                                    <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                                                  ) : (
+                                                    <>
+                                                      <span className="w-1.5 h-1.5 rounded-full bg-rose-400 group-hover/sig:bg-white animate-ping mr-0.5"></span>
+                                                      SELL
+                                                    </>
+                                                  )}
+                                                </button>
+                                              ) : (
+                                                <span className="text-tertiary font-mono text-xs">—</span>
+                                              )}
+                                            </div>
+                                          </div>
                                         </td>
                                       );
                                     }
