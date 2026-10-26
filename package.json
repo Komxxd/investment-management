@@ -6,7 +6,11 @@
     "build": "cd client && npm install && npm run build",
     "dev:client": "npm run dev --prefix client",
     "dev:server": "npm run dev --prefix server",
-    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\""
+    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
+    "test:task1": "npm run test:task1 --prefix server --",
+    "test:task2": "npm run test:task2 --prefix server --",
+    "test:task3": "npm run test:task3 --prefix server --",
+    "test:task4": "npm run test:task4 --prefix server --"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

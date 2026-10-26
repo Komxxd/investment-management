@@ -21,6 +21,14 @@ export interface StockIndicatorResult {
   lastUpdated?: string;
 }
 
+export interface HistoricalCandlesOptions {
+  years?: number;      // e.g. 1, 3, 5
+  startDate?: string;  // YYYY-MM-DD
+  endDate?: string;    // YYYY-MM-DD (defaults to today)
+  warmupDays?: number; // default 300 calendar days (~200 trading bars for DMA200)
+  force?: boolean;     // force re-fetch from network
+}
+
 // Directory where contiguous JSON candles are saved per symbol
 const DATA_DIR = path.resolve(__dirname, '../../../data');
 
@@ -127,89 +135,145 @@ export function writeLocalCandles(symbol: string, candles: DailyCandle[]): void 
 }
 
 /**
+ * Fetch a range of daily candles from Yahoo Finance.
+ */
+export async function fetchYahooCandlesRange(
+  symbol: string,
+  period1: string,
+  period2: string
+): Promise<DailyCandle[]> {
+  try {
+    const chartRes: any = await yahooFinance.chart(symbol, {
+      period1,
+      period2,
+      interval: '1d',
+    });
+
+    const quotes = chartRes?.quotes || [];
+    return quotes
+      .filter((q: any) => q.close != null && isFinite(q.close) && q.close > 0)
+      .map((q: any) => {
+        const d = new Date(q.date);
+        return {
+          date: d.toISOString().split('T')[0],
+          open: parseFloat((q.open || q.close).toFixed(2)),
+          high: parseFloat((q.high || q.close).toFixed(2)),
+          low: parseFloat((q.low || q.close).toFixed(2)),
+          close: parseFloat((q.close).toFixed(2)),
+          volume: q.volume || 0,
+        };
+      });
+  } catch (fetchErr) {
+    console.warn(
+      `[DataStorage] Network fetch failed for ${symbol} (${period1} to ${period2}):`,
+      (fetchErr as Error).message
+    );
+    return [];
+  }
+}
+
+/**
+ * Ensure historical daily candles are present in local disk storage for the requested range,
+ * including an automatic indicator warmup buffer (default 300 calendar days ~ 200 trading days).
+ *
+ * Automatically fetches missing earlier or later candles from Yahoo Finance and merges them.
+ */
+export async function ensureHistoricalCandles(
+  symbol: string,
+  options: HistoricalCandlesOptions = {}
+): Promise<DailyCandle[]> {
+  const today = new Date();
+  const todayStr = today.toISOString().split('T')[0];
+  const warmupDays = options.warmupDays ?? 300;
+
+  // Determine requested start date
+  let targetStartDate: Date;
+  if (options.startDate) {
+    targetStartDate = new Date(options.startDate);
+  } else if (options.years) {
+    targetStartDate = new Date();
+    targetStartDate.setFullYear(today.getFullYear() - options.years);
+  } else {
+    // Default 3 years if not specified
+    targetStartDate = new Date();
+    targetStartDate.setFullYear(today.getFullYear() - 3);
+  }
+
+  // Prepend warmup days so DMA200 and RSI14 are available from Day 1 of the backtest
+  const warmupStartDate = new Date(targetStartDate);
+  warmupStartDate.setDate(warmupStartDate.getDate() - warmupDays);
+
+  const targetStartStr = warmupStartDate.toISOString().split('T')[0];
+  const targetEndStr = options.endDate || todayStr;
+
+  const existing = options.force ? [] : readLocalCandles(symbol);
+
+  if (existing.length === 0) {
+    // Full initial fetch
+    const fetched = await fetchYahooCandlesRange(symbol, targetStartStr, targetEndStr);
+    if (fetched.length > 0) {
+      writeLocalCandles(symbol, fetched);
+      return readLocalCandles(symbol);
+    }
+    return [];
+  }
+
+  let updated = [...existing];
+  const earliestDate = existing[0].date;
+  const latestDate = existing[existing.length - 1].date;
+
+  // 1. Backfill older data if requested range starts earlier than what we have
+  if (earliestDate > targetStartStr) {
+    const olderCandles = await fetchYahooCandlesRange(symbol, targetStartStr, earliestDate);
+    if (olderCandles.length > 0) {
+      updated = [...olderCandles, ...updated];
+    }
+  }
+
+  // 2. Fetch recent delta if latest candle is behind targetEndStr
+  const latestMs = new Date(latestDate).getTime();
+  const targetEndMs = new Date(targetEndStr).getTime();
+  const diffHours = (targetEndMs - latestMs) / (1000 * 60 * 60);
+
+  if (diffHours > 18 && latestDate < targetEndStr) {
+    const deltaStart = new Date(latestDate);
+    deltaStart.setDate(deltaStart.getDate() - 2);
+    const newerCandles = await fetchYahooCandlesRange(
+      symbol,
+      deltaStart.toISOString().split('T')[0],
+      targetEndStr
+    );
+    if (newerCandles.length > 0) {
+      updated = [...updated, ...newerCandles];
+    }
+  }
+
+  writeLocalCandles(symbol, updated);
+  return readLocalCandles(symbol);
+}
+
+/**
  * Sync stock data incrementally:
  * 1. Read existing candles from local disk.
  * 2. If recent candle exists (today or yesterday/weekend), use local cache.
  * 3. Otherwise, fetch missing delta from Yahoo Finance and append to disk.
  * 4. Compute RSI(14), DMA50, DMA200.
  */
-export async function syncStockData(symbol: string, force: boolean = false): Promise<StockIndicatorResult> {
-  const existing = force ? [] : readLocalCandles(symbol);
-  const today = new Date();
-  const todayStr = today.toISOString().split('T')[0];
-
-  let needsFetch = force || existing.length === 0;
-
-  if (!needsFetch && existing.length > 0) {
-    const lastCandle = existing[existing.length - 1];
-    const lastDate = new Date(lastCandle.date);
-    const diffHours = (today.getTime() - lastDate.getTime()) / (1000 * 60 * 60);
-
-    // If last candle was within the last 20 hours, or if it's Sunday and last candle is Friday (approx 48-72h)
-    // consider it up-to-date
-    if (lastCandle.date === todayStr || diffHours < 18) {
-      needsFetch = false;
-    } else {
-      needsFetch = true;
-    }
-  }
-
-  if (needsFetch) {
-    try {
-      let period1: Date;
-      if (existing.length > 0 && !force) {
-        // Delta fetch: start 2 days before the last known date to ensure no gap
-        const lastCandle = existing[existing.length - 1];
-        period1 = new Date(lastCandle.date);
-        period1.setDate(period1.getDate() - 2);
-      } else {
-        // Full initial fetch: 1.5 years (~550 days) to have plenty of candles for DMA200 and RSI(14)
-        period1 = new Date();
-        period1.setDate(today.getDate() - 550);
-      }
-
-      const chartRes: any = await yahooFinance.chart(symbol, {
-        period1: period1.toISOString().split('T')[0],
-        period2: todayStr,
-        interval: '1d',
-      });
-
-      const quotes = chartRes?.quotes || [];
-      const newCandles: DailyCandle[] = quotes
-        .filter((q: any) => q.close != null && isFinite(q.close) && q.close > 0)
-        .map((q: any) => {
-          const d = new Date(q.date);
-          return {
-            date: d.toISOString().split('T')[0],
-            open: parseFloat((q.open || q.close).toFixed(2)),
-            high: parseFloat((q.high || q.close).toFixed(2)),
-            low: parseFloat((q.low || q.close).toFixed(2)),
-            close: parseFloat((q.close).toFixed(2)),
-            volume: q.volume || 0,
-          };
-        });
-
-      if (newCandles.length > 0) {
-        // Merge with existing and save to contiguous JSON
-        const merged = [...existing, ...newCandles];
-        writeLocalCandles(symbol, merged);
-      }
-    } catch (fetchErr) {
-      console.warn(`[DataStorage] Network fetch failed for ${symbol}:`, (fetchErr as Error).message);
-      // Fallback: continue with existing candles if available
-    }
-  }
-
-  // Load final candles from disk
-  const allCandles = readLocalCandles(symbol);
-  const closes = allCandles.map((c) => c.close);
+export async function syncStockData(
+  symbol: string,
+  force: boolean = false,
+  lookbackDays: number = 550
+): Promise<StockIndicatorResult> {
+  const years = Math.max(1.5, parseFloat((lookbackDays / 365).toFixed(1)));
+  const candles = await ensureHistoricalCandles(symbol, { years, force });
+  const closes = candles.map((c) => c.close);
 
   return {
     rsi: computeWildersRSI(closes, 14),
     dma50: computeSMA(closes, 50),
     dma200: computeSMA(closes, 200),
-    candlesCount: allCandles.length,
-    lastUpdated: allCandles.length > 0 ? allCandles[allCandles.length - 1].date : undefined,
+    candlesCount: candles.length,
+    lastUpdated: candles.length > 0 ? candles[candles.length - 1].date : undefined,
   };
 }
 
@@ -248,3 +312,4 @@ export async function syncMultipleStocks(
 
   return result;
 }
+

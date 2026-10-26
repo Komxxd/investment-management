@@ -17,6 +17,7 @@ import corporateActionsRoutes from './modules/corporate-actions/corporate-action
 import authRoutes from './modules/auth/auth.routes';
 import settingsRoutes from './modules/settings/settings.routes';
 import strategiesRoutes from './modules/strategies/strategies.routes';
+import backtestRoutes from './modules/backtest/backtest.routes';
 
 const app = express();
 
@@ -78,6 +79,7 @@ app.use('/api/analysis', analysisRoutes);
 app.use('/api/calculations', calculationsRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/strategies', strategiesRoutes);
+app.use('/api/backtest', backtestRoutes);
 
 // The corporate-actions router internally defines `/`, `/bulk`, and `/cron/sync-corp-actions`
 // but the client expects `/api/corporate-actions`, `/api/bulk-corporate-actions`, and `/api/cron/sync-corp-actions`.

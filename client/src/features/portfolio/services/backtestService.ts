@@ -1,0 +1,86 @@
+import { api } from '../../../services/api/client';
+import type { StrategyRule } from '../components/StrategyBuilderModal';
+
+export interface BacktestTrade {
+  id: string;
+  symbol: string;
+  action: 'BUY' | 'SELL';
+  entryDate: string;
+  entryPrice: number;
+  exitDate?: string;
+  exitPrice?: number;
+  qty: number;
+  totalCost: number;
+  totalProceeds?: number;
+  pnl?: number;
+  pnlPercent?: number;
+  holdingPeriodDays?: number;
+  status: 'OPEN' | 'CLOSED';
+  entryReason: string;
+  exitReason?: string;
+}
+
+export interface DailyEquityPoint {
+  date: string;
+  equity: number;
+  cash: number;
+  holdingsValue: number;
+  heldQty: number;
+  stockClose: number;
+  benchmarkEquity: number;
+  drawdownPercent: number;
+}
+
+export interface BacktestSummaryMetrics {
+  initialCapital: number;
+  finalEquity: number;
+  netProfit: number;
+  totalReturnPct: number;
+  cagrPct: number;
+  benchmarkReturnPct: number;
+  benchmarkCagrPct: number;
+  alphaPct: number;
+  maxDrawdownPct: number;
+  winRatePct: number;
+  profitFactor: number | null;
+  sharpeRatio: number | null;
+  sortinoRatio: number | null;
+  totalTrades: number;
+  closedTrades: number;
+  winningTrades: number;
+  losingTrades: number;
+  avgTradePnl: number;
+  avgWin: number;
+  avgLoss: number;
+  winLossRatio: number | null;
+  marketExposurePct: number;
+  tradingDays: number;
+  startDate: string;
+  endDate: string;
+}
+
+export interface BacktestResponse {
+  symbol: string;
+  summary: BacktestSummaryMetrics;
+  trades: BacktestTrade[];
+  equityCurve: DailyEquityPoint[];
+}
+
+export interface BacktestRequest {
+  symbol: string;
+  rules: StrategyRule[];
+  strategyId?: string;
+  years?: number;
+  startDate?: string;
+  endDate?: string;
+  initialCapital?: number;
+  slippagePct?: number;
+  feePct?: number;
+}
+
+/**
+ * Executes a full backtest on the backend for a given symbol and set of strategy rules.
+ */
+export async function runBacktest(request: BacktestRequest): Promise<BacktestResponse> {
+  return api.post('/api/backtest/run', request);
+}

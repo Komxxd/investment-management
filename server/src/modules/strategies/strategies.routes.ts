@@ -239,4 +239,8 @@ router.patch('/:id/toggle', authMiddleware, async (req: any, res: any) => {
   }
 });
 
+// Forward /api/strategies/backtest to backtest routes
+import backtestRoutes from '../backtest/backtest.routes';
+router.use('/backtest', backtestRoutes);
+
 export default router;

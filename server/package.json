@@ -5,6 +5,10 @@
   "main": "dist/server.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
+    "test:task1": "tsx src/scripts/test-task1.ts",
+    "test:task2": "tsx src/scripts/test-task2.ts",
+    "test:task3": "tsx src/scripts/test-task3.ts",
+    "test:task4": "tsx src/scripts/test-task4.ts",
     "build": "tsc",
     "start": "node dist/server.js",
     "dev": "tsx watch src/server.ts"

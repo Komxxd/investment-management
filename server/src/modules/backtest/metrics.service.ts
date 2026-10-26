@@ -1,0 +1,162 @@
+import { SimulationResult, BacktestSummaryMetrics } from './types';
+
+/**
+ * Computes institutional-grade risk & performance metrics from a SimulationResult.
+ */
+export function computeBacktestMetrics(sim: SimulationResult): BacktestSummaryMetrics {
+  const { initialCapital, finalEquity, trades, equityCurve } = sim;
+  const netProfit = parseFloat((finalEquity - initialCapital).toFixed(2));
+  const totalReturnPct = initialCapital > 0 ? parseFloat(((netProfit / initialCapital) * 100).toFixed(2)) : 0;
+
+  // Trading days & calendar timeline
+  const tradingDays = equityCurve.length;
+  const startDate = tradingDays > 0 ? equityCurve[0].date : '';
+  const endDate = tradingDays > 0 ? equityCurve[tradingDays - 1].date : '';
+
+  let calendarDays = 1;
+  if (startDate && endDate) {
+    const msDiff = new Date(endDate).getTime() - new Date(startDate).getTime();
+    calendarDays = Math.max(1, Math.round(msDiff / (1000 * 60 * 60 * 24)));
+  }
+
+  // CAGR Calculation
+  let cagrPct = totalReturnPct;
+  if (calendarDays >= 30 && initialCapital > 0 && finalEquity > 0) {
+    const years = calendarDays / 365.25;
+    const compoundRatio = finalEquity / initialCapital;
+    cagrPct = parseFloat(((Math.pow(compoundRatio, 1 / years) - 1) * 100).toFixed(2));
+  }
+
+  // Benchmark performance
+  let benchmarkFinal = initialCapital;
+  let benchmarkReturnPct = 0;
+  let benchmarkCagrPct = 0;
+  if (tradingDays > 0) {
+    benchmarkFinal = equityCurve[tradingDays - 1].benchmarkEquity;
+    benchmarkReturnPct = parseFloat(
+      (((benchmarkFinal - initialCapital) / initialCapital) * 100).toFixed(2)
+    );
+    if (calendarDays >= 30 && initialCapital > 0 && benchmarkFinal > 0) {
+      const years = calendarDays / 365.25;
+      const bRatio = benchmarkFinal / initialCapital;
+      benchmarkCagrPct = parseFloat(((Math.pow(bRatio, 1 / years) - 1) * 100).toFixed(2));
+    }
+  }
+  const alphaPct = parseFloat((totalReturnPct - benchmarkReturnPct).toFixed(2));
+
+  // Max Drawdown (MDD)
+  let maxDrawdownPct = 0;
+  for (const pt of equityCurve) {
+    if (pt.drawdownPercent > maxDrawdownPct) {
+      maxDrawdownPct = pt.drawdownPercent;
+    }
+  }
+
+  // Trade Statistics (Closed trades only)
+  const closedTrades = trades.filter((t) => t.status === 'CLOSED');
+  const winningTrades = closedTrades.filter((t) => (t.pnl || 0) > 0);
+  const losingTrades = closedTrades.filter((t) => (t.pnl || 0) < 0);
+
+  const winRatePct =
+    closedTrades.length > 0
+      ? parseFloat(((winningTrades.length / closedTrades.length) * 100).toFixed(2))
+      : 0;
+
+  const grossWins = winningTrades.reduce((acc, t) => acc + (t.pnl || 0), 0);
+  const grossLosses = Math.abs(losingTrades.reduce((acc, t) => acc + (t.pnl || 0), 0));
+
+  let profitFactor: number | null = null;
+  if (grossLosses > 0) {
+    profitFactor = parseFloat((grossWins / grossLosses).toFixed(2));
+  } else if (grossWins > 0) {
+    profitFactor = 99.99; // 100% profitable, zero losses
+  }
+
+  const avgTradePnl =
+    closedTrades.length > 0
+      ? parseFloat((closedTrades.reduce((acc, t) => acc + (t.pnl || 0), 0) / closedTrades.length).toFixed(2))
+      : 0;
+
+  const avgWin =
+    winningTrades.length > 0 ? parseFloat((grossWins / winningTrades.length).toFixed(2)) : 0;
+  const avgLoss =
+    losingTrades.length > 0 ? parseFloat((grossLosses / losingTrades.length).toFixed(2)) : 0;
+  const winLossRatio = avgLoss > 0 ? parseFloat((avgWin / avgLoss).toFixed(2)) : null;
+
+  // Market Exposure % (Days holding stock vs in cash)
+  const daysInMarket = equityCurve.filter((pt) => pt.heldQty > 0).length;
+  const marketExposurePct =
+    tradingDays > 0 ? parseFloat(((daysInMarket / tradingDays) * 100).toFixed(2)) : 0;
+
+  // Sharpe and Sortino Ratios (Daily returns annualized)
+  let sharpeRatio: number | null = null;
+  let sortinoRatio: number | null = null;
+
+  if (tradingDays > 5) {
+    const dailyReturns: number[] = [];
+    for (let i = 1; i < tradingDays; i++) {
+      const prev = equityCurve[i - 1].equity;
+      const curr = equityCurve[i].equity;
+      if (prev > 0) {
+        dailyReturns.push((curr - prev) / prev);
+      }
+    }
+
+    if (dailyReturns.length > 0) {
+      // Risk free rate: assume ~6% annual risk-free rate (approx 0.06 / 252 daily)
+      const dailyRf = 0.06 / 252;
+      const meanReturn = dailyReturns.reduce((a, b) => a + b, 0) / dailyReturns.length;
+
+      const variance =
+        dailyReturns.reduce((acc, r) => acc + Math.pow(r - meanReturn, 2), 0) /
+        dailyReturns.length;
+      const stdDev = Math.sqrt(variance);
+
+      if (stdDev > 0) {
+        sharpeRatio = parseFloat((((meanReturn - dailyRf) / stdDev) * Math.sqrt(252)).toFixed(2));
+      }
+
+      // Sortino: downside deviation (only returns below dailyRf)
+      const downsideVariance =
+        dailyReturns.reduce((acc, r) => {
+          const diff = Math.min(0, r - dailyRf);
+          return acc + Math.pow(diff, 2);
+        }, 0) / dailyReturns.length;
+      const downsideStdDev = Math.sqrt(downsideVariance);
+
+      if (downsideStdDev > 0) {
+        sortinoRatio = parseFloat(
+          (((meanReturn - dailyRf) / downsideStdDev) * Math.sqrt(252)).toFixed(2)
+        );
+      }
+    }
+  }
+
+  return {
+    initialCapital,
+    finalEquity,
+    netProfit,
+    totalReturnPct,
+    cagrPct,
+    benchmarkReturnPct,
+    benchmarkCagrPct,
+    alphaPct,
+    maxDrawdownPct: parseFloat(maxDrawdownPct.toFixed(2)),
+    winRatePct,
+    profitFactor,
+    sharpeRatio,
+    sortinoRatio,
+    totalTrades: trades.length,
+    closedTrades: closedTrades.length,
+    winningTrades: winningTrades.length,
+    losingTrades: losingTrades.length,
+    avgTradePnl,
+    avgWin,
+    avgLoss,
+    winLossRatio,
+    marketExposurePct,
+    tradingDays,
+    startDate,
+    endDate,
+  };
+}
