@@ -34,3 +34,35 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
     return res.status(500).json({ error: 'Authentication failed' });
   }
 }
+
+/**
+ * Optional auth middleware that attaches the user and Supabase client if a valid token is provided,
+ * but allows the request to continue unauthenticated if token is missing or expired.
+ */
+export async function optionalAuthMiddleware(req: Request, res: Response, next: NextFunction) {
+  let token = req.cookies?.token;
+  
+  if (!token) {
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      token = authHeader.split(' ')[1];
+    }
+  }
+
+  if (!token) {
+    return next();
+  }
+
+  try {
+    const supabase = createUserClient(token);
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (user) {
+      (req as any).user = user;
+      (req as any).supabase = supabase;
+    }
+  } catch (err) {
+    // Continue unauthenticated
+  }
+  next();
+}

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Check, Plus, Trash2, Loader2, Play } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { X, Check, Plus, Trash2, Loader2, Play, TrendingUp } from 'lucide-react';
 import { api } from '../../../services/api/client';
 import { BacktestModal } from './BacktestModal';
 
@@ -115,8 +116,7 @@ export function formatRuleFormula(rule: StrategyRule): string {
 
 const CATEGORIES = [
   { id: 'builder', name: 'Global Strategy' },
-  { id: 'active', name: 'Saved Strategies' },
-  { id: 'backtest', name: 'Backtest Engine' }
+  { id: 'active', name: 'Saved Strategies' }
 ];
 
 export function StrategyBuilderModal({
@@ -129,6 +129,7 @@ export function StrategyBuilderModal({
   currencySymbol = '₹'
 }: StrategyBuilderModalProps) {
   const [activeTab, setActiveTab] = useState<string>('builder');
+  const navigate = useNavigate();
   
   const storageKey = `portfolio_strategies_${portfolioId || 'global'}`;
 
@@ -374,26 +375,14 @@ export function StrategyBuilderModal({
                 return (
                   <button
                     key={cat.id}
-                    onClick={() => {
-                      if (cat.id === 'backtest') {
-                        setBacktestTargetRule(currentRule);
-                        setIsBacktestOpen(true);
-                      } else {
-                        setActiveTab(cat.id);
-                      }
-                    }}
-                    className={`text-left px-2 py-1.5 sm:px-3 sm:py-2 rounded-lg text-xs sm:text-sm transition-colors whitespace-nowrap flex items-center justify-between cursor-pointer ${
+                    onClick={() => setActiveTab(cat.id)}
+                    className={`text-left px-2 py-1.5 sm:px-3 sm:py-2 rounded-lg text-xs sm:text-sm transition-colors whitespace-nowrap ${
                       isActive
                         ? 'bg-primary/10 text-primary font-medium'
                         : 'text-secondary hover:bg-surface-hover hover:text-primary'
                     }`}
                   >
-                    <span>{cat.name}</span>
-                    {cat.id === 'backtest' && (
-                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                        NEW
-                      </span>
-                    )}
+                    {cat.name}
                   </button>
                 );
               })}
@@ -415,29 +404,15 @@ export function StrategyBuilderModal({
                       Configure signal-based portfolio conditions and monitoring rules.
                     </p>
                   </div>
-                  <div className="flex items-center gap-2">
+                  {(currentRule.name || currentRule.action || currentRule.sizingType || (currentRule.sizingValue !== '' && currentRule.sizingValue !== undefined) || currentRule.conditions.length > 0) && (
                     <button
                       type="button"
-                      onClick={() => {
-                        setBacktestTargetRule(currentRule);
-                        setIsBacktestOpen(true);
-                      }}
-                      className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25 transition-all flex items-center gap-1 cursor-pointer shadow-sm"
-                      title="Backtest this rule on historical data"
+                      onClick={() => setCurrentRule(BLANK_RULE)}
+                      className="text-xs text-secondary hover:text-primary transition-colors cursor-pointer"
                     >
-                      <Play className="w-3 h-3 fill-current text-emerald-400" />
-                      <span>Backtest</span>
+                      Clear
                     </button>
-                    {(currentRule.name || currentRule.action || currentRule.sizingType || (currentRule.sizingValue !== '' && currentRule.sizingValue !== undefined) || currentRule.conditions.length > 0) && (
-                      <button
-                        type="button"
-                        onClick={() => setCurrentRule(BLANK_RULE)}
-                        className="text-xs text-secondary hover:text-primary transition-colors cursor-pointer"
-                      >
-                        Clear
-                      </button>
-                    )}
-                  </div>
+                  )}
                 </div>
 
                 {/* Scope & Name */}
@@ -876,18 +851,6 @@ export function StrategyBuilderModal({
           <div className="flex items-center gap-2.5">
             <button
               type="button"
-              onClick={() => {
-                setBacktestTargetRule(currentRule);
-                setIsBacktestOpen(true);
-              }}
-              className="px-4 py-2 text-xs font-semibold text-emerald-400 bg-emerald-500/15 border border-emerald-500/40 rounded-lg hover:bg-emerald-500/25 transition-all flex items-center gap-1.5 shadow-sm cursor-pointer"
-              title="Test strategy performance on historical data"
-            >
-              <Play className="w-3.5 h-3.5 fill-current text-emerald-400" />
-              <span>Backtest Strategy</span>
-            </button>
-            <button
-              type="button"
               onClick={onClose}
               className="px-4 py-2 text-xs font-medium text-secondary hover:text-primary transition-colors"
             >
@@ -926,6 +889,11 @@ export function StrategyBuilderModal({
           rule={backtestTargetRule}
           stocks={stocks}
           currencySymbol={currencySymbol}
+          portfolioId={portfolioId}
+          onBacktestCompleted={() => {
+            setIsBacktestOpen(false);
+            onClose();
+          }}
         />
       )}
     </div>,

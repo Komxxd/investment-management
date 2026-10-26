@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { Plus, Briefcase, Trash2, Pencil, ChevronRight, ChevronDown, Info, User, LogOut, Folder, Home, Sun, Moon, Check, Settings } from 'lucide-react'
+import { Plus, Briefcase, Trash2, Pencil, ChevronRight, ChevronDown, Info, User, LogOut, Folder, Home, Sun, Moon, Check, Settings, TrendingUp } from 'lucide-react'
 import { api } from '../../services/api/client'
 import { usePortfolioContext } from '../../features/portfolio/hooks/PortfolioContext'
 import { useTheme } from '../../app/providers/ThemeProvider'
@@ -131,6 +131,31 @@ export function AppLayout() {
             )}
             
             <div id="navbar-left-portal" className="flex items-center"></div>
+
+            {/* Header Navigation Links */}
+            <div className="hidden md:flex items-center gap-1.5 ml-1 mr-2 shrink-0">
+              <button
+                onClick={() => navigate(portfolioId ? `/portfolio/${portfolioId}` : '/portfolios')}
+                className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
+                  !location.pathname.includes('/backtest/results')
+                    ? 'text-primary bg-surface-hover'
+                    : 'text-secondary hover:text-primary'
+                }`}
+              >
+                Portfolios
+              </button>
+              <button
+                onClick={() => navigate(portfolioId ? `/portfolio/${portfolioId}/backtest/results` : '/backtest/results')}
+                className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors flex items-center gap-1.5 cursor-pointer ${
+                  location.pathname.includes('/backtest/results')
+                    ? 'text-indigo-400 bg-indigo-500/15 border border-indigo-500/30 font-bold'
+                    : 'text-secondary hover:text-primary hover:bg-surface-hover'
+                }`}
+              >
+                <TrendingUp className="w-3.5 h-3.5 text-indigo-400" />
+                <span>Backtest Results</span>
+              </button>
+            </div>
 
             <div className="flex-1 max-w-md">
               <GlobalSearch />

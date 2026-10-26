@@ -1,5 +1,6 @@
 import { Router } from 'express';
-import { authMiddleware } from '../../middleware/auth';
+import { optionalAuthMiddleware } from '../../middleware/auth';
+import { getAnonClient } from '../../config/supabase';
 import { ensureHistoricalCandles } from '../prices/data-storage.service';
 import { computeRollingIndicators } from './rolling-indicators.service';
 import { runSimulation } from './simulator.service';
@@ -12,7 +13,7 @@ const router = Router();
  * POST /api/backtest/run (or POST /api/strategies/backtest)
  * Executes a full backtest on historical daily candles.
  */
-router.post('/run', authMiddleware, async (req: any, res: any) => {
+router.post('/run', optionalAuthMiddleware, async (req: any, res: any) => {
   try {
     const {
       symbol,
@@ -40,8 +41,9 @@ router.post('/run', authMiddleware, async (req: any, res: any) => {
 
     // If strategyId was passed instead of inline rules, load from Supabase
     const targetStrategyId = strategy_id || strategyId;
-    if (finalRules.length === 0 && targetStrategyId && req.supabase) {
-      const { data: stratRow, error } = await req.supabase
+    if (finalRules.length === 0 && targetStrategyId) {
+      const client = req.supabase || getAnonClient();
+      const { data: stratRow, error } = await client
         .from('portfolio_strategies')
         .select('*')
         .eq('id', targetStrategyId)
@@ -125,7 +127,7 @@ router.post('/run', authMiddleware, async (req: any, res: any) => {
 });
 
 // Alias POST / to /run
-router.post('/', authMiddleware, async (req: any, res: any) => {
+router.post('/', optionalAuthMiddleware, async (req: any, res: any) => {
   return (router as any).handle({ ...req, url: '/run' }, res);
 });
 

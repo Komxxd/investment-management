@@ -4,6 +4,7 @@ import { HomeDashboard } from '../features/portfolio/pages/HomeDashboard';
 import { PortfolioDashboard } from '../features/portfolio/pages/PortfolioDashboard';
 import { AuthForm } from '../features/auth/components/AuthForm';
 import { StockDetails } from '../features/stocks/pages/StockDetails';
+import { BacktestResultsPage } from '../features/portfolio/pages/BacktestResultsPage';
 
 export const router = createBrowserRouter([
   {
@@ -28,6 +29,14 @@ export const router = createBrowserRouter([
       {
         path: '/stocks/:symbol',
         element: <StockDetails />,
+      },
+      {
+        path: '/backtest/results',
+        element: <BacktestResultsPage />,
+      },
+      {
+        path: '/portfolio/:portfolioId/backtest/results',
+        element: <BacktestResultsPage />,
       }
     ]
   }
