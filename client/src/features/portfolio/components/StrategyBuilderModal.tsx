@@ -23,6 +23,8 @@ export interface StrategyCondition {
 
 export interface StrategyRule {
   id: string;
+  portfolioId?: string;
+  portfolio_id?: string;
   name: string;
   scope: 'global' | 'stock';
   targetSymbol?: string;

@@ -36,7 +36,8 @@ export function AppLayout() {
   const isPortfolioPage = location.pathname.startsWith('/portfolio/');
   const portfolioId = isPortfolioPage ? location.pathname.split('/')[2] : null;
   const portfolioName = portfolioId ? portfolios.find(p => p.id === portfolioId)?.name : null;
-  const isBacktestPage = location.pathname.startsWith('/backtest');
+  const isBacktestPage = location.pathname.includes('/backtest');
+  const isBacktestResultPage = location.pathname.includes('/backtest/results');
 
   const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
@@ -138,16 +139,31 @@ export function AppLayout() {
             </div>
 
             {/* Backtest Navbar Item */}
-            <button
-              onClick={() => navigate(portfolioId ? `/portfolio/${portfolioId}/backtest` : '/backtest')}
-              className={`px-1 pb-0.5 text-xs font-semibold text-white cursor-pointer shrink-0 border-b-2 ${
-                location.pathname.includes('/backtest')
-                  ? 'border-white'
-                  : 'border-transparent'
-              }`}
-            >
-              Backtest
-            </button>
+            {isBacktestResultPage ? (
+              <div className="flex items-center gap-1 sm:gap-1.5 shrink-0 text-xs font-semibold">
+                <button
+                  onClick={() => navigate(portfolioId ? `/portfolio/${portfolioId}/backtest` : '/backtest')}
+                  className="px-1 pb-0.5 text-secondary hover:text-primary transition-colors cursor-pointer"
+                >
+                  Backtest
+                </button>
+                <ChevronRight className="w-3.5 h-3.5 text-secondary shrink-0" />
+                <span className="px-1 pb-0.5 text-primary">
+                  Result
+                </span>
+              </div>
+            ) : (
+              <button
+                onClick={() => navigate(portfolioId ? `/portfolio/${portfolioId}/backtest` : '/backtest')}
+                className={`px-1 pb-0.5 text-xs font-semibold cursor-pointer shrink-0 border-b-2 transition-colors ${
+                  isBacktestPage
+                    ? 'text-primary border-primary'
+                    : 'text-secondary hover:text-primary border-transparent'
+                }`}
+              >
+                Backtest
+              </button>
+            )}
           </div>
 
           <div className="flex items-center gap-1 sm:gap-2">
@@ -260,9 +276,9 @@ export function AppLayout() {
       {/* Full-width scrollable container */}
       <div className={`flex-1 w-full flex flex-col ${isPortfolioPage ? 'min-h-0' : ''}`}>
         {/* Main Content constraints */}
-        <div className={`flex flex-col flex-1 w-full max-w-[1600px] mx-auto bg-background ${isPortfolioPage ? 'min-h-0' : ''}`}>
+        <div className={`flex flex-col flex-1 w-full ${isBacktestResultPage ? 'max-w-none' : 'max-w-[1600px] mx-auto'} bg-background ${isPortfolioPage ? 'min-h-0' : ''}`}>
           <main className={`flex-1 flex flex-col min-w-0 bg-background relative z-0 ${isPortfolioPage ? 'min-h-0' : ''}`}>
-            <div className={`flex-1 px-2 md:px-4 pt-2 md:pt-3 pb-2 md:pb-4 flex flex-col ${isPortfolioPage ? 'min-h-0' : ''}`}>
+            <div className={`flex-1 ${isBacktestResultPage ? 'p-0' : 'px-2 md:px-4 pt-2 md:pt-3 pb-2 md:pb-4'} flex flex-col ${isPortfolioPage ? 'min-h-0' : ''}`}>
               <Outlet />
             </div>
           </main>

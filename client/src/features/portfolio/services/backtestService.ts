@@ -84,3 +84,22 @@ export interface BacktestRequest {
 export async function runBacktest(request: BacktestRequest): Promise<BacktestResponse> {
   return api.post('/api/backtest/run', request);
 }
+
+export interface BacktestDataRange {
+  symbol: string;
+  totalCandles: number;
+  warmupBars: number;
+  dataStartDate: string;
+  dataEndDate: string;
+  backtestableStartDate: string;
+  backtestableEndDate: string;
+  availableDates: string[];
+}
+
+/**
+ * Retrieves the available historical candle range and the backtestable window
+ * excluding the warmup buffer for a given symbol.
+ */
+export async function getBacktestDataRange(symbol: string): Promise<BacktestDataRange> {
+  return api.get(`/api/backtest/data-range?symbol=${encodeURIComponent(symbol)}`);
+}

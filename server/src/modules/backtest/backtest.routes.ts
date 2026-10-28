@@ -1,13 +1,63 @@
 import { Router } from 'express';
 import { optionalAuthMiddleware } from '../../middleware/auth';
 import { getAnonClient } from '../../config/supabase';
-import { ensureHistoricalCandles } from '../prices/data-storage.service';
+import { ensureHistoricalCandles, readLocalCandles } from '../prices/data-storage.service';
 import { computeRollingIndicators } from './rolling-indicators.service';
 import { runSimulation } from './simulator.service';
 import { computeBacktestMetrics } from './metrics.service';
 import { StrategyRule, BacktestResponse } from './types';
 
 const router = Router();
+
+/**
+ * GET /api/backtest/data-range?symbol=RELIANCE.NS
+ * Returns the exact historical candle range and the backtestable date window
+ * after excluding the warmup buffer (200 trading bars for DMA200/RSI14).
+ */
+router.get('/data-range', optionalAuthMiddleware, async (req: any, res: any) => {
+  try {
+    const symbol = (req.query.symbol as string) || (req.query.targetSymbol as string);
+    if (!symbol || typeof symbol !== 'string') {
+      return res.status(400).json({ error: 'Stock symbol parameter is required.' });
+    }
+
+    let candles = readLocalCandles(symbol);
+    if (candles.length === 0) {
+      candles = await ensureHistoricalCandles(symbol, { years: 3 });
+    }
+
+    if (!candles || candles.length === 0) {
+      return res.status(404).json({ error: `No historical data available for ${symbol}.` });
+    }
+
+    const totalCandles = candles.length;
+    const dataStartDate = candles[0].date;
+    const dataEndDate = candles[totalCandles - 1].date;
+
+    // Buffer: standard indicator warmup buffer is 200 trading bars (for DMA200/RSI14)
+    // If fewer than 200 bars, use at least 14 bars for RSI, bounded to 1/3 of candles
+    const warmupBars = totalCandles >= 200 ? 200 : Math.min(50, Math.max(14, Math.floor(totalCandles / 3)));
+    const backtestableCandles = candles.slice(warmupBars);
+    const backtestableStartDate = backtestableCandles[0]?.date || dataStartDate;
+    const backtestableEndDate = dataEndDate;
+
+    const availableDates = backtestableCandles.map((c) => c.date);
+
+    return res.json({
+      symbol,
+      totalCandles,
+      warmupBars,
+      dataStartDate,
+      dataEndDate,
+      backtestableStartDate,
+      backtestableEndDate,
+      availableDates,
+    });
+  } catch (err: any) {
+    console.error('[Backtest Data-Range Error]:', err);
+    return res.status(500).json({ error: err.message || 'Failed to get data range.' });
+  }
+});
 
 /**
  * POST /api/backtest/run (or POST /api/strategies/backtest)
