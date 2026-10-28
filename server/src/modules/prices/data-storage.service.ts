@@ -4,14 +4,17 @@ import YahooFinance from 'yahoo-finance2';
 
 const yahooFinance = new YahooFinance({ suppressNotices: ['yahooSurvey', 'ripHistorical'] });
 
-export interface DailyCandle {
-  date: string; // YYYY-MM-DD
+export interface Candle {
+  date: string; // YYYY-MM-DD for 1d, YYYY-MM-DD HH:mm for 60m
   open: number;
   high: number;
   low: number;
   close: number;
   volume: number;
 }
+
+export type DailyCandle = Candle;
+export type HourCandle = Candle;
 
 export interface StockIndicatorResult {
   rsi: number | null;
@@ -22,26 +25,61 @@ export interface StockIndicatorResult {
 }
 
 export interface HistoricalCandlesOptions {
-  years?: number;      // e.g. 1, 3, 5
-  startDate?: string;  // YYYY-MM-DD
-  endDate?: string;    // YYYY-MM-DD (defaults to today)
-  warmupDays?: number; // default 300 calendar days (~200 trading bars for DMA200)
+  years?: number;      // e.g. 1, 2, 3
+  startDate?: string;  // YYYY-MM-DD or YYYY-MM-DD HH:mm
+  endDate?: string;    // YYYY-MM-DD or YYYY-MM-DD HH:mm
+  warmupDays?: number; // buffer period for indicators
   force?: boolean;     // force re-fetch from network
 }
 
-// Directory where contiguous JSON candles are saved per symbol
+// Storage directories
 const DATA_DIR = path.resolve(__dirname, '../../../data');
+const HOUR_DATA_DIR = path.resolve(__dirname, '../../../hourdata');
 
-function ensureDataDir() {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
+export function ensureDataDir(interval: '1d' | '60m' = '1d') {
+  const dir = interval === '60m' ? HOUR_DATA_DIR : DATA_DIR;
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
   }
 }
 
-function getFilePath(symbol: string): string {
-  // Sanitize symbol for filename: e.g. RELIANCE.NS -> RELIANCE.NS.json
+export function getFilePath(symbol: string, interval: '1d' | '60m' = '1d'): string {
   const safe = symbol.replace(/[/\\:?*"<>|]/g, '_');
-  return path.join(DATA_DIR, `${safe}.json`);
+  const dir = interval === '60m' ? HOUR_DATA_DIR : DATA_DIR;
+  return path.join(dir, `${safe}.json`);
+}
+
+/**
+ * Format raw candle timestamp into standard market timezone string.
+ * NSE / BSE (.NS, .BO) -> Asia/Kolkata (IST)
+ * US stocks -> America/New_York (EST)
+ */
+export function formatCandleDate(
+  rawDate: Date | string | number,
+  symbol: string,
+  interval: '1d' | '60m' = '1d'
+): string {
+  const d = new Date(rawDate);
+  if (interval === '1d') {
+    return d.toISOString().split('T')[0];
+  }
+  const timeZone = symbol.endsWith('.NS') || symbol.endsWith('.BO') ? 'Asia/Kolkata' : 'America/New_York';
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(d);
+
+  const y = parts.find((p) => p.type === 'year')?.value || '1970';
+  const m = parts.find((p) => p.type === 'month')?.value || '01';
+  const day = parts.find((p) => p.type === 'day')?.value || '01';
+  const h = parts.find((p) => p.type === 'hour')?.value || '00';
+  const min = parts.find((p) => p.type === 'minute')?.value || '00';
+  return `${y}-${m}-${day} ${h}:${min}`;
 }
 
 /**
@@ -94,12 +132,13 @@ export function computeSMA(closes: number[], period: number): number | null {
   return parseFloat((sum / period).toFixed(2));
 }
 
-/**
- * Read candles from local data storage disk.
- */
+// =============================================================================
+// DAILY CANDLE STORAGE (server/data)
+// =============================================================================
+
 export function readLocalCandles(symbol: string): DailyCandle[] {
-  ensureDataDir();
-  const filePath = getFilePath(symbol);
+  ensureDataDir('1d');
+  const filePath = getFilePath(symbol, '1d');
   if (!fs.existsSync(filePath)) return [];
   try {
     const raw = fs.readFileSync(filePath, 'utf-8');
@@ -111,14 +150,10 @@ export function readLocalCandles(symbol: string): DailyCandle[] {
   }
 }
 
-/**
- * Write candles to local data storage disk.
- */
 export function writeLocalCandles(symbol: string, candles: DailyCandle[]): void {
-  ensureDataDir();
-  const filePath = getFilePath(symbol);
+  ensureDataDir('1d');
+  const filePath = getFilePath(symbol, '1d');
   try {
-    // Sort oldest first and deduplicate by date
     const map = new Map<string, DailyCandle>();
     for (const c of candles) {
       if (c && c.date && c.close != null && isFinite(c.close)) {
@@ -134,13 +169,10 @@ export function writeLocalCandles(symbol: string, candles: DailyCandle[]): void 
   }
 }
 
-/**
- * Fetch a range of daily candles from Yahoo Finance.
- */
 export async function fetchYahooCandlesRange(
   symbol: string,
-  period1: string,
-  period2: string
+  period1: string | Date,
+  period2?: string | Date
 ): Promise<DailyCandle[]> {
   try {
     const chartRes: any = await yahooFinance.chart(symbol, {
@@ -172,12 +204,6 @@ export async function fetchYahooCandlesRange(
   }
 }
 
-/**
- * Ensure historical daily candles are present in local disk storage for the requested range,
- * including an automatic indicator warmup buffer (default 300 calendar days ~ 200 trading days).
- *
- * Automatically fetches missing earlier or later candles from Yahoo Finance and merges them.
- */
 export async function ensureHistoricalCandles(
   symbol: string,
   options: HistoricalCandlesOptions = {}
@@ -186,7 +212,6 @@ export async function ensureHistoricalCandles(
   const todayStr = today.toISOString().split('T')[0];
   const warmupDays = options.warmupDays ?? 300;
 
-  // Determine requested start date
   let targetStartDate: Date;
   if (options.startDate) {
     targetStartDate = new Date(options.startDate);
@@ -194,12 +219,10 @@ export async function ensureHistoricalCandles(
     targetStartDate = new Date();
     targetStartDate.setFullYear(today.getFullYear() - options.years);
   } else {
-    // Default 3 years if not specified
     targetStartDate = new Date();
     targetStartDate.setFullYear(today.getFullYear() - 3);
   }
 
-  // Prepend warmup days so DMA200 and RSI14 are available from Day 1 of the backtest
   const warmupStartDate = new Date(targetStartDate);
   warmupStartDate.setDate(warmupStartDate.getDate() - warmupDays);
 
@@ -209,7 +232,6 @@ export async function ensureHistoricalCandles(
   const existing = options.force ? [] : readLocalCandles(symbol);
 
   if (existing.length === 0) {
-    // Full initial fetch
     const fetched = await fetchYahooCandlesRange(symbol, targetStartStr, targetEndStr);
     if (fetched.length > 0) {
       writeLocalCandles(symbol, fetched);
@@ -222,7 +244,6 @@ export async function ensureHistoricalCandles(
   const earliestDate = existing[0].date;
   const latestDate = existing[existing.length - 1].date;
 
-  // 1. Backfill older data if requested range starts earlier than what we have
   if (earliestDate > targetStartStr) {
     const olderCandles = await fetchYahooCandlesRange(symbol, targetStartStr, earliestDate);
     if (olderCandles.length > 0) {
@@ -230,7 +251,6 @@ export async function ensureHistoricalCandles(
     }
   }
 
-  // 2. Fetch recent delta if latest candle is behind targetEndStr
   const latestMs = new Date(latestDate).getTime();
   const targetEndMs = new Date(targetEndStr).getTime();
   const diffHours = (targetEndMs - latestMs) / (1000 * 60 * 60);
@@ -252,13 +272,157 @@ export async function ensureHistoricalCandles(
   return readLocalCandles(symbol);
 }
 
-/**
- * Sync stock data incrementally:
- * 1. Read existing candles from local disk.
- * 2. If recent candle exists (today or yesterday/weekend), use local cache.
- * 3. Otherwise, fetch missing delta from Yahoo Finance and append to disk.
- * 4. Compute RSI(14), DMA50, DMA200.
- */
+// =============================================================================
+// HOURLY (60m) CANDLE STORAGE (server/hourdata)
+// =============================================================================
+
+export function readLocalHourCandles(symbol: string): HourCandle[] {
+  ensureDataDir('60m');
+  const filePath = getFilePath(symbol, '60m');
+  if (!fs.existsSync(filePath)) return [];
+  try {
+    const raw = fs.readFileSync(filePath, 'utf-8');
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (err) {
+    console.warn(`[DataStorage] Failed to read hourly ${filePath}:`, (err as Error).message);
+    return [];
+  }
+}
+
+export function writeLocalHourCandles(symbol: string, candles: HourCandle[]): void {
+  ensureDataDir('60m');
+  const filePath = getFilePath(symbol, '60m');
+  try {
+    const map = new Map<string, HourCandle>();
+    for (const c of candles) {
+      if (c && c.date && c.close != null && isFinite(c.close)) {
+        map.set(c.date, c);
+      }
+    }
+    const sorted = Array.from(map.values()).sort(
+      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+    );
+    fs.writeFileSync(filePath, JSON.stringify(sorted, null, 2), 'utf-8');
+  } catch (err) {
+    console.error(`[DataStorage] Failed to write hourly ${filePath}:`, (err as Error).message);
+  }
+}
+
+export async function fetchYahooHourCandlesRange(
+  symbol: string,
+  period1: string | Date,
+  period2?: string | Date
+): Promise<HourCandle[]> {
+  try {
+    const p1 = new Date(period1);
+    // Bound period1 to max 725 days back (Yahoo 60m hard limit is 730 days)
+    const maxPast = new Date(Date.now() - 725 * 24 * 60 * 60 * 1000);
+    const safeP1 = p1 < maxPast ? maxPast : p1;
+    const safeP2 = period2 ? new Date(period2) : new Date();
+
+    const chartRes: any = await yahooFinance.chart(symbol, {
+      period1: safeP1,
+      period2: safeP2,
+      interval: '60m',
+    });
+
+    const quotes = chartRes?.quotes || [];
+    return quotes
+      .filter((q: any) => q.close != null && isFinite(q.close) && q.close > 0)
+      .map((q: any) => ({
+        date: formatCandleDate(q.date, symbol, '60m'),
+        open: parseFloat((q.open || q.close).toFixed(2)),
+        high: parseFloat((q.high || q.close).toFixed(2)),
+        low: parseFloat((q.low || q.close).toFixed(2)),
+        close: parseFloat((q.close).toFixed(2)),
+        volume: q.volume || 0,
+      }));
+  } catch (fetchErr) {
+    console.warn(
+      `[DataStorage] Network fetch failed for hourly ${symbol}:`,
+      (fetchErr as Error).message
+    );
+    return [];
+  }
+}
+
+export async function ensureHistoricalHourCandles(
+  symbol: string,
+  options: HistoricalCandlesOptions = {}
+): Promise<HourCandle[]> {
+  const today = new Date();
+  const warmupDays = options.warmupDays ?? 45; // ~45 calendar days is ~200+ hourly candles for DMA200 warmup
+
+  // Yahoo Finance 60m max lookback is 730 days (~2 years)
+  const maxYears = Math.min(options.years ?? 2, 2);
+  let targetStartDate: Date;
+
+  if (options.startDate) {
+    targetStartDate = new Date(options.startDate);
+  } else {
+    targetStartDate = new Date();
+    targetStartDate.setFullYear(today.getFullYear() - maxYears);
+  }
+
+  const warmupStartDate = new Date(targetStartDate);
+  warmupStartDate.setDate(warmupStartDate.getDate() - warmupDays);
+
+  const maxAllowedPast = new Date(Date.now() - 725 * 24 * 60 * 60 * 1000);
+  const safeWarmupStart = warmupStartDate < maxAllowedPast ? maxAllowedPast : warmupStartDate;
+  const targetStartStr = safeWarmupStart.toISOString().split('T')[0];
+
+  const targetEndDate = options.endDate ? new Date(options.endDate) : today;
+  targetEndDate.setHours(23, 59, 59, 999);
+
+  const existing = options.force ? [] : readLocalHourCandles(symbol);
+
+  if (existing.length === 0) {
+    const fetched = await fetchYahooHourCandlesRange(symbol, safeWarmupStart, targetEndDate);
+    if (fetched.length > 0) {
+      writeLocalHourCandles(symbol, fetched);
+      return readLocalHourCandles(symbol);
+    }
+    return [];
+  }
+
+  let updated = [...existing];
+  const earliestDateStr = existing[0].date.split(' ')[0];
+  const latestDateStr = existing[existing.length - 1].date;
+
+  // 1. Backfill older hourly data if needed
+  if (earliestDateStr > targetStartStr && new Date(earliestDateStr) > maxAllowedPast) {
+    const olderCandles = await fetchYahooHourCandlesRange(
+      symbol,
+      safeWarmupStart,
+      earliestDateStr
+    );
+    if (olderCandles.length > 0) {
+      updated = [...olderCandles, ...updated];
+    }
+  }
+
+  // 2. Fetch recent delta if latest hourly candle is behind today
+  const latestMs = new Date(latestDateStr).getTime();
+  const targetEndMs = targetEndDate.getTime();
+  const diffHours = (targetEndMs - latestMs) / (1000 * 60 * 60);
+
+  if (diffHours > 2) {
+    const deltaStart = new Date(latestMs - 24 * 60 * 60 * 1000);
+    const newerCandles = await fetchYahooHourCandlesRange(symbol, deltaStart, targetEndDate);
+    if (newerCandles.length > 0) {
+      updated = [...updated, ...newerCandles];
+    }
+  }
+
+  writeLocalHourCandles(symbol, updated);
+  return readLocalHourCandles(symbol);
+}
+
+// =============================================================================
+// STOCK INDICATOR SYNCING (PORTFOLIO OVERVIEW)
+// =============================================================================
+
 export async function syncStockData(
   symbol: string,
   force: boolean = false,
@@ -277,12 +441,8 @@ export async function syncStockData(
   };
 }
 
-// Alias for backward compatibility
 export const syncStockHistory = syncStockData;
 
-/**
- * Batch sync with progress callback.
- */
 export async function syncMultipleStocks(
   symbols: string[],
   force: boolean = false,
@@ -312,4 +472,3 @@ export async function syncMultipleStocks(
 
   return result;
 }
-

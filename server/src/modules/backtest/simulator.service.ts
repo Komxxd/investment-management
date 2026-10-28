@@ -72,7 +72,7 @@ export function runSimulation(
     const bar = bars[i];
     const prevBar = i > 0 ? bars[i - 1] : undefined;
 
-    if (nominalEndDate && bar.date > nominalEndDate) {
+    if (nominalEndDate && bar.date.split(' ')[0] > nominalEndDate) {
       break;
     }
 

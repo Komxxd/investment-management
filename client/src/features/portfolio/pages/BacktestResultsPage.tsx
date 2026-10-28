@@ -398,7 +398,7 @@ export function BacktestResultsPage() {
                     Simulation Timeline & Actions
                   </h2>
                   <p className={`text-[10px] sm:text-[11px] ${isDark ? 'text-zinc-400' : 'text-gray-500'}`}>
-                    Day-by-day candle data, indicator readings, and condition events ({timelineRows.length} trading days)
+                    Hourly candle data, indicator readings, and condition events ({timelineRows.length} bars)
                     {usedIndicators.length > 0 && (
                       <span className="ml-1.5 opacity-90 font-medium">
                         • Strategy Indicators: {usedIndicators.map((i) => INDICATOR_CONFIG[i]?.label || i).join(', ')}
@@ -428,7 +428,7 @@ export function BacktestResultsPage() {
                   title="Toggle to view only rows where Initial Entry or Condition Met actions occurred"
                 >
                   <Filter className="w-2.5 h-2.5" />
-                  <span>{filterActionsOnly ? 'Actions Only' : 'All Dates'}</span>
+                  <span>{filterActionsOnly ? 'Actions Only' : 'All Bars'}</span>
                   <span className="px-1 py-0.2 rounded text-[9px] bg-black/20 font-bold">
                     {filterActionsOnly ? displayedRows.length : timelineRows.length}
                   </span>
@@ -605,7 +605,7 @@ export function BacktestResultsPage() {
                   <strong className={isDark ? 'text-zinc-200' : 'text-gray-800'}>
                     {displayedRows.length}
                   </strong>{' '}
-                  dates {conditionMetCount > 0 && `(${conditionMetCount} condition triggers)`}
+                  bars {conditionMetCount > 0 && `(${conditionMetCount} condition triggers)`}
                 </span>
 
                 {/* Page Size Selector */}

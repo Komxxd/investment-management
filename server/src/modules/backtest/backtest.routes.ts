@@ -1,7 +1,12 @@
 import { Router } from 'express';
 import { optionalAuthMiddleware } from '../../middleware/auth';
 import { getAnonClient } from '../../config/supabase';
-import { ensureHistoricalCandles, readLocalCandles } from '../prices/data-storage.service';
+import {
+  ensureHistoricalHourCandles,
+  readLocalHourCandles,
+  ensureHistoricalCandles,
+  readLocalCandles,
+} from '../prices/data-storage.service';
 import { computeRollingIndicators } from './rolling-indicators.service';
 import { runSimulation } from './simulator.service';
 import { computeBacktestMetrics } from './metrics.service';
@@ -10,20 +15,26 @@ import { StrategyRule, BacktestResponse } from './types';
 const router = Router();
 
 /**
- * GET /api/backtest/data-range?symbol=RELIANCE.NS
- * Returns the exact historical candle range and the backtestable date window
- * after excluding the warmup buffer (200 trading bars for DMA200/RSI14).
+ * GET /api/backtest/data-range?symbol=RELIANCE.NS&interval=60m
+ * Returns the historical candle range and the backtestable date window
+ * after excluding the warmup buffer (200 bars for DMA200/RSI14).
+ * Defaults to 60m hourly data stored in server/hourdata/.
  */
 router.get('/data-range', optionalAuthMiddleware, async (req: any, res: any) => {
   try {
     const symbol = (req.query.symbol as string) || (req.query.targetSymbol as string);
+    const interval = (req.query.interval as string) || '60m';
+
     if (!symbol || typeof symbol !== 'string') {
       return res.status(400).json({ error: 'Stock symbol parameter is required.' });
     }
 
-    let candles = readLocalCandles(symbol);
+    let candles = interval === '1d' ? readLocalCandles(symbol) : readLocalHourCandles(symbol);
     if (candles.length === 0) {
-      candles = await ensureHistoricalCandles(symbol, { years: 3 });
+      candles =
+        interval === '1d'
+          ? await ensureHistoricalCandles(symbol, { years: 3 })
+          : await ensureHistoricalHourCandles(symbol, { years: 2 });
     }
 
     if (!candles || candles.length === 0) {
@@ -31,20 +42,22 @@ router.get('/data-range', optionalAuthMiddleware, async (req: any, res: any) => 
     }
 
     const totalCandles = candles.length;
-    const dataStartDate = candles[0].date;
-    const dataEndDate = candles[totalCandles - 1].date;
-
-    // Buffer: standard indicator warmup buffer is 200 trading bars (for DMA200/RSI14)
-    // If fewer than 200 bars, use at least 14 bars for RSI, bounded to 1/3 of candles
-    const warmupBars = totalCandles >= 200 ? 200 : Math.min(50, Math.max(14, Math.floor(totalCandles / 3)));
+    // Buffer: standard indicator warmup buffer is 200 bars (for DMA200/RSI14)
+    const warmupBars =
+      totalCandles >= 200 ? 200 : Math.min(50, Math.max(14, Math.floor(totalCandles / 3)));
     const backtestableCandles = candles.slice(warmupBars);
-    const backtestableStartDate = backtestableCandles[0]?.date || dataStartDate;
+
+    const dataStartDate = candles[0].date.split(' ')[0];
+    const dataEndDate = candles[totalCandles - 1].date.split(' ')[0];
+    const backtestableStartDate = backtestableCandles[0]?.date.split(' ')[0] || dataStartDate;
     const backtestableEndDate = dataEndDate;
 
-    const availableDates = backtestableCandles.map((c) => c.date);
+    // Set of unique calendar dates (YYYY-MM-DD) for frontend calendar picker
+    const availableDates = Array.from(new Set(backtestableCandles.map((c) => c.date.split(' ')[0])));
 
     return res.json({
       symbol,
+      interval,
       totalCandles,
       warmupBars,
       dataStartDate,
@@ -61,7 +74,7 @@ router.get('/data-range', optionalAuthMiddleware, async (req: any, res: any) => 
 
 /**
  * POST /api/backtest/run (or POST /api/strategies/backtest)
- * Executes a full backtest on historical daily candles.
+ * Executes a full backtest on historical 60m hourly candles stored in server/hourdata/.
  */
 router.post('/run', optionalAuthMiddleware, async (req: any, res: any) => {
   try {
@@ -70,7 +83,8 @@ router.post('/run', optionalAuthMiddleware, async (req: any, res: any) => {
       rules,
       strategyId,
       strategy_id,
-      years = 3,
+      interval = '60m',
+      years = 2,
       startDate,
       start_date,
       endDate,
@@ -118,19 +132,26 @@ router.post('/run', optionalAuthMiddleware, async (req: any, res: any) => {
       return res.status(400).json({ error: 'At least one strategy rule with conditions is required.' });
     }
 
-    const finalYears = Number(years) || 3;
+    const finalYears = Number(years) || 2;
     const finalStartDate = start_date || startDate;
     const finalEndDate = end_date || endDate;
     const finalCapital = Number(initial_capital || initialCapital) || 100000;
     const finalSlippage = Number(slippage_pct !== undefined ? slippage_pct : slippagePct);
     const finalFee = Number(fee_pct !== undefined ? fee_pct : feePct);
 
-    // 1. Fetch historical candles with warmup period
-    const candles = await ensureHistoricalCandles(symbol, {
-      years: finalYears,
-      startDate: finalStartDate,
-      endDate: finalEndDate,
-    });
+    // 1. Fetch historical candles with warmup period (default 60m hourly data in server/hourdata/)
+    const candles =
+      interval === '1d'
+        ? await ensureHistoricalCandles(symbol, {
+            years: finalYears,
+            startDate: finalStartDate,
+            endDate: finalEndDate,
+          })
+        : await ensureHistoricalHourCandles(symbol, {
+            years: Math.min(finalYears, 2),
+            startDate: finalStartDate,
+            endDate: finalEndDate,
+          });
 
     if (!candles || candles.length < 50) {
       return res.status(404).json({
@@ -138,7 +159,7 @@ router.post('/run', optionalAuthMiddleware, async (req: any, res: any) => {
       });
     }
 
-    // 2. Compute rolling indicators
+    // 2. Compute rolling indicators across the 60m bars
     const bars = computeRollingIndicators(candles);
 
     // 3. Determine nominal simulation start date
@@ -146,7 +167,7 @@ router.post('/run', optionalAuthMiddleware, async (req: any, res: any) => {
     if (!nominalStartStr) {
       const today = new Date();
       const nStart = new Date();
-      nStart.setFullYear(today.getFullYear() - finalYears);
+      nStart.setFullYear(today.getFullYear() - Math.min(finalYears, 2));
       nominalStartStr = nStart.toISOString().split('T')[0];
     }
 

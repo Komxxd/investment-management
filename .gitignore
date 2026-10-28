@@ -21,6 +21,8 @@ build/
 # Data cache
 data/
 server/data/
+hourdata/
+server/hourdata/
 *.parquet
 
 
