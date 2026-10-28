@@ -103,6 +103,9 @@ export interface DailyEquityPoint {
   holdingsValue: number;
   heldQty: number;
   invested?: number;
+  unrealizedPnl?: number;
+  realizedPnl?: number;
+  totalPnl?: number;
   stockClose: number;
   benchmarkEquity: number;  // Buy & hold benchmark performance from initial capital
   drawdownPercent: number;  // % drawdown from all-time-high equity up to this day

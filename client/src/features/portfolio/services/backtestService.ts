@@ -57,6 +57,9 @@ export interface DailyEquityPoint {
   holdingsValue: number;
   heldQty: number;
   invested?: number;
+  unrealizedPnl?: number;
+  realizedPnl?: number;
+  totalPnl?: number;
   stockClose: number;
   benchmarkEquity: number;
   drawdownPercent: number;

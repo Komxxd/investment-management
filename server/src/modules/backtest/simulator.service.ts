@@ -63,6 +63,7 @@ export function runSimulation(
   let initialInvestment: InitialInvestmentInfo | undefined = undefined;
   let lastConditionMetDay: string | null = null;
   let totalCapitalInvested = initialCapital;
+  let cumulativeRealizedPnl = 0;
 
   // Find start index matching nominalStartDate (skipping warmup bars)
   let startIndex = 0;
@@ -226,6 +227,7 @@ export function runSimulation(
           const pnlPercent = costBasis > 0 ? (pnl / costBasis) * 100 : 0;
 
           cash += netProceeds;
+          cumulativeRealizedPnl += pnl;
 
           const d1 = new Date(position.entryDate).getTime();
           const d2 = new Date(bar.date).getTime();
@@ -318,6 +320,10 @@ export function runSimulation(
     }
     const benchmarkEquity = parseFloat((benchmarkInitialQty * bar.close).toFixed(2));
 
+    const unrealizedPnl = position.qty > 0 ? parseFloat((holdingsVal - position.totalCost).toFixed(2)) : 0;
+    const realizedPnl = parseFloat(cumulativeRealizedPnl.toFixed(2));
+    const totalPnl = parseFloat((realizedPnl + unrealizedPnl).toFixed(2));
+
     const barDatePart = bar.date.includes(' ') ? bar.date.split(' ')[0] : bar.date.split('T')[0];
     const barTimePart = bar.date.includes(' ') ? bar.date.split(' ')[1] : undefined;
 
@@ -332,6 +338,9 @@ export function runSimulation(
       changePercent: bar.changePercent,
       indicators: bar.indicators,
       invested: parseFloat(position.totalCost.toFixed(2)),
+      unrealizedPnl,
+      realizedPnl,
+      totalPnl,
       equity: parseFloat(currentEquity.toFixed(2)),
       cash: parseFloat(cash.toFixed(2)),
       holdingsValue: parseFloat(holdingsVal.toFixed(2)),
