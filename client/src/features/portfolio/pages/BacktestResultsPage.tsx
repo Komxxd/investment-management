@@ -147,6 +147,7 @@ export function BacktestResultsPage() {
     if (result.initialInvestment) {
       return {
         ...result.initialInvestment,
+        action: result.initialInvestment.action || 'Initial Entry',
         changePercent: result.initialInvestment.changePercent ?? firstPoint?.changePercent,
         indicators: result.initialInvestment.indicators ?? firstPoint?.indicators,
       };
@@ -164,6 +165,7 @@ export function BacktestResultsPage() {
 
     return {
       date,
+      action: 'Initial Entry',
       open,
       high,
       low,
@@ -332,7 +334,7 @@ export function BacktestResultsPage() {
               </div>
             </div>
 
-            {/* Table: Date | Open | High | Low | Close | [Strategy Indicators...] | Invested | Qty */}
+            {/* Table: Date | Action | Open | High | Low | Close | [Strategy Indicators...] | Invested | Qty */}
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
@@ -344,6 +346,7 @@ export function BacktestResultsPage() {
                     }`}
                   >
                     <th className="py-2.5 px-3">Date</th>
+                    <th className="py-2.5 px-3">Action</th>
                     <th className="py-2.5 px-3">Open</th>
                     <th className="py-2.5 px-3">High</th>
                     <th className="py-2.5 px-3">Low</th>
@@ -367,8 +370,23 @@ export function BacktestResultsPage() {
                       isDark ? 'hover:bg-zinc-800/40 text-zinc-200' : 'hover:bg-gray-50/80 text-gray-800'
                     }`}
                   >
-                    <td className="py-3 px-3 font-semibold text-primary">
+                    <td className="py-3 px-3 font-semibold text-primary whitespace-nowrap">
                       {initialInvestment.date}
+                    </td>
+                    <td className="py-3 px-3 whitespace-nowrap">
+                      <span
+                        className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold tracking-wide uppercase border ${
+                          initialInvestment.action?.toLowerCase().includes('sell')
+                            ? isDark
+                              ? 'bg-rose-500/10 text-rose-400 border-rose-500/30'
+                              : 'bg-rose-50 text-rose-700 border-rose-200'
+                            : isDark
+                            ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                            : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                        }`}
+                      >
+                        {initialInvestment.action || 'Initial Entry'}
+                      </span>
                     </td>
                     <td className="py-3 px-3">
                       {currencySymbol}{initialInvestment.open.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}

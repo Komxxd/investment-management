@@ -98,6 +98,7 @@ export function runSimulation(
 
         initialInvestment = {
           date: bar.date,
+          action: 'Initial Entry',
           open: bar.open,
           high: bar.high,
           low: bar.low,

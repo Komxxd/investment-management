@@ -28,6 +28,7 @@ export interface BarIndicators {
 
 export interface InitialInvestmentInfo {
   date: string;
+  action?: string;
   open: number;
   high: number;
   low: number;
