@@ -43,7 +43,8 @@ const MONTHS_SHORT = [
 ];
 
 function parseDateString(s: string): Date {
-  const [y, m, d] = s.split('-').map(Number);
+  const clean = s ? s.split(' ')[0].split('T')[0] : '';
+  const [y, m, d] = clean.split('-').map(Number);
   return new Date(y, (m || 1) - 1, d || 1);
 }
 
@@ -100,19 +101,22 @@ export function BacktestModal({
       .then((range) => {
         if (!isMounted) return;
         setDataRange(range);
-        if (range.backtestableStartDate && range.backtestableEndDate) {
-          // Set toDate to latest available backtestable candle
-          setToDate(range.backtestableEndDate);
+        const cleanStart = range.backtestableStartDate ? range.backtestableStartDate.split(' ')[0].split('T')[0] : '';
+        const cleanEnd = range.backtestableEndDate ? range.backtestableEndDate.split(' ')[0].split('T')[0] : '';
+
+        if (cleanStart && cleanEnd) {
+          // Set toDate to latest available backtestable candle (date only)
+          setToDate(cleanEnd);
 
           // Default start date to 1 year back or start of backtestable data
-          const endD = new Date(range.backtestableEndDate);
+          const endD = parseDateString(cleanEnd);
           const defStart = new Date(endD);
           defStart.setFullYear(defStart.getFullYear() - 1);
           const defStartStr = formatDateString(defStart);
-          const initialFrom = defStartStr >= range.backtestableStartDate ? defStartStr : range.backtestableStartDate;
+          const initialFrom = defStartStr >= cleanStart ? defStartStr : cleanStart;
 
           setFromDate(initialFrom);
-          setCalendarMonth(new Date(range.backtestableEndDate));
+          setCalendarMonth(endD);
         }
       })
       .catch((err) => {
@@ -131,10 +135,10 @@ export function BacktestModal({
     setError(null);
   }, [rule]);
 
-  // Set of dates where candle data actually exists and buffer is excluded
+  // Set of dates where candle data actually exists and buffer is excluded (Date-only)
   const availableDatesSet = useMemo(() => {
     if (!dataRange?.availableDates) return null;
-    return new Set(dataRange.availableDates);
+    return new Set(dataRange.availableDates.map((d) => d.split(' ')[0].split('T')[0]));
   }, [dataRange]);
 
   const { minDateStr, maxDateStr, minYear, maxYear } = useMemo(() => {
@@ -147,11 +151,13 @@ export function BacktestModal({
         maxYear: today.getFullYear(),
       };
     }
+    const cleanStart = dataRange.backtestableStartDate.split(' ')[0].split('T')[0];
+    const cleanEnd = dataRange.backtestableEndDate.split(' ')[0].split('T')[0];
     return {
-      minDateStr: dataRange.backtestableStartDate,
-      maxDateStr: dataRange.backtestableEndDate,
-      minYear: new Date(dataRange.backtestableStartDate).getFullYear(),
-      maxYear: new Date(dataRange.backtestableEndDate).getFullYear(),
+      minDateStr: cleanStart,
+      maxDateStr: cleanEnd,
+      minYear: new Date(cleanStart).getFullYear(),
+      maxYear: new Date(cleanEnd).getFullYear(),
     };
   }, [dataRange]);
 

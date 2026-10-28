@@ -102,8 +102,12 @@ export function runSimulation(
         position.entryDate = bar.date;
         position.entryReason = 'Initial Investment';
 
+        const timePart = bar.date.includes(' ') ? bar.date.split(' ')[1] : undefined;
+        const datePart = bar.date.includes(' ') ? bar.date.split(' ')[0] : bar.date.split('T')[0];
+
         initialInvestment = {
-          date: bar.date,
+          date: datePart,
+          time: timePart,
           action: 'Initial Entry',
           open: bar.open,
           high: bar.high,
@@ -280,8 +284,12 @@ export function runSimulation(
     }
     const benchmarkEquity = parseFloat((benchmarkInitialQty * bar.close).toFixed(2));
 
+    const barDatePart = bar.date.includes(' ') ? bar.date.split(' ')[0] : bar.date.split('T')[0];
+    const barTimePart = bar.date.includes(' ') ? bar.date.split(' ')[1] : undefined;
+
     equityCurve.push({
-      date: bar.date,
+      date: barDatePart,
+      time: barTimePart,
       action: dayAction,
       open: bar.open,
       high: bar.high,

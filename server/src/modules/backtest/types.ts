@@ -73,6 +73,7 @@ export interface BacktestTrade {
 
 export interface InitialInvestmentInfo {
   date: string;
+  time?: string;
   action?: string; // e.g. 'Initial Entry'
   open: number;
   high: number;
@@ -89,6 +90,7 @@ export interface InitialInvestmentInfo {
 
 export interface DailyEquityPoint {
   date: string;
+  time?: string;
   open: number;
   high: number;
   low: number;

@@ -34,18 +34,26 @@ router.get('/data-range', optionalAuthMiddleware, async (req: any, res: any) => 
       return res.status(404).json({ error: `No historical data available for ${symbol}.` });
     }
 
-    const totalCandles = candles.length;
-    const dataStartDate = candles[0].date;
-    const dataEndDate = candles[totalCandles - 1].date;
+    const toDateOnly = (d: string) => (d ? (d.includes(' ') ? d.split(' ')[0] : d.split('T')[0]) : d);
 
-    // Buffer: standard indicator warmup buffer is 200 trading bars (for DMA200/RSI14)
-    // If fewer than 200 bars, use at least 14 bars for RSI, bounded to 1/3 of candles
-    const warmupBars = totalCandles >= 200 ? 200 : Math.min(50, Math.max(14, Math.floor(totalCandles / 3)));
+    const totalCandles = candles.length;
+    const dataStartDate = toDateOnly(candles[0].date);
+    const dataEndDate = toDateOnly(candles[totalCandles - 1].date);
+
+    // Buffer: For daily data, standard warmup is 200 bars (for DMA200/RSI14)
+    // For hourly data, warmup is provided by the historical daily candles baseline
+    const warmupBars =
+      timeframe === 'hour'
+        ? 0
+        : totalCandles >= 200
+        ? 200
+        : Math.min(50, Math.max(14, Math.floor(totalCandles / 3)));
     const backtestableCandles = candles.slice(warmupBars);
-    const backtestableStartDate = backtestableCandles[0]?.date || dataStartDate;
+    const backtestableStartDate = toDateOnly(backtestableCandles[0]?.date || dataStartDate);
     const backtestableEndDate = dataEndDate;
 
-    const availableDates = backtestableCandles.map((c) => c.date);
+    // Deduplicate dates so each calendar date appears only once (no duplicate hours or time strings)
+    const availableDates = Array.from(new Set(backtestableCandles.map((c) => toDateOnly(c.date))));
 
     return res.json({
       symbol,
@@ -145,10 +153,23 @@ router.post('/run', optionalAuthMiddleware, async (req: any, res: any) => {
       });
     }
 
-    // 2. Compute rolling indicators
-    const bars = computeRollingIndicators(candles);
+    // 2. Fetch daily candles for baseline if timeframe is 'hour'
+    let dailyCandles: any = undefined;
+    if (finalTimeframe === 'hour') {
+      try {
+        dailyCandles = await ensureHistoricalCandles(symbol, {
+          timeframe: 'day',
+          years: Math.max(3, finalYears + 1),
+        });
+      } catch (err: any) {
+        console.warn('[Backtest] Could not load daily candles for provisional indicators:', err.message);
+      }
+    }
 
-    // 3. Determine nominal simulation start date
+    // 3. Compute rolling indicators (provisional daily indicators on hourly bars)
+    const bars = computeRollingIndicators(candles, dailyCandles);
+
+    // 4. Determine nominal simulation start date
     let nominalStartStr = finalStartDate;
     if (!nominalStartStr) {
       const today = new Date();
@@ -157,7 +178,7 @@ router.post('/run', optionalAuthMiddleware, async (req: any, res: any) => {
       nominalStartStr = nStart.toISOString().split('T')[0];
     }
 
-    // 4. Run simulation
+    // 5. Run simulation
     const simResult = runSimulation(symbol, bars, finalRules, {
       initialCapital: finalCapital,
       slippagePct: finalSlippage,
@@ -169,12 +190,32 @@ router.post('/run', optionalAuthMiddleware, async (req: any, res: any) => {
     // 5. Compute summary metrics
     const summary = computeBacktestMetrics(simResult);
 
+    const cleanDate = (d: string | undefined) => (d ? (d.includes(' ') ? d.split(' ')[0] : d.split('T')[0]) : '');
+
     const response: BacktestResponse = {
       symbol,
-      summary,
-      initialInvestment: simResult.initialInvestment,
-      trades: simResult.trades,
-      equityCurve: simResult.equityCurve,
+      summary: {
+        ...summary,
+        startDate: cleanDate(summary.startDate),
+        endDate: cleanDate(summary.endDate),
+      },
+      initialInvestment: simResult.initialInvestment
+        ? {
+            ...simResult.initialInvestment,
+            date: cleanDate(simResult.initialInvestment.date),
+            time: simResult.initialInvestment.time,
+          }
+        : undefined,
+      trades: simResult.trades.map((t) => ({
+        ...t,
+        entryDate: cleanDate(t.entryDate),
+        exitDate: cleanDate(t.exitDate),
+      })),
+      equityCurve: simResult.equityCurve.map((pt) => ({
+        ...pt,
+        date: cleanDate(pt.date),
+        time: pt.time,
+      })),
     };
 
     return res.json(response);

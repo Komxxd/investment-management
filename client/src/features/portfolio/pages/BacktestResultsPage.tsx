@@ -19,10 +19,10 @@ import { useCurrency } from '../../../app/providers/CurrencyProvider';
 import { useTheme } from '../../../app/providers/ThemeProvider';
 
 const INDICATOR_CONFIG: Record<string, { label: string; tooltip: string }> = {
-  rsi: { label: 'RSI (14)', tooltip: "14-day Wilder's Relative Strength Index" },
-  dma50: { label: 'DMA (50)', tooltip: '50-day Simple Moving Average' },
-  dma200: { label: 'DMA (200)', tooltip: '200-day Simple Moving Average' },
-  changePct: { label: 'Change %', tooltip: 'Daily Price Change %' },
+  rsi: { label: 'Daily RSI (14)', tooltip: "Live 14-day Wilder's Relative Strength Index updated on each candle" },
+  dma50: { label: 'Daily DMA (50)', tooltip: '50-day Simple Moving Average updated on each candle' },
+  dma200: { label: 'Daily DMA (200)', tooltip: '200-day Simple Moving Average updated on each candle' },
+  changePct: { label: 'Day Change %', tooltip: 'Price Change % from previous day close' },
   price: { label: 'Price', tooltip: 'Stock Close Price' },
 };
 
@@ -160,7 +160,9 @@ export function BacktestResultsPage() {
     }
 
     // Fallback if not directly present in cached session
-    const date = result.summary.startDate || firstPoint?.date || firstTrade?.entryDate || 'N/A';
+    const rawDate = result.summary.startDate || firstPoint?.date || firstTrade?.entryDate || 'N/A';
+    const date = rawDate.includes(' ') ? rawDate.split(' ')[0] : rawDate.split('T')[0];
+    const time = firstPoint?.time || (rawDate.includes(' ') ? rawDate.split(' ')[1] : undefined);
     const close = firstPoint?.close ?? firstPoint?.stockClose ?? firstTrade?.entryPrice ?? 0;
     const open = firstPoint?.open ?? close;
     const high = firstPoint?.high ?? Math.max(open, close);
@@ -171,6 +173,7 @@ export function BacktestResultsPage() {
 
     return {
       date,
+      time,
       action: 'Initial Entry',
       open,
       high,
@@ -195,6 +198,7 @@ export function BacktestResultsPage() {
       return [
         {
           date: initialInvestment.date,
+          time: initialInvestment.time,
           open: initialInvestment.open,
           high: initialInvestment.high,
           low: initialInvestment.low,
@@ -234,8 +238,12 @@ export function BacktestResultsPage() {
         }
       }
 
+      const rowDate = pt.date ? (pt.date.includes(' ') ? pt.date.split(' ')[0] : pt.date.split('T')[0]) : '';
+      const rowTime = pt.time || (pt.date && pt.date.includes(' ') ? pt.date.split(' ')[1] : undefined);
+
       return {
-        date: pt.date,
+        date: rowDate,
+        time: rowTime,
         open,
         high,
         low,
@@ -346,7 +354,8 @@ export function BacktestResultsPage() {
             >
               Historical Simulation Report{' '}
               <span className={isDark ? 'text-zinc-500' : 'text-gray-400'}>
-                ({result.summary.startDate} to {result.summary.endDate})
+                ({(result.summary.startDate || '').split(' ')[0].split('T')[0]} to{' '}
+                {(result.summary.endDate || '').split(' ')[0].split('T')[0]})
               </span>
             </p>
           </div>
@@ -483,6 +492,7 @@ export function BacktestResultsPage() {
                     }`}
                   >
                     <th className="py-2.5 px-3">Date</th>
+                    <th className="py-2.5 px-3">Time</th>
                     <th className="py-2.5 px-3">Open</th>
                     <th className="py-2.5 px-3">High</th>
                     <th className="py-2.5 px-3">Low</th>
@@ -502,13 +512,13 @@ export function BacktestResultsPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-divider font-mono text-xs">
-                  {paginatedRows.map((row) => {
+                  {paginatedRows.map((row, idx) => {
                     const isInitial = row.action === 'Initial Entry';
                     const isConditionMet = row.action === 'Condition Met';
 
                     return (
                       <tr
-                        key={row.date}
+                        key={`${row.date}-${row.time || idx}`}
                         className={`transition-colors ${
                           isConditionMet
                             ? isDark
@@ -525,6 +535,21 @@ export function BacktestResultsPage() {
                       >
                         <td className="py-2.5 px-3 font-semibold text-primary whitespace-nowrap">
                           {row.date}
+                        </td>
+                        <td className="py-2.5 px-3 font-mono text-secondary whitespace-nowrap">
+                          {row.time ? (
+                            <span
+                              className={`px-1.5 py-0.5 rounded text-[10px] font-semibold border ${
+                                isDark
+                                  ? 'bg-zinc-800/80 text-zinc-300 border-zinc-700/60'
+                                  : 'bg-gray-100 text-gray-700 border-gray-200'
+                              }`}
+                            >
+                              {row.time}
+                            </span>
+                          ) : (
+                            <span className="opacity-30">—</span>
+                          )}
                         </td>
                         <td className="py-2.5 px-3">
                           {currencySymbol}{row.open.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}

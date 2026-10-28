@@ -28,6 +28,7 @@ export interface BarIndicators {
 
 export interface InitialInvestmentInfo {
   date: string;
+  time?: string;
   action?: string;
   open: number;
   high: number;
@@ -44,6 +45,7 @@ export interface InitialInvestmentInfo {
 
 export interface DailyEquityPoint {
   date: string;
+  time?: string;
   open?: number;
   high?: number;
   low?: number;
