@@ -111,6 +111,7 @@ interface YearReturnRow {
   totalPnl: number;
   totalPercent: number;
   maxDrawdownPct: number;
+  maxDrawdownValue: number;
 }
 
 export function BacktestResultsPage() {
@@ -231,6 +232,7 @@ export function BacktestResultsPage() {
           indicators: initialInvestment.indicators,
           invested: initialInvestment.invested,
           qty: initialInvestment.qty,
+          equity: initialInvestment.invested + (initialInvestment.cashRemaining || 0),
           unrealizedPnl: 0,
           realizedPnl: 0,
           totalPnl: 0,
@@ -291,6 +293,11 @@ export function BacktestResultsPage() {
           ? pt.totalPnl
           : parseFloat((realizedPnl + unrealizedPnl).toFixed(2));
 
+      const equity =
+        pt.equity !== undefined
+          ? pt.equity
+          : parseFloat(((pt.cash ?? 0) + (pt.holdingsValue > 0 ? pt.holdingsValue : qty * close)).toFixed(2));
+
       return {
         date: rowDate,
         time: rowTime,
@@ -302,6 +309,7 @@ export function BacktestResultsPage() {
         indicators: pt.indicators,
         invested,
         qty,
+        equity,
         unrealizedPnl,
         realizedPnl,
         totalPnl,
@@ -453,12 +461,44 @@ export function BacktestResultsPage() {
       const totalPnl = lastYearDay.endEquity - firstYearDay.startEquity;
       const totalPercent = firstYearDay.startEquity > 0 ? (totalPnl / firstYearDay.startEquity) * 100 : 0;
 
+      // Calculate max drawdown for this year (monetary decline & percentage from peak)
+      let yearMaxDdVal = 0;
+      let yearMaxDdPct = 0;
+
+      if (years.length === 1 && result?.summary?.maxDrawdownValue !== undefined && result.summary.maxDrawdownValue > 0) {
+        yearMaxDdVal = result.summary.maxDrawdownValue;
+        yearMaxDdPct = result.summary.maxDrawdownPct;
+      } else {
+        const yearPts = (result?.equityCurve || []).filter((pt) => pt.date.startsWith(yr));
+        if (yearPts.length > 0) {
+          let yPeak = yearPts[0].equity;
+          for (const pt of yearPts) {
+            if (pt.equity > yPeak) {
+              yPeak = pt.equity;
+            } else if (yPeak > 0) {
+              const ddVal = yPeak - pt.equity;
+              const ddPct = (ddVal / yPeak) * 100;
+              if (ddPct > yearMaxDdPct) {
+                yearMaxDdPct = ddPct;
+                yearMaxDdVal = ddVal;
+              }
+            }
+          }
+        }
+        if (yearMaxDdVal === 0 && (result?.summary?.maxDrawdownPct ?? 0) > 0) {
+          yearMaxDdPct = result?.summary?.maxDrawdownPct ?? 0;
+          const peakEq = result?.summary?.peakEquity || result?.summary?.initialCapital || 100000;
+          yearMaxDdVal = result?.summary?.maxDrawdownValue || (yearMaxDdPct / 100) * peakEq;
+        }
+      }
+
       rows.push({
         year: yr,
         months,
         totalPnl,
         totalPercent,
-        maxDrawdownPct: result?.summary?.maxDrawdownPct ?? 0,
+        maxDrawdownPct: yearMaxDdPct,
+        maxDrawdownValue: yearMaxDdVal,
       });
     }
 
@@ -489,6 +529,117 @@ export function BacktestResultsPage() {
     return summary?.cagrPct ?? summary?.totalReturnPct ?? 0;
   }, [result]);
 
+  const peakEquityInfo = useMemo(() => {
+    if (!result) return { value: 0, formattedDate: '' };
+    const summary = result.summary;
+    const initialCap = summary?.initialCapital || 100000;
+    const curve = result.equityCurve || [];
+
+    let maxEq = summary?.peakEquity || initialCap;
+    let maxDate = summary?.peakEquityDate || (curve[0]?.date || '');
+
+    if (!summary?.peakEquity && curve.length > 0) {
+      maxEq = initialCap;
+      for (const pt of curve) {
+        if (pt.equity > maxEq) {
+          maxEq = pt.equity;
+          maxDate = pt.date || '';
+        }
+      }
+    }
+
+    let formattedDate = '';
+    if (maxDate) {
+      const datePart = maxDate.includes(' ') ? maxDate.split(' ')[0] : maxDate.split('T')[0];
+      const parts = datePart.split('-');
+      if (parts.length === 3) {
+        const y = parts[0];
+        const m = parseInt(parts[1], 10);
+        const d = parts[2];
+        const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        formattedDate = `${parseInt(d, 10)} ${monthNames[m - 1] || ''} ${y}`.trim();
+      } else {
+        formattedDate = datePart;
+      }
+    }
+
+    return { value: maxEq, formattedDate };
+  }, [result]);
+
+  const maxDrawdownRangeInfo = useMemo(() => {
+    if (!result) return '';
+    const summary = result.summary;
+    const curve = result.equityCurve || [];
+
+    let peakDate = summary?.maxDrawdownStartDate || '';
+    let troughDate = summary?.maxDrawdownEndDate || '';
+
+    if (!peakDate || !troughDate) {
+      const initialCap = summary?.initialCapital || 100000;
+      let runningPeak = initialCap;
+      let currentPeakDate = curve[0]?.date || '';
+      let maxDd = 0;
+
+      for (const pt of curve) {
+        if (pt.equity >= runningPeak) {
+          runningPeak = pt.equity;
+          currentPeakDate = pt.date || '';
+        } else if (pt.drawdownPercent > maxDd) {
+          maxDd = pt.drawdownPercent;
+          peakDate = currentPeakDate;
+          troughDate = pt.date || '';
+        }
+      }
+    }
+
+    if (!peakDate && !troughDate) return '';
+
+    const formatShort = (dateStr: string) => {
+      if (!dateStr) return '';
+      const clean = dateStr.includes(' ') ? dateStr.split(' ')[0] : dateStr.split('T')[0];
+      const parts = clean.split('-');
+      if (parts.length === 3) {
+        const y = parts[0];
+        const m = parseInt(parts[1], 10);
+        const d = parseInt(parts[2], 10);
+        const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        return `${d} ${monthNames[m - 1] || ''} ${y}`.trim();
+      }
+      return clean;
+    };
+
+    const formattedPeak = formatShort(peakDate);
+    const formattedTrough = formatShort(troughDate);
+
+    if (formattedPeak && formattedTrough) {
+      if (formattedPeak === formattedTrough) {
+        return `on ${formattedPeak}`;
+      }
+      return `${formattedPeak} – ${formattedTrough}`;
+    }
+    return formattedPeak ? `from ${formattedPeak}` : formattedTrough ? `at ${formattedTrough}` : '';
+  }, [result]);
+
+  const displayMaxDrawdownValue = useMemo(() => {
+    if (!result?.summary) return 0;
+    if (result.summary.maxDrawdownValue !== undefined && result.summary.maxDrawdownValue > 0) {
+      return result.summary.maxDrawdownValue;
+    }
+
+    if (yearReturns.length > 0) {
+      const worstYear = yearReturns.reduce(
+        (prev, curr) => (curr.maxDrawdownValue > (prev?.maxDrawdownValue || 0) ? curr : prev),
+        yearReturns[0]
+      );
+      if (worstYear && worstYear.maxDrawdownValue > 0) {
+        return worstYear.maxDrawdownValue;
+      }
+    }
+
+    const peak = peakEquityInfo.value || result.summary.peakEquity || result.summary.initialCapital || 100000;
+    return ((result.summary.maxDrawdownPct || 0) / 100) * peak;
+  }, [result, yearReturns, peakEquityInfo]);
+
   const portfolioMetrics = useMemo(() => {
     if (!result) return null;
     const curve = result.equityCurve || [];
@@ -503,19 +654,22 @@ export function BacktestResultsPage() {
         : null;
 
     // 2. Max Drawdown Duration (Underwater period in trading days)
-    let maxUnderwater = summary.maxDrawdownDurationDays || 0;
-    if (!maxUnderwater && curve.length > 0) {
-      let currentUnderwater = 0;
+    let maxUnderwater = 0;
+    if (curve.length > 0) {
+      const currentUnderwaterDates = new Set<string>();
       for (const pt of curve) {
+        const dateStr = pt.date ? (pt.date.includes(' ') ? pt.date.split(' ')[0] : pt.date.split('T')[0]) : '';
         if (pt.drawdownPercent > 0.05) {
-          currentUnderwater++;
-          if (currentUnderwater > maxUnderwater) {
-            maxUnderwater = currentUnderwater;
+          if (dateStr) currentUnderwaterDates.add(dateStr);
+          if (currentUnderwaterDates.size > maxUnderwater) {
+            maxUnderwater = currentUnderwaterDates.size;
           }
         } else {
-          currentUnderwater = 0;
+          currentUnderwaterDates.clear();
         }
       }
+    } else if (summary.maxDrawdownDurationDays) {
+      maxUnderwater = Math.min(tradingDays.length, summary.maxDrawdownDurationDays);
     }
 
     // 3. Beta: Portfolio sensitivity to Benchmark
@@ -865,10 +1019,9 @@ export function BacktestResultsPage() {
                               </span>
                             </td>
                             <td className="py-2.5 px-3 text-right tabular-nums font-bold text-danger">
-                              -{currencySymbol}
-                              {Math.round(
-                                Math.abs((result.summary.maxDrawdownPct / 100) * (result.summary.initialCapital || 100000))
-                              ).toLocaleString()}
+                              {yr.maxDrawdownValue > 0
+                                ? `-${currencySymbol}${Math.round(yr.maxDrawdownValue).toLocaleString()}`
+                                : `${currencySymbol}0`}
                             </td>
                           </tr>
                         );
@@ -933,11 +1086,26 @@ export function BacktestResultsPage() {
                     </div>
 
                     <div className="flex items-center justify-between text-xs">
-                      <span className="text-secondary">Final Equity</span>
+                      <span className="text-secondary">Portfolio Equity</span>
                       <span className="font-mono text-primary font-bold">
                         {currencySymbol}
                         {result.summary.finalEquity.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </span>
+                    </div>
+
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-secondary">Peak Equity</span>
+                      <div className="text-right">
+                        <span className="font-mono text-primary font-bold">
+                          {currencySymbol}
+                          {peakEquityInfo.value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                        {peakEquityInfo.formattedDate && (
+                          <div className={`text-[10px] font-mono ${isDark ? 'text-zinc-400' : 'text-gray-500'}`}>
+                            on {peakEquityInfo.formattedDate}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
 
@@ -954,9 +1122,21 @@ export function BacktestResultsPage() {
 
                     <div className="flex items-center justify-between text-xs">
                       <span className="text-secondary">Max Drawdown</span>
-                      <span className="font-mono font-bold text-danger">
-                        -{result.summary.maxDrawdownPct.toFixed(2)}%
-                      </span>
+                      <div className="text-right">
+                        <div className="font-mono font-bold text-danger">
+                          -{result.summary.maxDrawdownPct.toFixed(2)}%
+                          {displayMaxDrawdownValue > 0 && (
+                            <span className="text-[11px] font-medium ml-1.5 opacity-90">
+                              (-{currencySymbol}{Math.round(displayMaxDrawdownValue).toLocaleString()})
+                            </span>
+                          )}
+                        </div>
+                        {maxDrawdownRangeInfo && (
+                          <div className={`text-[10px] font-mono ${isDark ? 'text-zinc-400' : 'text-gray-500'}`}>
+                            {maxDrawdownRangeInfo}
+                          </div>
+                        )}
+                      </div>
                     </div>
 
                     <div className="flex items-center justify-between text-xs">
@@ -1075,6 +1255,7 @@ export function BacktestResultsPage() {
                       ))}
                       <th className="py-2.5 px-3 font-medium text-right">Invested</th>
                       <th className="py-2.5 px-3 font-medium text-right">Qty</th>
+                      <th className="py-2.5 px-3 font-medium text-right whitespace-nowrap">Equity Value</th>
                       <th className="py-2.5 px-3 font-medium text-right whitespace-nowrap">Unrealized P&L</th>
                       <th className="py-2.5 px-3 font-medium text-right whitespace-nowrap">Realized P&L</th>
                       <th className="py-2.5 px-3 font-medium text-right whitespace-nowrap">Total P&L</th>
@@ -1130,6 +1311,9 @@ export function BacktestResultsPage() {
                           </td>
                           <td className="py-2 px-3 text-right tabular-nums font-bold text-primary whitespace-nowrap">
                             {row.qty.toLocaleString()}
+                          </td>
+                          <td className="py-2 px-3 text-right tabular-nums font-bold text-primary whitespace-nowrap">
+                            {currencySymbol}{row.equity.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </td>
                           <td className="py-2 px-3 text-right tabular-nums font-semibold whitespace-nowrap">
                             <span className={row.unrealizedPnl > 0 ? 'text-success' : row.unrealizedPnl < 0 ? 'text-danger' : 'text-secondary opacity-70'}>

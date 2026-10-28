@@ -54,11 +54,31 @@ export function computeBacktestMetrics(sim: SimulationResult): BacktestSummaryMe
   }
   const alphaPct = parseFloat((totalReturnPct - benchmarkReturnPct).toFixed(2));
 
-  // Max Drawdown (MDD)
+  // Peak Equity & Max Drawdown (MDD)
+  let peakEquity = initialCapital;
+  let peakEquityDate = equityCurve.length > 0 ? equityCurve[0].date : '';
+  let runningPeak = initialCapital;
+  let currentPeakDate = equityCurve.length > 0 ? equityCurve[0].date : '';
+
   let maxDrawdownPct = 0;
+  let maxDrawdownValue = 0;
+  let maxDrawdownStartDate = '';
+  let maxDrawdownEndDate = '';
+
   for (const pt of equityCurve) {
-    if (pt.drawdownPercent > maxDrawdownPct) {
+    if (pt.equity > peakEquity) {
+      peakEquity = pt.equity;
+      peakEquityDate = pt.date;
+    }
+
+    if (pt.equity >= runningPeak) {
+      runningPeak = pt.equity;
+      currentPeakDate = pt.date;
+    } else if (pt.drawdownPercent > maxDrawdownPct) {
       maxDrawdownPct = pt.drawdownPercent;
+      maxDrawdownValue = parseFloat((runningPeak - pt.equity).toFixed(2));
+      maxDrawdownStartDate = currentPeakDate;
+      maxDrawdownEndDate = pt.date;
     }
   }
 
@@ -148,17 +168,18 @@ export function computeBacktestMetrics(sim: SimulationResult): BacktestSummaryMe
     calmarRatio = parseFloat((cagrPct / maxDrawdownPct).toFixed(2));
   }
 
-  // Max Drawdown Duration (Underwater days)
-  let currentUnderwater = 0;
+  // Max Drawdown Duration (Underwater trading days)
   let maxDrawdownDurationDays = 0;
+  const currentUnderwaterDates = new Set<string>();
   for (const pt of equityCurve) {
+    const dateStr = pt.date.includes(' ') ? pt.date.split(' ')[0] : pt.date.split('T')[0];
     if (pt.drawdownPercent > 0.05) {
-      currentUnderwater++;
-      if (currentUnderwater > maxDrawdownDurationDays) {
-        maxDrawdownDurationDays = currentUnderwater;
+      if (dateStr) currentUnderwaterDates.add(dateStr);
+      if (currentUnderwaterDates.size > maxDrawdownDurationDays) {
+        maxDrawdownDurationDays = currentUnderwaterDates.size;
       }
     } else {
-      currentUnderwater = 0;
+      currentUnderwaterDates.clear();
     }
   }
 
@@ -195,6 +216,8 @@ export function computeBacktestMetrics(sim: SimulationResult): BacktestSummaryMe
   return {
     initialCapital,
     finalEquity,
+    peakEquity: parseFloat(peakEquity.toFixed(2)),
+    peakEquityDate,
     netProfit,
     totalReturnPct,
     cagrPct,
@@ -202,6 +225,9 @@ export function computeBacktestMetrics(sim: SimulationResult): BacktestSummaryMe
     benchmarkCagrPct,
     alphaPct,
     maxDrawdownPct: parseFloat(maxDrawdownPct.toFixed(2)),
+    maxDrawdownValue,
+    maxDrawdownStartDate,
+    maxDrawdownEndDate,
     winRatePct,
     profitFactor,
     sharpeRatio,

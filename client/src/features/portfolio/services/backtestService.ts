@@ -71,6 +71,8 @@ export interface DailyEquityPoint {
 export interface BacktestSummaryMetrics {
   initialCapital: number;
   finalEquity: number;
+  peakEquity?: number;
+  peakEquityDate?: string;
   netProfit: number;
   totalReturnPct: number;
   cagrPct: number;
@@ -78,6 +80,9 @@ export interface BacktestSummaryMetrics {
   benchmarkCagrPct: number;
   alphaPct: number;
   maxDrawdownPct: number;
+  maxDrawdownValue?: number;
+  maxDrawdownStartDate?: string;
+  maxDrawdownEndDate?: string;
   winRatePct: number;
   profitFactor: number | null;
   sharpeRatio: number | null;
