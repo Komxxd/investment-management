@@ -465,6 +465,30 @@ export function BacktestResultsPage() {
     return rows;
   }, [tradingDays, result]);
 
+  const displayCagr = useMemo(() => {
+    if (!result) return 0;
+    const summary = result.summary;
+    const initialCap = summary?.initialCapital || 100000;
+    const finalEq = summary?.finalEquity || initialCap;
+    const curve = result.equityCurve || [];
+
+    const startDate = curve.length > 0 ? (curve[0].date || summary.startDate) : summary.startDate;
+    const endDate = curve.length > 0 ? (curve[curve.length - 1].date || summary.endDate) : summary.endDate;
+
+    if (startDate && endDate && initialCap > 0 && finalEq > 0) {
+      const d1 = new Date(startDate.split(' ')[0].split('T')[0]).getTime();
+      const d2 = new Date(endDate.split(' ')[0].split('T')[0]).getTime();
+      const calendarDays = Math.max(1, Math.round((d2 - d1) / (1000 * 60 * 60 * 24)));
+      if (calendarDays > 0) {
+        const years = calendarDays / 365.25;
+        const compoundRatio = finalEq / initialCap;
+        return parseFloat(((Math.pow(compoundRatio, 1 / years) - 1) * 100).toFixed(2));
+      }
+    }
+
+    return summary?.cagrPct ?? summary?.totalReturnPct ?? 0;
+  }, [result]);
+
   const portfolioMetrics = useMemo(() => {
     if (!result) return null;
     const curve = result.equityCurve || [];
@@ -475,7 +499,7 @@ export function BacktestResultsPage() {
       summary.calmarRatio !== undefined && summary.calmarRatio !== null
         ? summary.calmarRatio
         : summary.maxDrawdownPct > 0
-        ? parseFloat((summary.cagrPct / summary.maxDrawdownPct).toFixed(2))
+        ? parseFloat((displayCagr / summary.maxDrawdownPct).toFixed(2))
         : null;
 
     // 2. Max Drawdown Duration (Underwater period in trading days)
@@ -895,17 +919,8 @@ export function BacktestResultsPage() {
 
                     <div className="flex items-center justify-between text-xs">
                       <span className="text-secondary">Strategy CAGR</span>
-                      <span className={`font-mono font-bold ${result.summary.cagrPct >= 0 ? 'text-success' : 'text-danger'}`}>
-                        {result.summary.cagrPct >= 0 ? '+' : ''}{result.summary.cagrPct.toFixed(2)}%
-                      </span>
-                    </div>
-
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-secondary">Benchmark CAGR</span>
-                      <span className="font-mono font-semibold text-primary">
-                        {result.summary.benchmarkCagrPct !== undefined
-                          ? `${result.summary.benchmarkCagrPct >= 0 ? '+' : ''}${result.summary.benchmarkCagrPct.toFixed(2)}%`
-                          : '—'}
+                      <span className={`font-mono font-bold ${displayCagr >= 0 ? 'text-success' : 'text-danger'}`}>
+                        {displayCagr >= 0 ? '+' : ''}{displayCagr.toFixed(2)}%
                       </span>
                     </div>
 

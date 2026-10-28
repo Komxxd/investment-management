@@ -9,34 +9,44 @@ export function computeBacktestMetrics(sim: SimulationResult): BacktestSummaryMe
   const totalReturnPct = initialCapital > 0 ? parseFloat(((netProfit / initialCapital) * 100).toFixed(2)) : 0;
 
   // Trading days & calendar timeline
-  const tradingDays = equityCurve.length;
-  const startDate = tradingDays > 0 ? equityCurve[0].date : '';
-  const endDate = tradingDays > 0 ? equityCurve[tradingDays - 1].date : '';
+  const uniqueDates = new Set(
+    equityCurve
+      .map((pt) => (pt.date.includes(' ') ? pt.date.split(' ')[0] : pt.date.split('T')[0]))
+      .filter(Boolean)
+  );
+  const tradingDays = uniqueDates.size > 0 ? uniqueDates.size : equityCurve.length;
+
+  const startDate = equityCurve.length > 0 ? equityCurve[0].date : '';
+  const endDate = equityCurve.length > 0 ? equityCurve[equityCurve.length - 1].date : '';
 
   let calendarDays = 1;
   if (startDate && endDate) {
-    const msDiff = new Date(endDate).getTime() - new Date(startDate).getTime();
+    const d1 = new Date(startDate.split(' ')[0].split('T')[0]).getTime();
+    const d2 = new Date(endDate.split(' ')[0].split('T')[0]).getTime();
+    const msDiff = d2 - d1;
     calendarDays = Math.max(1, Math.round(msDiff / (1000 * 60 * 60 * 24)));
   }
 
-  // CAGR Calculation
+  // CAGR Calculation (Calendar-day standard: (Final / Initial)^(365.25 / calendarDays) - 1)
   let cagrPct = totalReturnPct;
-  if (calendarDays >= 30 && initialCapital > 0 && finalEquity > 0) {
+  if (calendarDays > 0 && initialCapital > 0 && finalEquity > 0) {
     const years = calendarDays / 365.25;
     const compoundRatio = finalEquity / initialCapital;
     cagrPct = parseFloat(((Math.pow(compoundRatio, 1 / years) - 1) * 100).toFixed(2));
+  } else if (finalEquity <= 0) {
+    cagrPct = -100;
   }
 
   // Benchmark performance
   let benchmarkFinal = initialCapital;
   let benchmarkReturnPct = 0;
   let benchmarkCagrPct = 0;
-  if (tradingDays > 0) {
-    benchmarkFinal = equityCurve[tradingDays - 1].benchmarkEquity;
+  if (equityCurve.length > 0) {
+    benchmarkFinal = equityCurve[equityCurve.length - 1].benchmarkEquity;
     benchmarkReturnPct = parseFloat(
       (((benchmarkFinal - initialCapital) / initialCapital) * 100).toFixed(2)
     );
-    if (calendarDays >= 30 && initialCapital > 0 && benchmarkFinal > 0) {
+    if (calendarDays > 0 && initialCapital > 0 && benchmarkFinal > 0) {
       const years = calendarDays / 365.25;
       const bRatio = benchmarkFinal / initialCapital;
       benchmarkCagrPct = parseFloat(((Math.pow(bRatio, 1 / years) - 1) * 100).toFixed(2));
