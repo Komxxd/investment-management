@@ -64,7 +64,10 @@ export function runSimulation(
   // Find start index matching nominalStartDate (skipping warmup bars)
   let startIndex = 0;
   if (nominalStartDate) {
-    const idx = bars.findIndex((b) => b.date >= nominalStartDate);
+    const idx = bars.findIndex((b) => {
+      const bDay = b.date.includes(' ') ? b.date.split(' ')[0] : b.date.split('T')[0];
+      return bDay >= nominalStartDate || b.date >= nominalStartDate;
+    });
     if (idx !== -1) startIndex = idx;
   }
 
@@ -72,8 +75,11 @@ export function runSimulation(
     const bar = bars[i];
     const prevBar = i > 0 ? bars[i - 1] : undefined;
 
-    if (nominalEndDate && bar.date.split(' ')[0] > nominalEndDate) {
-      break;
+    if (nominalEndDate) {
+      const barDay = bar.date.includes(' ') ? bar.date.split(' ')[0] : bar.date.split('T')[0];
+      if (barDay > nominalEndDate) {
+        break;
+      }
     }
 
     // =========================================================================

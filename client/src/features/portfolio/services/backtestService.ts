@@ -102,6 +102,7 @@ export interface BacktestResponse {
 export interface BacktestRequest {
   symbol: string;
   rules: StrategyRule[];
+  timeframe?: 'hour' | 'day';
   strategyId?: string;
   years?: number;
   startDate?: string;
@@ -115,7 +116,7 @@ export interface BacktestRequest {
  * Executes a full backtest on the backend for a given symbol and set of strategy rules.
  */
 export async function runBacktest(request: BacktestRequest): Promise<BacktestResponse> {
-  return api.post('/api/backtest/run', request);
+  return api.post('/api/backtest/run', { timeframe: 'hour', ...request });
 }
 
 export interface BacktestDataRange {
@@ -133,6 +134,9 @@ export interface BacktestDataRange {
  * Retrieves the available historical candle range and the backtestable window
  * excluding the warmup buffer for a given symbol.
  */
-export async function getBacktestDataRange(symbol: string): Promise<BacktestDataRange> {
-  return api.get(`/api/backtest/data-range?symbol=${encodeURIComponent(symbol)}`);
+export async function getBacktestDataRange(
+  symbol: string,
+  timeframe: 'hour' | 'day' = 'hour'
+): Promise<BacktestDataRange> {
+  return api.get(`/api/backtest/data-range?symbol=${encodeURIComponent(symbol)}&timeframe=${timeframe}`);
 }
