@@ -107,6 +107,8 @@ export function runSimulation(
           execPrice,
           cashRemaining: parseFloat(cash.toFixed(2)),
           initialCapital,
+          changePercent: bar.changePercent,
+          indicators: bar.indicators,
         };
       }
     }
@@ -241,6 +243,8 @@ export function runSimulation(
       high: bar.high,
       low: bar.low,
       close: bar.close,
+      changePercent: bar.changePercent,
+      indicators: bar.indicators,
       equity: parseFloat(currentEquity.toFixed(2)),
       cash: parseFloat(cash.toFixed(2)),
       holdingsValue: parseFloat(holdingsVal.toFixed(2)),

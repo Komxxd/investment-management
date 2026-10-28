@@ -20,6 +20,12 @@ export interface BacktestTrade {
   exitReason?: string;
 }
 
+export interface BarIndicators {
+  rsi: number | null;
+  dma50: number | null;
+  dma200: number | null;
+}
+
 export interface InitialInvestmentInfo {
   date: string;
   open: number;
@@ -31,6 +37,8 @@ export interface InitialInvestmentInfo {
   execPrice: number;
   cashRemaining: number;
   initialCapital: number;
+  changePercent?: number;
+  indicators?: BarIndicators;
 }
 
 export interface DailyEquityPoint {
@@ -39,6 +47,8 @@ export interface DailyEquityPoint {
   high?: number;
   low?: number;
   close?: number;
+  changePercent?: number;
+  indicators?: BarIndicators;
   equity: number;
   cash: number;
   holdingsValue: number;

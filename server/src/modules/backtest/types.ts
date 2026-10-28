@@ -82,6 +82,8 @@ export interface InitialInvestmentInfo {
   execPrice: number;
   cashRemaining: number;
   initialCapital: number;
+  changePercent?: number;
+  indicators?: BarIndicators;
 }
 
 export interface DailyEquityPoint {
@@ -90,6 +92,8 @@ export interface DailyEquityPoint {
   high: number;
   low: number;
   close: number;
+  changePercent?: number;
+  indicators?: BarIndicators;
   equity: number;
   cash: number;
   holdingsValue: number;

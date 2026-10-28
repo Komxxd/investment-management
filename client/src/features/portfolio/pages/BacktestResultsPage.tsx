@@ -8,12 +8,81 @@ import {
   X,
   Coins,
 } from 'lucide-react';
-import type { StrategyRule } from '../components/StrategyBuilderModal';
+import type { StrategyRule, IndicatorType } from '../components/StrategyBuilderModal';
 import { formatRuleFormula } from '../components/StrategyBuilderModal';
 import type { BacktestResponse, InitialInvestmentInfo } from '../services/backtestService';
 import { usePortfolioContext } from '../hooks/PortfolioContext';
 import { useCurrency } from '../../../app/providers/CurrencyProvider';
 import { useTheme } from '../../../app/providers/ThemeProvider';
+
+const INDICATOR_CONFIG: Record<string, { label: string; tooltip: string }> = {
+  rsi: { label: 'RSI (14)', tooltip: "14-day Wilder's Relative Strength Index" },
+  dma50: { label: 'DMA (50)', tooltip: '50-day Simple Moving Average' },
+  dma200: { label: 'DMA (200)', tooltip: '200-day Simple Moving Average' },
+  changePct: { label: 'Change %', tooltip: 'Daily Price Change %' },
+  price: { label: 'Price', tooltip: 'Stock Close Price' },
+};
+
+function renderIndicatorCell(
+  type: string,
+  inv: InitialInvestmentInfo | null,
+  currencySymbol: string
+) {
+  if (!inv) return <span className="text-secondary">—</span>;
+
+  switch (type) {
+    case 'rsi': {
+      const val = inv.indicators?.rsi;
+      if (val === null || val === undefined) return <span className="text-secondary">—</span>;
+      const num = Number(val);
+      const isOversold = num <= 30;
+      const isOverbought = num >= 70;
+      return (
+        <span
+          className={`font-mono font-semibold ${
+            isOversold ? 'text-emerald-500' : isOverbought ? 'text-amber-500' : 'text-primary'
+          }`}
+        >
+          {num.toFixed(2)}
+        </span>
+      );
+    }
+    case 'dma50': {
+      const val = inv.indicators?.dma50;
+      if (val === null || val === undefined) return <span className="text-secondary">—</span>;
+      return (
+        <span className="font-mono text-primary font-medium">
+          {currencySymbol}
+          {Number(val).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+        </span>
+      );
+    }
+    case 'dma200': {
+      const val = inv.indicators?.dma200;
+      if (val === null || val === undefined) return <span className="text-secondary">—</span>;
+      return (
+        <span className="font-mono text-primary font-medium">
+          {currencySymbol}
+          {Number(val).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+        </span>
+      );
+    }
+    case 'changePct': {
+      const val = inv.changePercent;
+      if (val === null || val === undefined) return <span className="text-secondary">—</span>;
+      const num = Number(val);
+      const sign = num > 0 ? '+' : '';
+      return (
+        <span className={`font-mono font-semibold ${num > 0 ? 'text-emerald-500' : num < 0 ? 'text-rose-500' : 'text-primary'}`}>
+          {sign}
+          {num.toFixed(2)}%
+        </span>
+      );
+    }
+    default:
+      return <span className="text-secondary">—</span>;
+  }
+}
 
 export function BacktestResultsPage() {
   const location = useLocation();
@@ -42,18 +111,48 @@ export function BacktestResultsPage() {
 
   const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
 
+  // Detect which indicators are actively used in strategy rule(s)
+  const usedIndicators: IndicatorType[] = useMemo(() => {
+    const rulesToCheck: StrategyRule[] = [];
+    if (session?.rules && Array.isArray(session.rules)) {
+      rulesToCheck.push(...session.rules);
+    }
+    if (rule && !rulesToCheck.some((r) => r.id === rule.id)) {
+      rulesToCheck.push(rule);
+    }
+
+    const set = new Set<IndicatorType>();
+    for (const r of rulesToCheck) {
+      if (!r.conditions || !Array.isArray(r.conditions)) continue;
+      for (const cond of r.conditions) {
+        if (cond.leftIndicator && cond.leftIndicator !== 'price') {
+          set.add(cond.leftIndicator);
+        }
+        if (cond.rightType === 'indicator' && cond.rightIndicator && cond.rightIndicator !== 'price') {
+          set.add(cond.rightIndicator);
+        }
+      }
+    }
+
+    return Array.from(set);
+  }, [rule, session?.rules]);
+
   // Compute or extract Initial Investment details
   const initialInvestment: InitialInvestmentInfo | null = useMemo(() => {
     if (!result) return null;
-    if (result.initialInvestment) {
-      return result.initialInvestment;
-    }
-
-    // Fallback if not directly present in cached session
     const firstPoint = result.equityCurve?.[0];
     const initialCap = result.summary.initialCapital || 100000;
     const firstTrade = result.trades?.[0];
 
+    if (result.initialInvestment) {
+      return {
+        ...result.initialInvestment,
+        changePercent: result.initialInvestment.changePercent ?? firstPoint?.changePercent,
+        indicators: result.initialInvestment.indicators ?? firstPoint?.indicators,
+      };
+    }
+
+    // Fallback if not directly present in cached session
     const date = result.summary.startDate || firstPoint?.date || firstTrade?.entryDate || 'N/A';
     const close = firstPoint?.close ?? firstPoint?.stockClose ?? firstTrade?.entryPrice ?? 0;
     const open = firstPoint?.open ?? close;
@@ -74,6 +173,8 @@ export function BacktestResultsPage() {
       execPrice: open || close,
       cashRemaining,
       initialCapital: initialCap,
+      changePercent: firstPoint?.changePercent,
+      indicators: firstPoint?.indicators,
     };
   }, [result]);
 
@@ -200,6 +301,11 @@ export function BacktestResultsPage() {
                   </h2>
                   <p className={`text-[10px] sm:text-[11px] ${isDark ? 'text-zinc-400' : 'text-gray-500'}`}>
                     Day 1 capital deployment on simulation start date ({initialInvestment.date})
+                    {usedIndicators.length > 0 && (
+                      <span className="ml-1.5 opacity-90 font-medium">
+                        • Strategy Indicators: {usedIndicators.map((i) => INDICATOR_CONFIG[i]?.label || i).join(', ')}
+                      </span>
+                    )}
                   </p>
                 </div>
               </div>
@@ -226,7 +332,7 @@ export function BacktestResultsPage() {
               </div>
             </div>
 
-            {/* Table: Date | Open | High | Low | Close | Invested | Qty */}
+            {/* Table: Date | Open | High | Low | Close | [Strategy Indicators...] | Invested | Qty */}
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
@@ -242,6 +348,15 @@ export function BacktestResultsPage() {
                     <th className="py-2.5 px-3">High</th>
                     <th className="py-2.5 px-3">Low</th>
                     <th className="py-2.5 px-3">Close</th>
+                    {usedIndicators.map((ind) => (
+                      <th
+                        key={ind}
+                        className="py-2.5 px-3 text-center whitespace-nowrap"
+                        title={INDICATOR_CONFIG[ind]?.tooltip || ind}
+                      >
+                        {INDICATOR_CONFIG[ind]?.label || ind}
+                      </th>
+                    ))}
                     <th className="py-2.5 px-3 text-right">Invested</th>
                     <th className="py-2.5 px-3 text-right">Qty</th>
                   </tr>
@@ -267,6 +382,11 @@ export function BacktestResultsPage() {
                     <td className="py-3 px-3 font-semibold">
                       {currencySymbol}{initialInvestment.close.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </td>
+                    {usedIndicators.map((ind) => (
+                      <td key={ind} className="py-3 px-3 text-center whitespace-nowrap">
+                        {renderIndicatorCell(ind, initialInvestment, currencySymbol)}
+                      </td>
+                    ))}
                     <td className="py-3 px-3 text-right font-bold text-emerald-500">
                       {currencySymbol}{initialInvestment.invested.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </td>
