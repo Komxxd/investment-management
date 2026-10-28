@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { Plus, Briefcase, Trash2, Pencil, ChevronRight, ChevronDown, Info, User, LogOut, Folder, Home, Sun, Moon, Check, Settings, TrendingUp } from 'lucide-react'
+import { Plus, Briefcase, Trash2, Pencil, ChevronRight, ChevronDown, Info, User, LogOut, Folder, Home, Sun, Moon, Check, Settings, Columns } from 'lucide-react'
 import { api } from '../../services/api/client'
 import { usePortfolioContext } from '../../features/portfolio/hooks/PortfolioContext'
 import { useTheme } from '../../app/providers/ThemeProvider'
@@ -36,6 +36,7 @@ export function AppLayout() {
   const isPortfolioPage = location.pathname.startsWith('/portfolio/');
   const portfolioId = isPortfolioPage ? location.pathname.split('/')[2] : null;
   const portfolioName = portfolioId ? portfolios.find(p => p.id === portfolioId)?.name : null;
+  const isBacktestPage = location.pathname.startsWith('/backtest');
 
   const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
@@ -83,13 +84,13 @@ export function AppLayout() {
               <img src="/favicon.svg" alt="Logo" className="w-8 h-8" />
             </div>
 
-            {isPortfolioPage && (
+            {(isPortfolioPage || isBacktestPage) ? (
               <div className="relative flex items-center" ref={portfolioMenuRef}>
                 <button 
                   onClick={() => setIsPortfolioMenuOpen(!isPortfolioMenuOpen)}
-                  className="flex items-center justify-between gap-1 sm:gap-1.5 text-[10px] sm:text-xs font-semibold text-primary hover:opacity-80 transition-opacity bg-surface py-1 sm:py-1.5 px-1.5 sm:px-3 rounded border border-divider w-[110px] sm:w-[140px]"
+                  className="flex items-center justify-between gap-1 sm:gap-1.5 text-[10px] sm:text-xs font-semibold text-primary hover:opacity-80 transition-opacity bg-surface py-1 sm:py-1.5 px-1.5 sm:px-3 rounded border border-divider min-w-[110px] sm:w-[140px]"
                 >
-                  <span className="truncate text-left">{portfolioName || 'Select Portfolio'}</span>
+                  <span className="truncate text-left">{portfolioName || 'All Portfolios'}</span>
                   <ChevronDown className={`w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0 text-secondary transition-transform ${isPortfolioMenuOpen ? 'rotate-180' : ''}`} />
                 </button>
                 
@@ -128,42 +129,52 @@ export function AppLayout() {
                   </div>
                 )}
               </div>
+            ) : (
+              <div id="navbar-left-portal" className="flex items-center"></div>
             )}
-            
-            <div id="navbar-left-portal" className="flex items-center"></div>
-
-            {/* Header Navigation Links */}
-            <div className="hidden md:flex items-center gap-1.5 ml-1 mr-2 shrink-0">
-              <button
-                onClick={() => navigate(portfolioId ? `/portfolio/${portfolioId}` : '/portfolios')}
-                className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
-                  !location.pathname.includes('/backtest/results')
-                    ? 'text-primary bg-surface-hover'
-                    : 'text-secondary hover:text-primary'
-                }`}
-              >
-                Portfolios
-              </button>
-              <button
-                onClick={() => navigate(portfolioId ? `/portfolio/${portfolioId}/backtest/results` : '/backtest/results')}
-                className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors flex items-center gap-1.5 cursor-pointer ${
-                  location.pathname.includes('/backtest/results')
-                    ? 'text-indigo-400 bg-indigo-500/15 border border-indigo-500/30 font-bold'
-                    : 'text-secondary hover:text-primary hover:bg-surface-hover'
-                }`}
-              >
-                <TrendingUp className="w-3.5 h-3.5 text-indigo-400" />
-                <span>Backtest Results</span>
-              </button>
-            </div>
 
             <div className="flex-1 max-w-md">
               <GlobalSearch />
             </div>
+
+            {/* Backtest Navbar Item */}
+            <button
+              onClick={() => navigate(portfolioId ? `/portfolio/${portfolioId}/backtest` : '/backtest')}
+              className={`px-1 pb-0.5 text-xs font-semibold text-white cursor-pointer shrink-0 border-b-2 ${
+                location.pathname.includes('/backtest')
+                  ? 'border-white'
+                  : 'border-transparent'
+              }`}
+            >
+              Backtest
+            </button>
           </div>
 
           <div className="flex items-center gap-1 sm:gap-2">
-            <div id="navbar-actions-portal" className="flex items-center gap-1 sm:gap-2"></div>
+            <div id="navbar-actions-portal" className="flex items-center gap-1 sm:gap-2">
+              {isBacktestPage && (
+                <>
+                  <button
+                    onClick={() => setIsCreateModalOpen(true)}
+                    className="flex items-center justify-center gap-1 sm:gap-1.5 p-1 sm:px-3 sm:py-1.5 text-[10px] sm:text-xs font-medium bg-primary text-background hover:opacity-90 transition-opacity rounded cursor-pointer"
+                    title="Create New Portfolio"
+                  >
+                    <Plus className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                    <span className="hidden sm:inline">Create New Portfolio</span>
+                  </button>
+
+                  <div className="relative flex">
+                    <button
+                      onClick={() => navigate('/portfolios')}
+                      className="flex items-center justify-center w-6 h-6 sm:w-8 sm:h-8 bg-surface hover:bg-surface-hover border border-divider rounded text-secondary hover:text-primary transition-colors cursor-pointer"
+                      title="Customize Summary"
+                    >
+                      <Columns className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
 
             <div className="relative group" ref={accountMenuRef}>
               <button
@@ -267,6 +278,15 @@ export function AppLayout() {
         isOpen={isSettingsModalOpen}
         onClose={() => setIsSettingsModalOpen(false)}
       />
+      {isBacktestPage && (
+        <CreatePortfolioModal
+          isOpen={isCreateModalOpen}
+          onClose={() => setIsCreateModalOpen(false)}
+          onCreated={() => {
+            fetchData();
+          }}
+        />
+      )}
     </div>
   );
 }
