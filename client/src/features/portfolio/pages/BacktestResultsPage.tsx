@@ -334,7 +334,7 @@ export function BacktestResultsPage() {
               </div>
             </div>
 
-            {/* Table: Date | Action | Open | High | Low | Close | [Strategy Indicators...] | Invested | Qty */}
+            {/* Table: Date | Open | High | Low | Close | [Strategy Indicators...] | Invested | Qty | Action */}
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
@@ -346,7 +346,6 @@ export function BacktestResultsPage() {
                     }`}
                   >
                     <th className="py-2.5 px-3">Date</th>
-                    <th className="py-2.5 px-3">Action</th>
                     <th className="py-2.5 px-3">Open</th>
                     <th className="py-2.5 px-3">High</th>
                     <th className="py-2.5 px-3">Low</th>
@@ -362,6 +361,7 @@ export function BacktestResultsPage() {
                     ))}
                     <th className="py-2.5 px-3 text-right">Invested</th>
                     <th className="py-2.5 px-3 text-right">Qty</th>
+                    <th className="py-2.5 px-3 text-right">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-divider font-mono text-xs">
@@ -372,21 +372,6 @@ export function BacktestResultsPage() {
                   >
                     <td className="py-3 px-3 font-semibold text-primary whitespace-nowrap">
                       {initialInvestment.date}
-                    </td>
-                    <td className="py-3 px-3 whitespace-nowrap">
-                      <span
-                        className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold tracking-wide uppercase border ${
-                          initialInvestment.action?.toLowerCase().includes('sell')
-                            ? isDark
-                              ? 'bg-rose-500/10 text-rose-400 border-rose-500/30'
-                              : 'bg-rose-50 text-rose-700 border-rose-200'
-                            : isDark
-                            ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
-                            : 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                        }`}
-                      >
-                        {initialInvestment.action || 'Initial Entry'}
-                      </span>
                     </td>
                     <td className="py-3 px-3">
                       {currencySymbol}{initialInvestment.open.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -410,6 +395,21 @@ export function BacktestResultsPage() {
                     </td>
                     <td className="py-3 px-3 text-right font-bold text-primary">
                       {initialInvestment.qty.toLocaleString()}
+                    </td>
+                    <td className="py-3 px-3 text-right whitespace-nowrap">
+                      <span
+                        className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold tracking-wide uppercase border ${
+                          initialInvestment.action?.toLowerCase().includes('sell')
+                            ? isDark
+                              ? 'bg-rose-500/10 text-rose-400 border-rose-500/30'
+                              : 'bg-rose-50 text-rose-700 border-rose-200'
+                            : isDark
+                            ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                            : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                        }`}
+                      >
+                        {initialInvestment.action || 'Initial Entry'}
+                      </span>
                     </td>
                   </tr>
                 </tbody>
