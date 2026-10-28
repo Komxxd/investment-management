@@ -56,6 +56,7 @@ export interface BacktestSignal {
 export interface BacktestTrade {
   id: string;
   symbol: string;
+  action?: 'BUY' | 'SELL';
   entryDate: string;
   entryPrice: number;
   exitDate?: string;
@@ -156,6 +157,9 @@ export interface BacktestSummaryMetrics {
   tradingDays: number;
   startDate: string;
   endDate: string;
+  calmarRatio?: number | null;
+  beta?: number | null;
+  maxDrawdownDurationDays?: number;
 }
 
 export interface BacktestResponse {

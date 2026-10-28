@@ -13,6 +13,7 @@ interface PendingOrder {
   action: 'BUY' | 'SELL';
   rule: StrategyRule;
   signalDate: string;
+  signalPrice: number;
   reason: string;
 }
 
@@ -60,6 +61,8 @@ export function runSimulation(
   let peakEquity = initialCapital;
   let benchmarkInitialQty = 0;
   let initialInvestment: InitialInvestmentInfo | undefined = undefined;
+  let lastConditionMetDay: string | null = null;
+  let totalCapitalInvested = initialCapital;
 
   // Find start index matching nominalStartDate (skipping warmup bars)
   let startIndex = 0;
@@ -129,7 +132,7 @@ export function runSimulation(
     // =========================================================================
     if (pendingOrder) {
       if (pendingOrder.action === 'BUY') {
-        const execPrice = parseFloat((bar.open * (1 + slippagePct)).toFixed(2));
+        const execPrice = pendingOrder.signalPrice ?? bar.close;
         const rule = pendingOrder.rule;
 
         // Determine target quantity based on sizingType
@@ -143,38 +146,62 @@ export function runSimulation(
           if (position.qty > 0) {
             targetQty = Math.floor(position.qty * pct);
           } else {
-            targetQty = Math.floor((cash * pct) / execPrice);
+            targetQty = Math.floor((initialCapital * pct) / execPrice);
           }
         } else {
           // Default fallback
           targetQty = Math.floor(Number(rule.sizingValue || 10));
         }
 
-        // Cap targetQty by available cash (including fee)
-        const feeMultiplier = 1 + feePct;
-        const maxAffordable = Math.floor(cash / (execPrice * feeMultiplier));
-        const fillQty = Math.min(targetQty, maxAffordable);
+        if (targetQty <= 0) {
+          targetQty = Math.max(1, Math.floor(Number(rule.sizingValue || 10)));
+        }
+
+        const fillQty = targetQty;
 
         if (fillQty > 0) {
-          const grossCost = fillQty * execPrice;
-          const fee = grossCost * feePct;
-          const totalOutlay = grossCost + fee;
-          cash -= totalOutlay;
+          const grossCost = parseFloat((fillQty * execPrice).toFixed(2));
+          const fee = parseFloat((grossCost * feePct).toFixed(2));
+          const totalOutlay = parseFloat((grossCost + fee).toFixed(2));
+
+          // If available cash is insufficient, inject additional tranche capital
+          if (cash < totalOutlay) {
+            const shortage = parseFloat((totalOutlay - cash).toFixed(2));
+            totalCapitalInvested = parseFloat((totalCapitalInvested + shortage).toFixed(2));
+            cash = parseFloat((cash + shortage).toFixed(2));
+            if (execPrice > 0) {
+              benchmarkInitialQty += shortage / execPrice;
+            }
+          }
+
+          cash = parseFloat((cash - totalOutlay).toFixed(2));
 
           // Update position weighted average price
-          const newTotalCost = position.totalCost + grossCost;
+          const newTotalCost = parseFloat((position.totalCost + grossCost).toFixed(2));
           const newQty = position.qty + fillQty;
           position.qty = newQty;
-          position.avgPrice = newTotalCost / newQty;
+          position.avgPrice = parseFloat((newTotalCost / newQty).toFixed(2));
           position.totalCost = newTotalCost;
 
           if (position.qty === fillQty) {
             position.entryDate = bar.date;
             position.entryReason = pendingOrder.reason;
           }
+
+          trades.push({
+            id: `trade_${trades.length + 1}`,
+            symbol,
+            action: 'BUY',
+            entryDate: bar.date,
+            entryPrice: execPrice,
+            qty: fillQty,
+            totalCost: grossCost,
+            status: 'OPEN',
+            entryReason: pendingOrder.reason || 'Tranche Buy',
+          });
         }
       } else if (pendingOrder.action === 'SELL' && position.qty > 0) {
-        const execPrice = parseFloat((bar.open * (1 - slippagePct)).toFixed(2));
+        const execPrice = pendingOrder.signalPrice ?? bar.close;
         const rule = pendingOrder.rule;
 
         let sellQty = 0;
@@ -207,6 +234,7 @@ export function runSimulation(
           trades.push({
             id: `trade_${trades.length + 1}`,
             symbol,
+            action: 'SELL',
             entryDate: position.entryDate || bar.date,
             entryPrice: parseFloat(position.avgPrice.toFixed(2)),
             exitDate: bar.date,
@@ -233,30 +261,35 @@ export function runSimulation(
     }
 
     // =========================================================================
-    // 2. EVALUATE STRATEGY RULES AT CLOSE (QUEUE PENDING ORDER FOR TOMORROW)
+    // 2. EVALUATE STRATEGY RULES AT CLOSE (QUEUE PENDING ORDER FOR NEXT BAR)
     // =========================================================================
+    const currentDay = bar.date.includes(' ') ? bar.date.split(' ')[0] : bar.date.split('T')[0];
     let conditionMatchedToday = false;
     let matchReason = '';
 
-    for (const rule of rules) {
-      const evalRes = evaluateRuleOnBar(rule, bar, prevBar);
-      if (evalRes.matched && evalRes.action !== 'NONE') {
-        conditionMatchedToday = true;
-        matchReason = evalRes.reason;
+    // Enforce: in a day, only once a condition meets
+    const canCheckConditionToday = !pendingOrder && lastConditionMetDay !== currentDay && i !== startIndex;
 
-        // Skip redundant signals for order execution
-        if (evalRes.action === 'SELL' && position.qty <= 0) continue;
-        if (evalRes.action === 'BUY' && cash < bar.close) continue;
+    if (canCheckConditionToday) {
+      for (const rule of rules) {
+        const evalRes = evaluateRuleOnBar(rule, bar, prevBar);
+        if (evalRes.matched && evalRes.action !== 'NONE') {
+          conditionMatchedToday = true;
+          matchReason = evalRes.reason;
+          lastConditionMetDay = currentDay; // Mark that condition has met for today
 
-        if (!pendingOrder) {
+          // Skip redundant signals for order execution
+          if (evalRes.action === 'SELL' && position.qty <= 0) continue;
+
           pendingOrder = {
             action: evalRes.action,
             rule,
             signalDate: bar.date,
+            signalPrice: bar.close,
             reason: evalRes.reason,
           };
+          break; // Max 1 condition met per day
         }
-        break; // Max 1 action queued per day
       }
     }
 
@@ -264,6 +297,7 @@ export function runSimulation(
     let dayAction: string | undefined = undefined;
     if (i === startIndex) {
       dayAction = 'Initial Entry';
+      lastConditionMetDay = currentDay;
     } else if (conditionMatchedToday) {
       dayAction = 'Condition Met';
     }
@@ -345,7 +379,7 @@ export function runSimulation(
 
   return {
     symbol,
-    initialCapital,
+    initialCapital: parseFloat(totalCapitalInvested.toFixed(2)),
     finalEquity,
     cash: parseFloat(cash.toFixed(2)),
     holdingsValue: parseFloat((position.qty * (finalBar?.close || 0)).toFixed(2)),

@@ -6,10 +6,16 @@ import {
   Activity,
   Sliders,
   X,
-  Coins,
   ChevronLeft,
   ChevronRight,
   Filter,
+  BarChart3,
+  Calendar,
+  CalendarDays,
+  Clock,
+  TrendingUp,
+  Scale,
+  ShieldAlert,
 } from 'lucide-react';
 import type { StrategyRule, IndicatorType } from '../components/StrategyBuilderModal';
 import { formatRuleFormula } from '../components/StrategyBuilderModal';
@@ -43,7 +49,7 @@ function renderIndicatorCell(
       return (
         <span
           className={`font-mono font-semibold ${
-            isOversold ? 'text-emerald-500' : isOverbought ? 'text-amber-500' : 'text-primary'
+            isOversold ? 'text-success' : isOverbought ? 'text-amber-500' : 'text-primary'
           }`}
         >
           {num.toFixed(2)}
@@ -76,7 +82,7 @@ function renderIndicatorCell(
       const num = Number(val);
       const sign = num > 0 ? '+' : '';
       return (
-        <span className={`font-mono font-semibold ${num > 0 ? 'text-emerald-500' : num < 0 ? 'text-rose-500' : 'text-primary'}`}>
+        <span className={`font-mono font-semibold ${num > 0 ? 'text-success' : num < 0 ? 'text-danger' : 'text-primary'}`}>
           {sign}
           {num.toFixed(2)}%
         </span>
@@ -85,6 +91,29 @@ function renderIndicatorCell(
     default:
       return <span className="text-secondary">—</span>;
   }
+}
+
+interface TradingDayItem {
+  dateStr: string;
+  formattedDate: string;
+  monthName: string;
+  year: string;
+  pnl: number;
+  pnlPercent: number;
+  endEquity: number;
+  startEquity: number;
+  invested: number;
+  cash: number;
+  signalsCount: number;
+  candlesCount: number;
+}
+
+interface YearReturnRow {
+  year: string;
+  months: ({ pnl: number; pnlPercent: number } | null)[];
+  totalPnl: number;
+  totalPercent: number;
+  maxDrawdownPct: number;
 }
 
 export function BacktestResultsPage() {
@@ -112,6 +141,7 @@ export function BacktestResultsPage() {
   const rule: StrategyRule | null = session?.rule || null;
   const portfolioId = session?.portfolioId || urlPortfolioId;
 
+  const [selectedTab, setSelectedTab] = useState<string>('overview');
   const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState<number | 'ALL'>(25);
@@ -214,6 +244,9 @@ export function BacktestResultsPage() {
       ];
     }
 
+    const seenConditionMetDays = new Set<string>();
+    let seenInitialEntry = false;
+
     return curve.map((pt, idx) => {
       const open = pt.open ?? pt.close ?? pt.stockClose ?? 0;
       const high = pt.high ?? Math.max(open, pt.close ?? pt.stockClose ?? open);
@@ -229,17 +262,25 @@ export function BacktestResultsPage() {
           ? pt.holdingsValue
           : qty * close;
 
-      let action = pt.action;
-      if (!action) {
-        if (idx === 0) {
-          action = 'Initial Entry';
-        } else if (pt.conditionMatched) {
-          action = 'Condition Met';
-        }
-      }
-
       const rowDate = pt.date ? (pt.date.includes(' ') ? pt.date.split(' ')[0] : pt.date.split('T')[0]) : '';
       const rowTime = pt.time || (pt.date && pt.date.includes(' ') ? pt.date.split(' ')[1] : undefined);
+
+      let action: string | undefined = undefined;
+      let isConditionMatched = false;
+
+      if (pt.action === 'Initial Entry' || idx === 0) {
+        if (!seenInitialEntry) {
+          action = 'Initial Entry';
+          seenInitialEntry = true;
+        }
+      } else if (pt.action === 'Condition Met' || pt.conditionMatched) {
+        // Enforce: only once a condition meets and displays per day in the action column
+        if (!seenConditionMetDays.has(rowDate)) {
+          seenConditionMetDays.add(rowDate);
+          action = 'Condition Met';
+          isConditionMatched = true;
+        }
+      }
 
       return {
         date: rowDate,
@@ -253,31 +294,290 @@ export function BacktestResultsPage() {
         invested,
         qty,
         action,
-        actionReason: pt.actionReason,
-        conditionMatched: pt.conditionMatched || action === 'Condition Met',
+        actionReason: isConditionMatched ? pt.actionReason : undefined,
+        conditionMatched: isConditionMatched,
       };
     });
   }, [result, initialInvestment]);
 
-  // Filtered rows (All vs Actions Only)
-  const displayedRows = useMemo(() => {
-    let rows = timelineRows;
-    if (filterActionsOnly) {
-      rows = rows.filter((r) => !!r.action);
+  // Construct trading days with exact daily PnL (endEquity - startEquity)
+  const tradingDays: TradingDayItem[] = useMemo(() => {
+    if (!result) return [];
+
+    const initialCap = result.summary?.initialCapital || 100000;
+    const curve = result.equityCurve || [];
+
+    const pointsByDate = new Map<string, typeof curve>();
+    for (const pt of curve) {
+      const raw = pt.date || '';
+      const dateStr = raw.includes(' ') ? raw.split(' ')[0] : raw.split('T')[0];
+      if (!dateStr) continue;
+      if (!pointsByDate.has(dateStr)) {
+        pointsByDate.set(dateStr, []);
+      }
+      pointsByDate.get(dateStr)!.push(pt);
     }
+
+    if (pointsByDate.size === 0 && timelineRows.length > 0) {
+      for (const row of timelineRows) {
+        if (!row.date) continue;
+        if (!pointsByDate.has(row.date)) {
+          pointsByDate.set(row.date, []);
+        }
+        pointsByDate.get(row.date)!.push({
+          date: row.date,
+          time: row.time,
+          equity: row.invested + (initialInvestment?.cashRemaining || 0),
+          cash: initialInvestment?.cashRemaining || 0,
+          holdingsValue: row.invested,
+          heldQty: row.qty,
+          stockClose: row.close,
+          benchmarkEquity: 0,
+          drawdownPercent: 0,
+        });
+      }
+    }
+
+    const sortedDates = Array.from(pointsByDate.keys()).sort((a, b) => a.localeCompare(b));
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const fullMonthNames = ['JANUARY', 'FEBRUARY', 'MARCH', 'APRIL', 'MAY', 'JUNE', 'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER'];
+
+    let prevEquity = initialCap;
+    const days: TradingDayItem[] = [];
+
+    for (let i = 0; i < sortedDates.length; i++) {
+      const d = sortedDates[i];
+      const dayPts = pointsByDate.get(d) || [];
+      const lastPt = dayPts[dayPts.length - 1];
+      const rawEndEquity = lastPt?.equity ?? (lastPt ? lastPt.holdingsValue + lastPt.cash : 0);
+      const endEquity = rawEndEquity > 0 ? rawEndEquity : prevEquity;
+      const startEquity = prevEquity;
+      const dayPnL = endEquity - startEquity;
+      const pnlPercent = startEquity > 0 ? (dayPnL / startEquity) * 100 : 0;
+
+      const parts = d.split('-');
+      const year = parts[0] || '';
+      const mNum = parseInt(parts[1] || '1', 10);
+      const dayNum = parts[2] || '';
+
+      const formattedDate = `${dayNum} ${monthNames[mNum - 1] || ''}`.trim();
+      const monthName = fullMonthNames[mNum - 1] || '';
+
+      const signalsCount = timelineRows.filter(
+        (r) => r.date === d && r.action === 'Condition Met'
+      ).length;
+
+      days.push({
+        dateStr: d,
+        formattedDate,
+        monthName,
+        year,
+        pnl: dayPnL,
+        pnlPercent,
+        endEquity,
+        startEquity,
+        invested: lastPt?.holdingsValue ?? (lastPt?.heldQty ? lastPt.heldQty * (lastPt.stockClose || 0) : 0),
+        cash: lastPt?.cash ?? 0,
+        signalsCount,
+        candlesCount: dayPts.length,
+      });
+
+      prevEquity = endEquity;
+    }
+
+    return days;
+  }, [result, timelineRows, initialInvestment]);
+
+  const reversedDays = useMemo(() => [...tradingDays].reverse(), [tradingDays]);
+
+  const groupedDays = useMemo(() => {
+    const map: Record<string, TradingDayItem[]> = {};
+    for (const day of reversedDays) {
+      const key = `${day.year} • ${day.monthName}`;
+      if (!map[key]) {
+        map[key] = [];
+      }
+      map[key].push(day);
+    }
+    return map;
+  }, [reversedDays]);
+
+  // Year-wise Returns Matrix
+  const yearReturns: YearReturnRow[] = useMemo(() => {
+    if (tradingDays.length === 0) return [];
+
+    const years = Array.from(new Set(tradingDays.map((d) => d.year))).sort().reverse();
+    const rows: YearReturnRow[] = [];
+
+    for (const yr of years) {
+      const daysInYear = tradingDays.filter((d) => d.year === yr);
+      const months: ({ pnl: number; pnlPercent: number } | null)[] = Array(12).fill(null);
+
+      for (let m = 0; m < 12; m++) {
+        const daysInMonth = daysInYear.filter((d) => {
+          const parts = d.dateStr.split('-');
+          return parseInt(parts[1] || '0', 10) === m + 1;
+        });
+
+        if (daysInMonth.length > 0) {
+          const first = daysInMonth[0];
+          const last = daysInMonth[daysInMonth.length - 1];
+          const monthPnl = last.endEquity - first.startEquity;
+          const monthPct = first.startEquity > 0 ? (monthPnl / first.startEquity) * 100 : 0;
+          months[m] = { pnl: monthPnl, pnlPercent: monthPct };
+        }
+      }
+
+      const firstYearDay = daysInYear[0];
+      const lastYearDay = daysInYear[daysInYear.length - 1];
+      const totalPnl = lastYearDay.endEquity - firstYearDay.startEquity;
+      const totalPercent = firstYearDay.startEquity > 0 ? (totalPnl / firstYearDay.startEquity) * 100 : 0;
+
+      rows.push({
+        year: yr,
+        months,
+        totalPnl,
+        totalPercent,
+        maxDrawdownPct: result?.summary?.maxDrawdownPct ?? 0,
+      });
+    }
+
     return rows;
-  }, [timelineRows, filterActionsOnly]);
+  }, [tradingDays, result]);
 
-  const totalPages = useMemo(() => {
+  const portfolioMetrics = useMemo(() => {
+    if (!result) return null;
+    const curve = result.equityCurve || [];
+    const summary = result.summary;
+
+    // 1. Calmar Ratio: CAGR / Max Drawdown
+    const calmar =
+      summary.calmarRatio !== undefined && summary.calmarRatio !== null
+        ? summary.calmarRatio
+        : summary.maxDrawdownPct > 0
+        ? parseFloat((summary.cagrPct / summary.maxDrawdownPct).toFixed(2))
+        : null;
+
+    // 2. Max Drawdown Duration (Underwater period in trading days)
+    let maxUnderwater = summary.maxDrawdownDurationDays || 0;
+    if (!maxUnderwater && curve.length > 0) {
+      let currentUnderwater = 0;
+      for (const pt of curve) {
+        if (pt.drawdownPercent > 0.05) {
+          currentUnderwater++;
+          if (currentUnderwater > maxUnderwater) {
+            maxUnderwater = currentUnderwater;
+          }
+        } else {
+          currentUnderwater = 0;
+        }
+      }
+    }
+
+    // 3. Beta: Portfolio sensitivity to Benchmark
+    let betaVal = summary.beta !== undefined && summary.beta !== null ? summary.beta : null;
+    if (betaVal === null && curve.length > 5) {
+      const stratReturns: number[] = [];
+      const benchReturns: number[] = [];
+      for (let i = 1; i < curve.length; i++) {
+        const prevE = curve[i - 1].equity;
+        const currE = curve[i].equity;
+        const prevB = curve[i - 1].benchmarkEquity;
+        const currB = curve[i].benchmarkEquity;
+        if (prevE > 0 && prevB > 0) {
+          stratReturns.push((currE - prevE) / prevE);
+          benchReturns.push((currB - prevB) / prevB);
+        }
+      }
+      if (stratReturns.length > 0) {
+        const meanS = stratReturns.reduce((a, b) => a + b, 0) / stratReturns.length;
+        const meanB = benchReturns.reduce((a, b) => a + b, 0) / benchReturns.length;
+        let cov = 0;
+        let varB = 0;
+        for (let i = 0; i < stratReturns.length; i++) {
+          cov += (stratReturns[i] - meanS) * (benchReturns[i] - meanB);
+          varB += Math.pow(benchReturns[i] - meanB, 2);
+        }
+        if (varB > 0) {
+          betaVal = parseFloat((cov / varB).toFixed(2));
+        }
+      }
+    }
+
+    // 4. Cash Drag % (Average % of capital kept in cash)
+    const cashDragPct = parseFloat(Math.max(0, 100 - summary.marketExposurePct).toFixed(2));
+
+    // 5. Total Tranches / Allocations
+    let trancheCount = result.initialInvestment ? 1 : 0;
+    const conditionDays = new Set<string>();
+    for (const pt of curve) {
+      if (pt.action === 'Condition Met' || (pt.conditionMatched && pt.action !== 'Initial Entry')) {
+        conditionDays.add(pt.date);
+      }
+    }
+    trancheCount += conditionDays.size;
+    if (trancheCount === 0 && summary.totalTrades > 0) {
+      trancheCount = summary.totalTrades;
+    }
+
+    // 6. Effective Average Buy Cost vs Benchmark / Average Market Price
+    let totalBoughtShares = result.initialInvestment?.qty || 0;
+    let totalCost = result.initialInvestment?.invested || 0;
+    for (const t of result.trades) {
+      if (t.action === 'BUY' && (!result.initialInvestment || t.entryPrice !== result.initialInvestment.execPrice)) {
+        totalBoughtShares += t.qty;
+        totalCost += t.totalCost;
+      }
+    }
+    const effectiveAvgPrice =
+      totalBoughtShares > 0
+        ? parseFloat((totalCost / totalBoughtShares).toFixed(2))
+        : result.initialInvestment?.execPrice || null;
+
+    const avgMarketPrice =
+      curve.length > 0
+        ? parseFloat((curve.reduce((acc, p) => acc + (p.stockClose || p.close || 0), 0) / curve.length).toFixed(2))
+        : null;
+
+    return {
+      calmarRatio: calmar,
+      maxUnderwaterDays: maxUnderwater,
+      beta: betaVal,
+      cashDragPct,
+      trancheCount: Math.max(1, trancheCount),
+      effectiveAvgPrice,
+      avgMarketPrice,
+    };
+  }, [result]);
+
+  // Selected Day State & Filtering
+  const activeDay = useMemo(() => {
+    if (selectedTab === 'overview') return null;
+    return tradingDays.find((d) => d.dateStr === selectedTab) || null;
+  }, [selectedTab, tradingDays]);
+
+  const dayCandles = useMemo(() => {
+    if (selectedTab === 'overview') return [];
+    return timelineRows.filter((r) => r.date === selectedTab);
+  }, [selectedTab, timelineRows]);
+
+  const displayedDayCandles = useMemo(() => {
+    if (filterActionsOnly) {
+      return dayCandles.filter((r) => !!r.action);
+    }
+    return dayCandles;
+  }, [dayCandles, filterActionsOnly]);
+
+  const dayTotalPages = useMemo(() => {
     if (pageSize === 'ALL') return 1;
-    return Math.max(1, Math.ceil(displayedRows.length / pageSize));
-  }, [displayedRows.length, pageSize]);
+    return Math.max(1, Math.ceil(displayedDayCandles.length / pageSize));
+  }, [displayedDayCandles.length, pageSize]);
 
-  const paginatedRows = useMemo(() => {
-    if (pageSize === 'ALL') return displayedRows;
+  const dayPaginatedRows = useMemo(() => {
+    if (pageSize === 'ALL') return displayedDayCandles;
     const start = (currentPage - 1) * pageSize;
-    return displayedRows.slice(start, start + pageSize);
-  }, [displayedRows, currentPage, pageSize]);
+    return displayedDayCandles.slice(start, start + pageSize);
+  }, [displayedDayCandles, currentPage, pageSize]);
 
   const conditionMetCount = useMemo(() => {
     return timelineRows.filter((r) => r.action === 'Condition Met').length;
@@ -376,328 +676,706 @@ export function BacktestResultsPage() {
         </div>
       </div>
 
-      {/* Main Content Area */}
-      <main className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
-        {timelineRows.length > 0 && (
-          <div
-            className={`rounded-xl border p-4 sm:p-5 transition-colors ${
-              isDark
-                ? 'bg-[#141518] border-zinc-800/80 shadow-lg shadow-black/20'
-                : 'bg-white border-gray-200 shadow-xs'
-            }`}
-          >
-            {/* Header with Title and Filter Controls */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 mb-3 border-b border-divider">
-              <div className="flex items-center gap-2">
-                <div
-                  className={`p-1.5 rounded-lg border ${
-                    isDark
-                      ? 'bg-zinc-800 text-zinc-300 border-zinc-700/60'
-                      : 'bg-gray-100 text-gray-700 border-gray-200'
-                  }`}
-                >
-                  <Coins className="w-4 h-4 text-emerald-500" />
-                </div>
-                <div>
-                  <h2
-                    className={`text-xs sm:text-sm font-bold tracking-wide uppercase ${
-                      isDark ? 'text-zinc-100' : 'text-gray-900'
-                    }`}
-                  >
-                    Simulation Timeline & Actions
-                  </h2>
-                  <p className={`text-[10px] sm:text-[11px] ${isDark ? 'text-zinc-400' : 'text-gray-500'}`}>
-                    Candle data, indicator readings, and condition events ({timelineRows.length} bars)
-                    {usedIndicators.length > 0 && (
-                      <span className="ml-1.5 opacity-90 font-medium">
-                        • Strategy Indicators: {usedIndicators.map((i) => INDICATOR_CONFIG[i]?.label || i).join(', ')}
-                      </span>
-                    )}
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2 text-[11px] font-mono">
-                {/* Actions Only Filter Toggle */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setFilterActionsOnly((prev) => !prev);
-                    setCurrentPage(1);
-                  }}
-                  className={`flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium border transition-colors cursor-pointer ${
-                    filterActionsOnly
-                      ? isDark
-                        ? 'bg-amber-500/20 text-amber-300 border-amber-500/50'
-                        : 'bg-amber-100 text-amber-900 border-amber-300'
-                      : isDark
-                      ? 'bg-zinc-800 text-zinc-300 border-zinc-700 hover:bg-zinc-700'
-                      : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100'
-                  }`}
-                  title="Toggle to view only rows where Initial Entry or Condition Met actions occurred"
-                >
-                  <Filter className="w-2.5 h-2.5" />
-                  <span>{filterActionsOnly ? 'Actions Only' : 'All Dates'}</span>
-                  <span className="px-1 py-0.2 rounded text-[9px] bg-black/20 font-bold">
-                    {filterActionsOnly ? displayedRows.length : timelineRows.length}
-                  </span>
-                </button>
-
-                {conditionMetCount > 0 && (
-                  <span
-                    className={`px-2 py-0.5 rounded border text-[10px] ${
-                      isDark
-                        ? 'bg-amber-500/10 text-amber-400 border-amber-500/30'
-                        : 'bg-amber-50 text-amber-800 border-amber-200'
-                    }`}
-                  >
-                    Signals: <strong>{conditionMetCount}</strong>
-                  </span>
-                )}
-
-                {initialInvestment && (
-                  <>
-                    <span
-                      className={`px-2 py-0.5 rounded border text-[10px] ${
-                        isDark
-                          ? 'bg-zinc-900 text-zinc-400 border-zinc-800'
-                          : 'bg-gray-50 text-gray-600 border-gray-200'
-                      }`}
-                    >
-                      Capital: <strong className={isDark ? 'text-zinc-200' : 'text-gray-900'}>{currencySymbol}{initialInvestment.initialCapital.toLocaleString()}</strong>
-                    </span>
-                    <span
-                      className={`px-2 py-0.5 rounded border text-[10px] ${
-                        isDark
-                          ? 'bg-zinc-900 text-zinc-400 border-zinc-800'
-                          : 'bg-gray-50 text-gray-600 border-gray-200'
-                      }`}
-                    >
-                      Cash Left: <strong className={isDark ? 'text-zinc-200' : 'text-gray-900'}>{currencySymbol}{initialInvestment.cashRemaining.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
-                    </span>
-                  </>
-                )}
-              </div>
+      {/* Main Workspace Body with Left Tab Sidebar and Right Content */}
+      <div className="flex-1 flex min-h-0 overflow-hidden">
+        {/* Left Tab / Sidebar: TRADING DAYS */}
+        <aside
+          className={`w-52 sm:w-60 shrink-0 border-r flex flex-col h-full overflow-hidden select-none ${
+            isDark ? 'bg-[#101114] border-zinc-800' : 'bg-gray-50/70 border-gray-200'
+          }`}
+        >
+          {/* TRADING DAYS title & Analytics Overview button */}
+          <div className="p-3 border-b border-divider shrink-0">
+            <div className="flex items-center gap-1.5 px-2 pb-2 text-[10px] font-bold tracking-wider text-secondary uppercase">
+              <Calendar className="w-3.5 h-3.5 text-primary" />
+              <span>TRADING DAYS</span>
             </div>
 
-            {/* Table: Date | Open | High | Low | Close | [Strategy Indicators...] | Invested | Qty | Action */}
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr
-                    className={`border-b text-[10px] sm:text-[11px] font-semibold uppercase tracking-wider ${
-                      isDark
-                        ? 'border-zinc-800 text-zinc-400 bg-zinc-900/40'
-                        : 'border-gray-200 text-gray-500 bg-gray-50/70'
-                    }`}
-                  >
-                    <th className="py-2.5 px-3">Date</th>
-                    <th className="py-2.5 px-3">Time</th>
-                    <th className="py-2.5 px-3">Open</th>
-                    <th className="py-2.5 px-3">High</th>
-                    <th className="py-2.5 px-3">Low</th>
-                    <th className="py-2.5 px-3">Close</th>
-                    {usedIndicators.map((ind) => (
-                      <th
-                        key={ind}
-                        className="py-2.5 px-3 text-center whitespace-nowrap"
-                        title={INDICATOR_CONFIG[ind]?.tooltip || ind}
-                      >
-                        {INDICATOR_CONFIG[ind]?.label || ind}
-                      </th>
-                    ))}
-                    <th className="py-2.5 px-3 text-right">Invested</th>
-                    <th className="py-2.5 px-3 text-right">Qty</th>
-                    <th className="py-2.5 px-3 text-right">Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-divider font-mono text-xs">
-                  {paginatedRows.map((row, idx) => {
-                    const isInitial = row.action === 'Initial Entry';
-                    const isConditionMet = row.action === 'Condition Met';
-
-                    return (
-                      <tr
-                        key={`${row.date}-${row.time || idx}`}
-                        className={`transition-colors ${
-                          isConditionMet
-                            ? isDark
-                              ? 'bg-amber-500/10 hover:bg-amber-500/15 text-zinc-100 font-medium'
-                              : 'bg-amber-50/70 hover:bg-amber-100/70 text-gray-900 font-medium'
-                            : isInitial
-                            ? isDark
-                              ? 'bg-emerald-500/5 hover:bg-emerald-500/10 text-zinc-100'
-                              : 'bg-emerald-50/40 hover:bg-emerald-50/70 text-gray-900'
-                            : isDark
-                            ? 'hover:bg-zinc-800/40 text-zinc-200'
-                            : 'hover:bg-gray-50/80 text-gray-800'
-                        }`}
-                      >
-                        <td className="py-2.5 px-3 font-semibold text-primary whitespace-nowrap">
-                          {row.date}
-                        </td>
-                        <td className="py-2.5 px-3 font-mono text-secondary whitespace-nowrap">
-                          {row.time ? (
-                            <span
-                              className={`px-1.5 py-0.5 rounded text-[10px] font-semibold border ${
-                                isDark
-                                  ? 'bg-zinc-800/80 text-zinc-300 border-zinc-700/60'
-                                  : 'bg-gray-100 text-gray-700 border-gray-200'
-                              }`}
-                            >
-                              {row.time}
-                            </span>
-                          ) : (
-                            <span className="opacity-30">—</span>
-                          )}
-                        </td>
-                        <td className="py-2.5 px-3">
-                          {currencySymbol}{row.open.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </td>
-                        <td className="py-2.5 px-3 text-emerald-500">
-                          {currencySymbol}{row.high.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </td>
-                        <td className="py-2.5 px-3 text-rose-500">
-                          {currencySymbol}{row.low.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </td>
-                        <td className="py-2.5 px-3 font-semibold">
-                          {currencySymbol}{row.close.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </td>
-                        {usedIndicators.map((ind) => (
-                          <td key={ind} className="py-2.5 px-3 text-center whitespace-nowrap">
-                            {renderIndicatorCell(ind, row, currencySymbol)}
-                          </td>
-                        ))}
-                        <td className="py-2.5 px-3 text-right font-bold text-emerald-500">
-                          {currencySymbol}{row.invested.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </td>
-                        <td className="py-2.5 px-3 text-right font-bold text-primary">
-                          {row.qty.toLocaleString()}
-                        </td>
-                        <td className="py-2.5 px-3 text-right whitespace-nowrap">
-                          {isInitial ? (
-                            <span
-                              className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold tracking-wide uppercase border ${
-                                isDark
-                                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
-                                  : 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                              }`}
-                            >
-                              Initial Entry
-                            </span>
-                          ) : isConditionMet ? (
-                            <span
-                              title={row.actionReason}
-                              className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold tracking-wide uppercase border shadow-2xs ${
-                                isDark
-                                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/50'
-                                  : 'bg-amber-100 text-amber-800 border-amber-300'
-                              }`}
-                            >
-                              Condition Met
-                            </span>
-                          ) : (
-                            <span className="text-secondary opacity-30">—</span>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Footer with Pagination Controls */}
-            <div
-              className={`mt-3 pt-2.5 border-t flex flex-wrap items-center justify-between gap-2 text-[11px] ${
-                isDark ? 'border-zinc-800/80 text-zinc-400' : 'border-gray-100 text-gray-500'
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedTab('overview');
+                setCurrentPage(1);
+              }}
+              className={`w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${
+                selectedTab === 'overview'
+                  ? isDark
+                    ? 'bg-zinc-800 text-zinc-100 border border-zinc-700 shadow-2xs'
+                    : 'bg-white text-gray-900 border border-gray-200 shadow-2xs'
+                  : isDark
+                  ? 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40'
+                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100/70'
               }`}
             >
-              <div className="flex items-center gap-3">
-                <span>
-                  Showing{' '}
-                  <strong className={isDark ? 'text-zinc-200' : 'text-gray-800'}>
-                    {displayedRows.length === 0
-                      ? 0
-                      : pageSize === 'ALL'
-                      ? `1 to ${displayedRows.length}`
-                      : `${(currentPage - 1) * pageSize + 1} to ${Math.min(
-                          currentPage * pageSize,
-                          displayedRows.length
-                        )}`}
-                  </strong>{' '}
-                  of{' '}
-                  <strong className={isDark ? 'text-zinc-200' : 'text-gray-800'}>
-                    {displayedRows.length}
-                  </strong>{' '}
-                  candles {conditionMetCount > 0 && `(${conditionMetCount} condition triggers)`}
-                </span>
+              <BarChart3 className="w-3.5 h-3.5 text-primary" />
+              <span>Analytics Overview</span>
+            </button>
+          </div>
 
-                {/* Page Size Selector */}
-                <div className="flex items-center gap-1 font-mono text-[10px]">
-                  <span>Rows:</span>
-                  {[25, 50, 100, 'ALL'].map((size) => (
+          {/* Days List with final daily PnL */}
+          <div className="flex-1 overflow-y-auto px-2 py-2 space-y-3">
+            {Object.entries(groupedDays).map(([groupKey, days]) => (
+              <div key={groupKey} className="space-y-0.5">
+                <div className="px-2 pt-1 pb-1 text-[9px] sm:text-[10px] font-bold tracking-wider text-secondary uppercase">
+                  {groupKey}
+                </div>
+                {days.map((day) => {
+                  const isSelected = selectedTab === day.dateStr;
+                  const isPositive = day.pnl >= 0;
+
+                  return (
                     <button
-                      key={size}
+                      key={day.dateStr}
                       type="button"
                       onClick={() => {
-                        setPageSize(size as any);
+                        setSelectedTab(day.dateStr);
                         setCurrentPage(1);
                       }}
-                      className={`px-1.5 py-0.5 rounded border transition-colors cursor-pointer ${
-                        pageSize === size
+                      className={`w-full flex items-center justify-between px-2.5 py-1.5 text-xs font-mono rounded-md transition-colors cursor-pointer ${
+                        isSelected
                           ? isDark
-                            ? 'bg-zinc-800 text-zinc-100 border-zinc-700 font-bold'
-                            : 'bg-gray-200 text-gray-900 border-gray-300 font-bold'
+                            ? 'bg-zinc-800 text-zinc-100 font-bold border border-zinc-700'
+                            : 'bg-white text-gray-900 font-bold border border-gray-200 shadow-2xs'
                           : isDark
-                          ? 'text-zinc-500 border-transparent hover:text-zinc-300'
-                          : 'text-gray-500 border-transparent hover:text-gray-800'
+                          ? 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40'
+                          : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100/70'
                       }`}
                     >
-                      {size}
+                      <span className="font-medium">{day.formattedDate}</span>
+                      <span
+                        className={`font-semibold tabular-nums text-[11px] ${
+                          isPositive ? 'text-success' : 'text-danger'
+                        }`}
+                      >
+                        {isPositive ? '+' : ''}{currencySymbol}{Math.round(day.pnl).toLocaleString()}
+                      </span>
                     </button>
-                  ))}
+                  );
+                })}
+              </div>
+            ))}
+
+            {tradingDays.length === 0 && (
+              <div className="p-4 text-center text-secondary text-xs">
+                No trading days available.
+              </div>
+            )}
+          </div>
+        </aside>
+
+        {/* Right Content Area */}
+        <main className="flex-1 overflow-y-auto">
+          {selectedTab === 'overview' ? (
+            /* ANALYTICS OVERVIEW (Default View) */
+            <div className="p-4 sm:p-6 space-y-6">
+              {/* Year-wise Returns */}
+              <div className="space-y-2.5">
+                <div className="flex items-center gap-2">
+                  <CalendarDays className="w-4 h-4 text-primary" />
+                  <h2 className="text-xs sm:text-sm font-bold tracking-wide uppercase text-primary">
+                    Year-wise Returns
+                  </h2>
+                </div>
+
+                <div className="overflow-x-auto border border-divider rounded-xl">
+                  <table className="w-full text-center text-xs font-mono">
+                    <thead
+                      className={`border-b text-[10px] font-semibold uppercase tracking-wider ${
+                        isDark ? 'bg-zinc-900/60 text-zinc-400' : 'bg-gray-50 text-gray-500'
+                      }`}
+                    >
+                      <tr>
+                        <th className="py-2.5 px-3 text-left">Year</th>
+                        <th className="py-2.5 px-2">Jan</th>
+                        <th className="py-2.5 px-2">Feb</th>
+                        <th className="py-2.5 px-2">Mar</th>
+                        <th className="py-2.5 px-2">Apr</th>
+                        <th className="py-2.5 px-2">May</th>
+                        <th className="py-2.5 px-2">Jun</th>
+                        <th className="py-2.5 px-2">Jul</th>
+                        <th className="py-2.5 px-2">Aug</th>
+                        <th className="py-2.5 px-2">Sep</th>
+                        <th className="py-2.5 px-2">Oct</th>
+                        <th className="py-2.5 px-2">Nov</th>
+                        <th className="py-2.5 px-2">Dec</th>
+                        <th className="py-2.5 px-3 text-right font-bold">Total</th>
+                        <th className="py-2.5 px-3 text-right font-bold text-danger">Max Drawdown</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-divider font-mono">
+                      {yearReturns.map((yr) => {
+                        const isTotalPos = yr.totalPnl >= 0;
+                        return (
+                          <tr
+                            key={yr.year}
+                            className={isDark ? 'hover:bg-zinc-800/30' : 'hover:bg-gray-50'}
+                          >
+                            <td className="py-2.5 px-3 text-left font-bold text-primary">
+                              {yr.year}
+                            </td>
+                            {yr.months.map((m, mIdx) => (
+                              <td key={mIdx} className="py-2.5 px-2 tabular-nums text-[11px]">
+                                {m !== null ? (
+                                  <span
+                                    className={`font-semibold ${
+                                      m.pnl >= 0 ? 'text-success' : 'text-danger'
+                                    }`}
+                                  >
+                                    {m.pnl >= 0 ? '+' : ''}
+                                    {currencySymbol}
+                                    {Math.round(m.pnl).toLocaleString()}
+                                  </span>
+                                ) : (
+                                  <span className="text-secondary opacity-30">0</span>
+                                )}
+                              </td>
+                            ))}
+                            <td className="py-2.5 px-3 text-right tabular-nums font-bold">
+                              <span className={isTotalPos ? 'text-success' : 'text-danger'}>
+                                {isTotalPos ? '+' : ''}
+                                {currencySymbol}
+                                {Math.round(yr.totalPnl).toLocaleString()}
+                              </span>
+                            </td>
+                            <td className="py-2.5 px-3 text-right tabular-nums font-bold text-danger">
+                              -{currencySymbol}
+                              {Math.round(
+                                Math.abs((result.summary.maxDrawdownPct / 100) * (result.summary.initialCapital || 100000))
+                              ).toLocaleString()}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
                 </div>
               </div>
 
-              {/* Prev / Next Pagination */}
-              {totalPages > 1 && pageSize !== 'ALL' && (
+              {/* Strategy Performance Grid (3 Columns, matching CoreQuant inspo) */}
+              <div className="space-y-2.5">
                 <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    disabled={currentPage <= 1}
-                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                    className={`p-1 rounded border transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed ${
-                      isDark
-                        ? 'bg-zinc-900 text-zinc-300 border-zinc-800 hover:bg-zinc-800'
-                        : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+                  <Activity className="w-4 h-4 text-primary" />
+                  <h2 className="text-xs sm:text-sm font-bold tracking-wide uppercase text-primary">
+                    Strategy Performance
+                  </h2>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {/* Column 1: Capital & Returns */}
+                  <div
+                    className={`p-4 rounded-xl border space-y-3 ${
+                      isDark ? 'bg-zinc-900/30 border-zinc-800' : 'bg-white border-gray-200'
                     }`}
                   >
-                    <ChevronLeft className="w-3.5 h-3.5" />
-                  </button>
+                    <div className="flex items-center gap-1.5 pb-2 border-b border-divider text-[11px] font-bold uppercase tracking-wider text-secondary">
+                      <TrendingUp className="w-3.5 h-3.5 text-primary" />
+                      <span>Capital & Returns</span>
+                    </div>
 
-                  <span className="font-mono text-[10px]">
-                    Page <strong>{currentPage}</strong> of <strong>{totalPages}</strong>
-                  </span>
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-secondary">Total Net Profit</span>
+                      <div className="text-right">
+                        <span
+                          className={`font-mono font-bold text-sm ${
+                            result.summary.netProfit >= 0 ? 'text-success' : 'text-danger'
+                          }`}
+                        >
+                          {result.summary.netProfit >= 0 ? '+' : ''}
+                          {currencySymbol}
+                          {result.summary.netProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                        <span className={`text-[10px] ml-1.5 font-mono ${result.summary.totalReturnPct >= 0 ? 'text-success' : 'text-danger'}`}>
+                          ({result.summary.totalReturnPct >= 0 ? '+' : ''}{result.summary.totalReturnPct.toFixed(2)}%)
+                        </span>
+                      </div>
+                    </div>
 
-                  <button
-                    type="button"
-                    disabled={currentPage >= totalPages}
-                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                    className={`p-1 rounded border transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed ${
-                      isDark
-                        ? 'bg-zinc-900 text-zinc-300 border-zinc-800 hover:bg-zinc-800'
-                        : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-secondary">Strategy CAGR</span>
+                      <span className={`font-mono font-bold ${result.summary.cagrPct >= 0 ? 'text-success' : 'text-danger'}`}>
+                        {result.summary.cagrPct >= 0 ? '+' : ''}{result.summary.cagrPct.toFixed(2)}%
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-secondary">Benchmark CAGR</span>
+                      <span className="font-mono font-semibold text-primary">
+                        {result.summary.benchmarkCagrPct !== undefined
+                          ? `${result.summary.benchmarkCagrPct >= 0 ? '+' : ''}${result.summary.benchmarkCagrPct.toFixed(2)}%`
+                          : '—'}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between text-xs pt-2 border-t border-divider">
+                      <span className="text-secondary">Initial Capital</span>
+                      <span className="font-mono text-primary font-semibold">
+                        {currencySymbol}
+                        {(result.summary.initialCapital || 100000).toLocaleString()}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-secondary">Final Equity</span>
+                      <span className="font-mono text-primary font-bold">
+                        {currencySymbol}
+                        {result.summary.finalEquity.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-secondary">Total Allocations</span>
+                      <span className="font-mono font-bold text-primary">
+                        {portfolioMetrics?.trancheCount || 1} {portfolioMetrics?.trancheCount === 1 ? 'tranche' : 'tranches'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Column 2: Relative & Risk-Adjusted */}
+                  <div
+                    className={`p-4 rounded-xl border space-y-3 ${
+                      isDark ? 'bg-zinc-900/30 border-zinc-800' : 'bg-white border-gray-200'
                     }`}
                   >
-                    <ChevronRight className="w-3.5 h-3.5" />
+                    <div className="flex items-center gap-1.5 pb-2 border-b border-divider text-[11px] font-bold uppercase tracking-wider text-secondary">
+                      <Scale className="w-3.5 h-3.5 text-primary" />
+                      <span>Relative & Risk-Adjusted</span>
+                    </div>
+
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-secondary">Benchmark Return (Buy & Hold)</span>
+                      <span className={`font-mono font-bold ${result.summary.benchmarkReturnPct >= 0 ? 'text-success' : 'text-danger'}`}>
+                        {result.summary.benchmarkReturnPct >= 0 ? '+' : ''}
+                        {result.summary.benchmarkReturnPct.toFixed(2)}%
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-secondary">Alpha (Excess Return)</span>
+                      <span className={`font-mono font-bold ${result.summary.alphaPct >= 0 ? 'text-success' : 'text-danger'}`}>
+                        {result.summary.alphaPct >= 0 ? '+' : ''}
+                        {result.summary.alphaPct.toFixed(2)}%
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-secondary">Beta (Market Sensitivity)</span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-mono font-bold text-primary">
+                          {portfolioMetrics?.beta !== null && portfolioMetrics?.beta !== undefined
+                            ? portfolioMetrics.beta.toFixed(2)
+                            : '1.00'}
+                        </span>
+                        {portfolioMetrics?.beta !== null && portfolioMetrics?.beta !== undefined && (
+                          <span
+                            className={`text-[9px] px-1 py-0.2 rounded font-medium ${
+                              portfolioMetrics.beta < 0.95
+                                ? 'bg-blue-500/10 text-blue-400'
+                                : portfolioMetrics.beta > 1.05
+                                ? 'bg-amber-500/10 text-amber-400'
+                                : 'bg-zinc-500/10 text-secondary'
+                            }`}
+                          >
+                            {portfolioMetrics.beta < 0.95 ? 'Defensive' : portfolioMetrics.beta > 1.05 ? 'Aggressive' : 'Neutral'}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between text-xs pt-2 border-t border-divider">
+                      <span className="text-secondary">Sharpe Ratio</span>
+                      <span className="font-mono font-bold text-primary">
+                        {result.summary.sharpeRatio !== null ? result.summary.sharpeRatio.toFixed(2) : '—'}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-secondary">Sortino Ratio (Downside)</span>
+                      <span className="font-mono font-bold text-primary">
+                        {result.summary.sortinoRatio !== null ? result.summary.sortinoRatio.toFixed(2) : '—'}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-secondary">Calmar Ratio (CAGR / Max DD)</span>
+                      <span className="font-mono font-bold text-primary">
+                        {portfolioMetrics?.calmarRatio !== null && portfolioMetrics?.calmarRatio !== undefined
+                          ? portfolioMetrics.calmarRatio.toFixed(2)
+                          : '—'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Column 3: Drawdown & Efficiency */}
+                  <div
+                    className={`p-4 rounded-xl border space-y-3 ${
+                      isDark ? 'bg-zinc-900/30 border-zinc-800' : 'bg-white border-gray-200'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5 pb-2 border-b border-divider text-[11px] font-bold uppercase tracking-wider text-secondary">
+                      <ShieldAlert className="w-3.5 h-3.5 text-primary" />
+                      <span>Drawdown & Efficiency</span>
+                    </div>
+
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-secondary">Max Drawdown</span>
+                      <span className="font-mono font-bold text-danger">
+                        -{result.summary.maxDrawdownPct.toFixed(2)}%
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-secondary">Max Drawdown Duration</span>
+                      <span className="font-mono font-bold text-primary">
+                        {portfolioMetrics?.maxUnderwaterDays || 0} {portfolioMetrics?.maxUnderwaterDays === 1 ? 'day' : 'days'}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-secondary">Market Exposure</span>
+                      <span className="font-mono font-bold text-primary">
+                        {result.summary.marketExposurePct.toFixed(2)}%
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-secondary">Cash Drag (Idle Cash)</span>
+                      <span className="font-mono font-semibold text-secondary">
+                        {portfolioMetrics?.cashDragPct !== undefined ? `${portfolioMetrics.cashDragPct.toFixed(2)}%` : '0.00%'}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between text-xs pt-2 border-t border-divider">
+                      <span className="text-secondary">Effective Avg Buy Price</span>
+                      <div className="text-right">
+                        <span className="font-mono font-bold text-primary">
+                          {portfolioMetrics?.effectiveAvgPrice !== null && portfolioMetrics?.effectiveAvgPrice !== undefined
+                            ? `${currencySymbol}${portfolioMetrics.effectiveAvgPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                            : '—'}
+                        </span>
+                        {portfolioMetrics?.avgMarketPrice && (
+                          <div className="text-[10px] text-secondary">
+                            vs Avg Close {currencySymbol}{portfolioMetrics.avgMarketPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-secondary">Trading Days</span>
+                      <span className="font-mono font-bold text-primary">
+                        {tradingDays.length} days
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            /* SINGLE DAY CANDLE VIEW (CoreQuant Day View Style) */
+            <div className="w-full flex flex-col min-w-full">
+              {/* Day Subheader Toolbar */}
+              <div
+                className={`border-b px-4 sm:px-6 py-2.5 sm:py-3 flex flex-wrap items-center justify-between gap-3 transition-colors ${
+                  isDark ? 'bg-zinc-900/40 border-zinc-800' : 'bg-gray-50/80 border-gray-200'
+                }`}
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div
+                    className={`p-1.5 rounded-md border flex items-center justify-center shrink-0 ${
+                      isDark
+                        ? 'bg-zinc-800/90 text-zinc-300 border-zinc-700/60'
+                        : 'bg-white text-gray-700 border-gray-200 shadow-2xs'
+                    }`}
+                  >
+                    <Clock className="w-4 h-4 text-success" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h2
+                        className={`text-xs sm:text-sm font-bold tracking-wide uppercase ${
+                          isDark ? 'text-zinc-100' : 'text-gray-900'
+                        }`}
+                      >
+                        Market Data & Actions: {activeDay?.dateStr || selectedTab}
+                      </h2>
+                      <span className={`text-[11px] font-mono font-medium ${isDark ? 'text-zinc-400' : 'text-gray-500'}`}>
+                        {result.symbol}
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-0.5 text-[10px] sm:text-[11px] font-mono">
+                      {activeDay && (
+                        <span className={isDark ? 'text-zinc-400' : 'text-gray-500'}>
+                          Trade Value: <strong className={isDark ? 'text-zinc-200' : 'text-gray-900'}>{currencySymbol}{Math.round(activeDay.invested).toLocaleString()}</strong>
+                        </span>
+                      )}
+                      {activeDay && activeDay.signalsCount > 0 && (
+                        <>
+                          <span className={isDark ? 'text-zinc-600' : 'text-gray-300'}>•</span>
+                          <span className={isDark ? 'text-amber-400' : 'text-amber-700'}>
+                            Signals Met: <strong>{activeDay.signalsCount}</strong>
+                          </span>
+                        </>
+                      )}
+                      <span className={isDark ? 'text-zinc-600' : 'text-gray-300'}>•</span>
+                      <span className={isDark ? 'text-zinc-500' : 'text-gray-400'}>
+                        {dayCandles.length} candles
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  {/* Daily Result Badge */}
+                  {activeDay && (
+                    <div className="text-right">
+                      <div className={`text-[9px] uppercase font-semibold tracking-wider ${isDark ? 'text-zinc-400' : 'text-gray-500'}`}>
+                        Daily Result
+                      </div>
+                      <div className="flex items-center justify-end gap-1.5 font-mono text-xs font-bold">
+                        <span className={activeDay.pnl >= 0 ? 'text-success' : 'text-danger'}>
+                          {activeDay.pnl >= 0 ? '+' : ''}{currencySymbol}{activeDay.pnl.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                        <span
+                          className={`text-[10px] px-1.5 py-0.2 rounded font-semibold border ${
+                            activeDay.pnl >= 0
+                              ? 'bg-success/15 text-success border-success/25'
+                              : 'bg-danger/15 text-danger border-danger/25'
+                          }`}
+                        >
+                          {activeDay.pnl >= 0 ? '+' : ''}{activeDay.pnlPercent.toFixed(2)}%
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Actions Only filter toggle */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFilterActionsOnly((prev) => !prev);
+                      setCurrentPage(1);
+                    }}
+                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-medium border transition-colors cursor-pointer shadow-2xs ${
+                      filterActionsOnly
+                        ? isDark
+                          ? 'bg-amber-500/20 text-amber-300 border-amber-500/50'
+                          : 'bg-amber-100 text-amber-900 border-amber-300'
+                        : isDark
+                        ? 'bg-zinc-800 text-zinc-300 border-zinc-700 hover:bg-zinc-700'
+                        : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+                    }`}
+                    title="Toggle to view only rows where Initial Entry or Condition Met actions occurred"
+                  >
+                    <Filter className="w-3 h-3" />
+                    <span>{filterActionsOnly ? 'Actions Only' : 'All Candles'}</span>
+                    <span className="px-1 py-0.2 rounded text-[9px] bg-black/20 font-bold font-mono">
+                      {displayedDayCandles.length}
+                    </span>
                   </button>
                 </div>
-              )}
+              </div>
+
+              {/* Day Candle Table */}
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr
+                      className={`border-b text-[10px] sm:text-[11px] font-semibold uppercase tracking-wider ${
+                        isDark
+                          ? 'border-zinc-800 text-zinc-400 bg-zinc-900/60'
+                          : 'border-gray-200 text-gray-500 bg-gray-50'
+                      }`}
+                    >
+                      <th className="py-2.5 px-4 font-medium">Time</th>
+                      <th className="py-2.5 px-3 font-medium text-right">Open</th>
+                      <th className="py-2.5 px-3 font-medium text-right">High</th>
+                      <th className="py-2.5 px-3 font-medium text-right">Low</th>
+                      <th className="py-2.5 px-3 font-medium text-right">Close</th>
+                      {usedIndicators.map((ind) => (
+                        <th
+                          key={ind}
+                          className="py-2.5 px-3 font-medium text-center whitespace-nowrap"
+                          title={INDICATOR_CONFIG[ind]?.tooltip || ind}
+                        >
+                          {INDICATOR_CONFIG[ind]?.label || ind}
+                        </th>
+                      ))}
+                      <th className="py-2.5 px-3 font-medium text-right">Invested</th>
+                      <th className="py-2.5 px-3 font-medium text-right">Qty</th>
+                      <th className="py-2.5 px-4 font-medium text-left">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className={`divide-y font-mono text-xs ${isDark ? 'divide-zinc-800/40' : 'divide-gray-100'}`}>
+                    {dayPaginatedRows.map((row, idx) => {
+                      const isInitial = row.action === 'Initial Entry';
+                      const isConditionMet = row.action === 'Condition Met';
+
+                      return (
+                        <tr
+                          key={`${row.date}-${row.time || idx}`}
+                          className={`transition-colors border-b ${
+                            isDark ? 'border-zinc-800/40' : 'border-gray-100'
+                          } ${
+                            isConditionMet
+                              ? isDark
+                                ? 'bg-amber-500/[0.07] hover:bg-amber-500/[0.12] text-zinc-100 font-medium'
+                                : 'bg-amber-50/70 hover:bg-amber-100/70 text-gray-900 font-medium'
+                              : isInitial
+                              ? isDark
+                                ? 'bg-success/[0.06] hover:bg-success/[0.12] text-zinc-100'
+                                : 'bg-success/[0.06] hover:bg-success/[0.12] text-gray-900'
+                              : isDark
+                              ? 'hover:bg-zinc-800/25 text-zinc-200'
+                              : 'hover:bg-gray-50/80 text-gray-800'
+                          }`}
+                        >
+                          <td className="py-2 px-4 font-semibold text-primary whitespace-nowrap">
+                            {row.time || row.date}
+                          </td>
+                          <td className="py-2 px-3 text-right tabular-nums text-secondary">
+                            {row.open.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </td>
+                          <td className="py-2 px-3 text-right tabular-nums font-medium text-success">
+                            {row.high.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </td>
+                          <td className="py-2 px-3 text-right tabular-nums font-medium text-danger">
+                            {row.low.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </td>
+                          <td className="py-2 px-3 text-right tabular-nums font-bold text-primary">
+                            {row.close.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </td>
+                          {usedIndicators.map((ind) => (
+                            <td key={ind} className="py-2 px-3 text-center whitespace-nowrap">
+                              {renderIndicatorCell(ind, row, currencySymbol)}
+                            </td>
+                          ))}
+                          <td className="py-2 px-3 text-right tabular-nums font-semibold text-success whitespace-nowrap">
+                            {currencySymbol}{row.invested.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </td>
+                          <td className="py-2 px-3 text-right tabular-nums font-bold text-primary whitespace-nowrap">
+                            {row.qty.toLocaleString()}
+                          </td>
+                          <td className="py-2 px-4 text-left whitespace-nowrap">
+                            {isInitial ? (
+                              <span
+                                className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold tracking-wide uppercase border bg-success/10 text-success border-success/25"
+                              >
+                                Initial Entry
+                              </span>
+                            ) : isConditionMet ? (
+                              <span
+                                title={row.actionReason}
+                                className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold tracking-wide uppercase border ${
+                                  isDark
+                                    ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                                    : 'bg-amber-100 text-amber-800 border-amber-200'
+                                }`}
+                              >
+                                Condition Met
+                              </span>
+                            ) : (
+                              <span className="text-secondary opacity-30">—</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Day Pagination Footer */}
+              <div
+                className={`px-4 sm:px-6 py-2.5 border-t flex flex-wrap items-center justify-between gap-3 text-[11px] ${
+                  isDark ? 'border-zinc-800 text-zinc-400 bg-zinc-900/20' : 'border-gray-200 text-gray-500 bg-gray-50/50'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <span>
+                    Showing{' '}
+                    <strong className={isDark ? 'text-zinc-200' : 'text-gray-800'}>
+                      {displayedDayCandles.length === 0
+                        ? 0
+                        : pageSize === 'ALL'
+                        ? `1 to ${displayedDayCandles.length}`
+                        : `${(currentPage - 1) * pageSize + 1} to ${Math.min(
+                            currentPage * pageSize,
+                            displayedDayCandles.length
+                          )}`}
+                    </strong>{' '}
+                    of{' '}
+                    <strong className={isDark ? 'text-zinc-200' : 'text-gray-800'}>
+                      {displayedDayCandles.length}
+                    </strong>{' '}
+                    candles on {activeDay?.formattedDate || selectedTab}
+                  </span>
+
+                  {/* Page Size Selector */}
+                  <div className="flex items-center gap-1 font-mono text-[10px]">
+                    <span className={isDark ? 'text-zinc-500' : 'text-gray-400'}>Rows:</span>
+                    {[25, 50, 100, 'ALL'].map((size) => (
+                      <button
+                        key={size}
+                        type="button"
+                        onClick={() => {
+                          setPageSize(size as any);
+                          setCurrentPage(1);
+                        }}
+                        className={`px-1.5 py-0.5 rounded border transition-colors cursor-pointer ${
+                          pageSize === size
+                            ? isDark
+                              ? 'bg-zinc-800 text-zinc-100 border-zinc-700 font-bold'
+                              : 'bg-gray-200 text-gray-900 border-gray-300 font-bold'
+                            : isDark
+                            ? 'text-zinc-500 border-transparent hover:text-zinc-300'
+                            : 'text-gray-500 border-transparent hover:text-gray-800'
+                        }`}
+                      >
+                        {size}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Prev / Next Pagination */}
+                {dayTotalPages > 1 && pageSize !== 'ALL' && (
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={currentPage <= 1}
+                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                      className={`p-1 rounded border transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed ${
+                        isDark
+                          ? 'bg-zinc-800 text-zinc-300 border-zinc-700 hover:bg-zinc-700'
+                          : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+                      }`}
+                    >
+                      <ChevronLeft className="w-3.5 h-3.5" />
+                    </button>
+
+                    <span className="font-mono text-[10px]">
+                      Page <strong>{currentPage}</strong> of <strong>{dayTotalPages}</strong>
+                    </span>
+
+                    <button
+                      type="button"
+                      disabled={currentPage >= dayTotalPages}
+                      onClick={() => setCurrentPage((p) => Math.min(dayTotalPages, p + 1))}
+                      className={`p-1 rounded border transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed ${
+                        isDark
+                          ? 'bg-zinc-800 text-zinc-300 border-zinc-700 hover:bg-zinc-700'
+                          : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+                      }`}
+                    >
+                      <ChevronRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-        )}
-      </main>
+          )}
+        </main>
+      </div>
 
       {/* Config Details Modal */}
       {isConfigModalOpen && (

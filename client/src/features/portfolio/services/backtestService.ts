@@ -91,6 +91,9 @@ export interface BacktestSummaryMetrics {
   tradingDays: number;
   startDate: string;
   endDate: string;
+  calmarRatio?: number | null;
+  beta?: number | null;
+  maxDrawdownDurationDays?: number;
 }
 
 export interface BacktestResponse {

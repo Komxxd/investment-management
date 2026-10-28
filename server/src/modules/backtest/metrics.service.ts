@@ -132,6 +132,56 @@ export function computeBacktestMetrics(sim: SimulationResult): BacktestSummaryMe
     }
   }
 
+  // Calmar Ratio: CAGR / Max Drawdown
+  let calmarRatio: number | null = null;
+  if (maxDrawdownPct > 0) {
+    calmarRatio = parseFloat((cagrPct / maxDrawdownPct).toFixed(2));
+  }
+
+  // Max Drawdown Duration (Underwater days)
+  let currentUnderwater = 0;
+  let maxDrawdownDurationDays = 0;
+  for (const pt of equityCurve) {
+    if (pt.drawdownPercent > 0.05) {
+      currentUnderwater++;
+      if (currentUnderwater > maxDrawdownDurationDays) {
+        maxDrawdownDurationDays = currentUnderwater;
+      }
+    } else {
+      currentUnderwater = 0;
+    }
+  }
+
+  // Beta: Portfolio sensitivity to Benchmark
+  let beta: number | null = null;
+  if (tradingDays > 5) {
+    const stratReturns: number[] = [];
+    const benchReturns: number[] = [];
+    for (let i = 1; i < tradingDays; i++) {
+      const prevE = equityCurve[i - 1].equity;
+      const currE = equityCurve[i].equity;
+      const prevB = equityCurve[i - 1].benchmarkEquity;
+      const currB = equityCurve[i].benchmarkEquity;
+      if (prevE > 0 && prevB > 0) {
+        stratReturns.push((currE - prevE) / prevE);
+        benchReturns.push((currB - prevB) / prevB);
+      }
+    }
+    if (stratReturns.length > 0) {
+      const meanS = stratReturns.reduce((a, b) => a + b, 0) / stratReturns.length;
+      const meanB = benchReturns.reduce((a, b) => a + b, 0) / benchReturns.length;
+      let cov = 0;
+      let varB = 0;
+      for (let i = 0; i < stratReturns.length; i++) {
+        cov += (stratReturns[i] - meanS) * (benchReturns[i] - meanB);
+        varB += Math.pow(benchReturns[i] - meanB, 2);
+      }
+      if (varB > 0) {
+        beta = parseFloat((cov / varB).toFixed(2));
+      }
+    }
+  }
+
   return {
     initialCapital,
     finalEquity,
@@ -158,5 +208,8 @@ export function computeBacktestMetrics(sim: SimulationResult): BacktestSummaryMe
     tradingDays,
     startDate,
     endDate,
+    calmarRatio,
+    beta,
+    maxDrawdownDurationDays,
   };
 }
