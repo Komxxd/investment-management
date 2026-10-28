@@ -6,10 +6,11 @@ import {
   Activity,
   Sliders,
   X,
+  Coins,
 } from 'lucide-react';
 import type { StrategyRule } from '../components/StrategyBuilderModal';
 import { formatRuleFormula } from '../components/StrategyBuilderModal';
-import type { BacktestResponse } from '../services/backtestService';
+import type { BacktestResponse, InitialInvestmentInfo } from '../services/backtestService';
 import { usePortfolioContext } from '../hooks/PortfolioContext';
 import { useCurrency } from '../../../app/providers/CurrencyProvider';
 import { useTheme } from '../../../app/providers/ThemeProvider';
@@ -40,6 +41,41 @@ export function BacktestResultsPage() {
   const portfolioId = session?.portfolioId || urlPortfolioId;
 
   const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
+
+  // Compute or extract Initial Investment details
+  const initialInvestment: InitialInvestmentInfo | null = useMemo(() => {
+    if (!result) return null;
+    if (result.initialInvestment) {
+      return result.initialInvestment;
+    }
+
+    // Fallback if not directly present in cached session
+    const firstPoint = result.equityCurve?.[0];
+    const initialCap = result.summary.initialCapital || 100000;
+    const firstTrade = result.trades?.[0];
+
+    const date = result.summary.startDate || firstPoint?.date || firstTrade?.entryDate || 'N/A';
+    const close = firstPoint?.close ?? firstPoint?.stockClose ?? firstTrade?.entryPrice ?? 0;
+    const open = firstPoint?.open ?? close;
+    const high = firstPoint?.high ?? Math.max(open, close);
+    const low = firstPoint?.low ?? Math.min(open, close);
+    const qty = firstPoint?.heldQty || firstTrade?.qty || (close > 0 ? Math.floor(initialCap / close) : 0);
+    const invested = firstPoint?.holdingsValue || firstTrade?.totalCost || (qty * (open || close));
+    const cashRemaining = Math.max(0, initialCap - invested);
+
+    return {
+      date,
+      open,
+      high,
+      low,
+      close,
+      invested,
+      qty,
+      execPrice: open || close,
+      cashRemaining,
+      initialCapital: initialCap,
+    };
+  }, [result]);
 
   if (!result || !rule) {
     return (
@@ -134,7 +170,129 @@ export function BacktestResultsPage() {
       </div>
 
       {/* Main Content Area */}
-      <main className="flex-1 overflow-y-auto p-4 sm:p-6" />
+      <main className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
+        {initialInvestment && (
+          <div
+            className={`rounded-xl border p-4 sm:p-5 transition-colors ${
+              isDark
+                ? 'bg-[#141518] border-zinc-800/80 shadow-lg shadow-black/20'
+                : 'bg-white border-gray-200 shadow-xs'
+            }`}
+          >
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 mb-3 border-b border-divider">
+              <div className="flex items-center gap-2">
+                <div
+                  className={`p-1.5 rounded-lg border ${
+                    isDark
+                      ? 'bg-zinc-800 text-zinc-300 border-zinc-700/60'
+                      : 'bg-gray-100 text-gray-700 border-gray-200'
+                  }`}
+                >
+                  <Coins className="w-4 h-4 text-emerald-500" />
+                </div>
+                <div>
+                  <h2
+                    className={`text-xs sm:text-sm font-bold tracking-wide uppercase ${
+                      isDark ? 'text-zinc-100' : 'text-gray-900'
+                    }`}
+                  >
+                    Initial Investment
+                  </h2>
+                  <p className={`text-[10px] sm:text-[11px] ${isDark ? 'text-zinc-400' : 'text-gray-500'}`}>
+                    Day 1 capital deployment on simulation start date ({initialInvestment.date})
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 text-[11px] font-mono">
+                <span
+                  className={`px-2 py-0.5 rounded border text-[10px] ${
+                    isDark
+                      ? 'bg-zinc-900 text-zinc-400 border-zinc-800'
+                      : 'bg-gray-50 text-gray-600 border-gray-200'
+                  }`}
+                >
+                  Capital: <strong className={isDark ? 'text-zinc-200' : 'text-gray-900'}>{currencySymbol}{initialInvestment.initialCapital.toLocaleString()}</strong>
+                </span>
+                <span
+                  className={`px-2 py-0.5 rounded border text-[10px] ${
+                    isDark
+                      ? 'bg-zinc-900 text-zinc-400 border-zinc-800'
+                      : 'bg-gray-50 text-gray-600 border-gray-200'
+                  }`}
+                >
+                  Cash Remaining: <strong className={isDark ? 'text-zinc-200' : 'text-gray-900'}>{currencySymbol}{initialInvestment.cashRemaining.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+                </span>
+              </div>
+            </div>
+
+            {/* Table: Date | Open | High | Low | Close | Invested | Qty */}
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr
+                    className={`border-b text-[10px] sm:text-[11px] font-semibold uppercase tracking-wider ${
+                      isDark
+                        ? 'border-zinc-800 text-zinc-400 bg-zinc-900/40'
+                        : 'border-gray-200 text-gray-500 bg-gray-50/70'
+                    }`}
+                  >
+                    <th className="py-2.5 px-3">Date</th>
+                    <th className="py-2.5 px-3">Open</th>
+                    <th className="py-2.5 px-3">High</th>
+                    <th className="py-2.5 px-3">Low</th>
+                    <th className="py-2.5 px-3">Close</th>
+                    <th className="py-2.5 px-3 text-right">Invested</th>
+                    <th className="py-2.5 px-3 text-right">Qty</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-divider font-mono text-xs">
+                  <tr
+                    className={`transition-colors ${
+                      isDark ? 'hover:bg-zinc-800/40 text-zinc-200' : 'hover:bg-gray-50/80 text-gray-800'
+                    }`}
+                  >
+                    <td className="py-3 px-3 font-semibold text-primary">
+                      {initialInvestment.date}
+                    </td>
+                    <td className="py-3 px-3">
+                      {currencySymbol}{initialInvestment.open.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </td>
+                    <td className="py-3 px-3 text-emerald-500">
+                      {currencySymbol}{initialInvestment.high.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </td>
+                    <td className="py-3 px-3 text-rose-500">
+                      {currencySymbol}{initialInvestment.low.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </td>
+                    <td className="py-3 px-3 font-semibold">
+                      {currencySymbol}{initialInvestment.close.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </td>
+                    <td className="py-3 px-3 text-right font-bold text-emerald-500">
+                      {currencySymbol}{initialInvestment.invested.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </td>
+                    <td className="py-3 px-3 text-right font-bold text-primary">
+                      {initialInvestment.qty.toLocaleString()}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div
+              className={`mt-3 pt-2.5 border-t flex flex-wrap items-center justify-between gap-2 text-[11px] ${
+                isDark ? 'border-zinc-800/80 text-zinc-400' : 'border-gray-100 text-gray-500'
+              }`}
+            >
+              <span>
+                Actual allocation: <strong className={isDark ? 'text-zinc-200' : 'text-gray-800'}>{currencySymbol}{initialInvestment.invested.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong> ({initialInvestment.initialCapital > 0 ? ((initialInvestment.invested / initialInvestment.initialCapital) * 100).toFixed(1) : 0}% of capital)
+              </span>
+              <span>
+                Remaining uninvested cash: <strong className={isDark ? 'text-zinc-200' : 'text-gray-800'}>{currencySymbol}{initialInvestment.cashRemaining.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+              </span>
+            </div>
+          </div>
+        )}
+      </main>
 
       {/* Config Details Modal */}
       {isConfigModalOpen && (

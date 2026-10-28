@@ -5,6 +5,7 @@ import {
   DailyEquityPoint,
   SimulationOptions,
   SimulationResult,
+  InitialInvestmentInfo,
 } from './types';
 import { evaluateRuleOnBar } from './signal-evaluator.service';
 
@@ -58,6 +59,7 @@ export function runSimulation(
   let pendingOrder: PendingOrder | null = null;
   let peakEquity = initialCapital;
   let benchmarkInitialQty = 0;
+  let initialInvestment: InitialInvestmentInfo | undefined = undefined;
 
   // Find start index matching nominalStartDate (skipping warmup bars)
   let startIndex = 0;
@@ -72,6 +74,41 @@ export function runSimulation(
 
     if (nominalEndDate && bar.date > nominalEndDate) {
       break;
+    }
+
+    // =========================================================================
+    // 0. INITIAL CAPITAL INVESTMENT ON DAY 1 OPEN
+    // =========================================================================
+    if (i === startIndex && initialCapital > 0 && position.qty === 0) {
+      const execPrice = parseFloat((bar.open * (1 + slippagePct)).toFixed(2));
+      const feeMultiplier = 1 + feePct;
+      const fillQty = Math.floor(cash / (execPrice * feeMultiplier));
+
+      if (fillQty > 0) {
+        const grossCost = parseFloat((fillQty * execPrice).toFixed(2));
+        const fee = parseFloat((grossCost * feePct).toFixed(2));
+        const totalOutlay = grossCost + fee;
+        cash -= totalOutlay;
+
+        position.qty = fillQty;
+        position.avgPrice = execPrice;
+        position.totalCost = grossCost;
+        position.entryDate = bar.date;
+        position.entryReason = 'Initial Investment';
+
+        initialInvestment = {
+          date: bar.date,
+          open: bar.open,
+          high: bar.high,
+          low: bar.low,
+          close: bar.close,
+          invested: grossCost,
+          qty: fillQty,
+          execPrice,
+          cashRemaining: parseFloat(cash.toFixed(2)),
+          initialCapital,
+        };
+      }
     }
 
     // =========================================================================
@@ -200,6 +237,10 @@ export function runSimulation(
 
     equityCurve.push({
       date: bar.date,
+      open: bar.open,
+      high: bar.high,
+      low: bar.low,
+      close: bar.close,
       equity: parseFloat(currentEquity.toFixed(2)),
       cash: parseFloat(cash.toFixed(2)),
       holdingsValue: parseFloat(holdingsVal.toFixed(2)),
@@ -270,6 +311,7 @@ export function runSimulation(
     cash: parseFloat(cash.toFixed(2)),
     holdingsValue: parseFloat((position.qty * (finalBar?.close || 0)).toFixed(2)),
     heldQty: position.qty,
+    initialInvestment,
     trades,
     equityCurve,
   };

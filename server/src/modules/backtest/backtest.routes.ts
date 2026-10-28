@@ -165,6 +165,7 @@ router.post('/run', optionalAuthMiddleware, async (req: any, res: any) => {
     const response: BacktestResponse = {
       symbol,
       summary,
+      initialInvestment: simResult.initialInvestment,
       trades: simResult.trades,
       equityCurve: simResult.equityCurve,
     };

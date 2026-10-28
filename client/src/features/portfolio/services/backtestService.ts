@@ -20,8 +20,25 @@ export interface BacktestTrade {
   exitReason?: string;
 }
 
+export interface InitialInvestmentInfo {
+  date: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  invested: number;
+  qty: number;
+  execPrice: number;
+  cashRemaining: number;
+  initialCapital: number;
+}
+
 export interface DailyEquityPoint {
   date: string;
+  open?: number;
+  high?: number;
+  low?: number;
+  close?: number;
   equity: number;
   cash: number;
   holdingsValue: number;
@@ -62,6 +79,7 @@ export interface BacktestSummaryMetrics {
 export interface BacktestResponse {
   symbol: string;
   summary: BacktestSummaryMetrics;
+  initialInvestment?: InitialInvestmentInfo;
   trades: BacktestTrade[];
   equityCurve: DailyEquityPoint[];
 }
