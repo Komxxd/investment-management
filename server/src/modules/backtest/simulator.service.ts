@@ -223,7 +223,43 @@ export function runSimulation(
     }
 
     // =========================================================================
-    // 2. MARK-TO-MARKET AT TODAY'S CLOSE
+    // 2. EVALUATE STRATEGY RULES AT CLOSE (QUEUE PENDING ORDER FOR TOMORROW)
+    // =========================================================================
+    let conditionMatchedToday = false;
+    let matchReason = '';
+
+    for (const rule of rules) {
+      const evalRes = evaluateRuleOnBar(rule, bar, prevBar);
+      if (evalRes.matched && evalRes.action !== 'NONE') {
+        conditionMatchedToday = true;
+        matchReason = evalRes.reason;
+
+        // Skip redundant signals for order execution
+        if (evalRes.action === 'SELL' && position.qty <= 0) continue;
+        if (evalRes.action === 'BUY' && cash < bar.close) continue;
+
+        if (!pendingOrder) {
+          pendingOrder = {
+            action: evalRes.action,
+            rule,
+            signalDate: bar.date,
+            reason: evalRes.reason,
+          };
+        }
+        break; // Max 1 action queued per day
+      }
+    }
+
+    // Determine row action
+    let dayAction: string | undefined = undefined;
+    if (i === startIndex) {
+      dayAction = 'Initial Entry';
+    } else if (conditionMatchedToday) {
+      dayAction = 'Condition Met';
+    }
+
+    // =========================================================================
+    // 3. MARK-TO-MARKET AT TODAY'S CLOSE
     // =========================================================================
     const holdingsVal = position.qty * bar.close;
     const currentEquity = cash + holdingsVal;
@@ -240,12 +276,14 @@ export function runSimulation(
 
     equityCurve.push({
       date: bar.date,
+      action: dayAction,
       open: bar.open,
       high: bar.high,
       low: bar.low,
       close: bar.close,
       changePercent: bar.changePercent,
       indicators: bar.indicators,
+      invested: parseFloat(position.totalCost.toFixed(2)),
       equity: parseFloat(currentEquity.toFixed(2)),
       cash: parseFloat(cash.toFixed(2)),
       holdingsValue: parseFloat(holdingsVal.toFixed(2)),
@@ -253,27 +291,9 @@ export function runSimulation(
       stockClose: bar.close,
       benchmarkEquity,
       drawdownPercent: ddPercent,
+      conditionMatched: conditionMatchedToday,
+      actionReason: matchReason || undefined,
     });
-
-    // =========================================================================
-    // 3. EVALUATE STRATEGY RULES AT CLOSE (QUEUE PENDING ORDER FOR TOMORROW)
-    // =========================================================================
-    for (const rule of rules) {
-      const evalRes = evaluateRuleOnBar(rule, bar, prevBar);
-      if (evalRes.matched && evalRes.action !== 'NONE') {
-        // Skip redundant signals
-        if (evalRes.action === 'SELL' && position.qty <= 0) continue;
-        if (evalRes.action === 'BUY' && cash < bar.close) continue;
-
-        pendingOrder = {
-          action: evalRes.action,
-          rule,
-          signalDate: bar.date,
-          reason: evalRes.reason,
-        };
-        break; // Max 1 action queued per day
-      }
-    }
   }
 
   // Handle open position at simulation end

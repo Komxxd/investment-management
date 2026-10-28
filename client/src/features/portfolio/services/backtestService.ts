@@ -54,9 +54,13 @@ export interface DailyEquityPoint {
   cash: number;
   holdingsValue: number;
   heldQty: number;
+  invested?: number;
   stockClose: number;
   benchmarkEquity: number;
   drawdownPercent: number;
+  action?: string;
+  conditionMatched?: boolean;
+  actionReason?: string;
 }
 
 export interface BacktestSummaryMetrics {

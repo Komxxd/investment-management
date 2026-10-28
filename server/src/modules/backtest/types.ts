@@ -99,9 +99,13 @@ export interface DailyEquityPoint {
   cash: number;
   holdingsValue: number;
   heldQty: number;
+  invested?: number;
   stockClose: number;
   benchmarkEquity: number;  // Buy & hold benchmark performance from initial capital
   drawdownPercent: number;  // % drawdown from all-time-high equity up to this day
+  action?: string;          // 'Initial Entry' | 'Condition Met' | undefined
+  conditionMatched?: boolean;
+  actionReason?: string;
 }
 
 export interface SimulationOptions {

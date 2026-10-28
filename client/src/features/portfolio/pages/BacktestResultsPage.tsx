@@ -7,10 +7,13 @@ import {
   Sliders,
   X,
   Coins,
+  ChevronLeft,
+  ChevronRight,
+  Filter,
 } from 'lucide-react';
 import type { StrategyRule, IndicatorType } from '../components/StrategyBuilderModal';
 import { formatRuleFormula } from '../components/StrategyBuilderModal';
-import type { BacktestResponse, InitialInvestmentInfo } from '../services/backtestService';
+import type { BacktestResponse, InitialInvestmentInfo, BarIndicators } from '../services/backtestService';
 import { usePortfolioContext } from '../hooks/PortfolioContext';
 import { useCurrency } from '../../../app/providers/CurrencyProvider';
 import { useTheme } from '../../../app/providers/ThemeProvider';
@@ -25,14 +28,14 @@ const INDICATOR_CONFIG: Record<string, { label: string; tooltip: string }> = {
 
 function renderIndicatorCell(
   type: string,
-  inv: InitialInvestmentInfo | null,
+  data: { indicators?: BarIndicators; changePercent?: number } | null,
   currencySymbol: string
 ) {
-  if (!inv) return <span className="text-secondary">—</span>;
+  if (!data) return <span className="text-secondary">—</span>;
 
   switch (type) {
     case 'rsi': {
-      const val = inv.indicators?.rsi;
+      const val = data.indicators?.rsi;
       if (val === null || val === undefined) return <span className="text-secondary">—</span>;
       const num = Number(val);
       const isOversold = num <= 30;
@@ -48,7 +51,7 @@ function renderIndicatorCell(
       );
     }
     case 'dma50': {
-      const val = inv.indicators?.dma50;
+      const val = data.indicators?.dma50;
       if (val === null || val === undefined) return <span className="text-secondary">—</span>;
       return (
         <span className="font-mono text-primary font-medium">
@@ -58,7 +61,7 @@ function renderIndicatorCell(
       );
     }
     case 'dma200': {
-      const val = inv.indicators?.dma200;
+      const val = data.indicators?.dma200;
       if (val === null || val === undefined) return <span className="text-secondary">—</span>;
       return (
         <span className="font-mono text-primary font-medium">
@@ -68,7 +71,7 @@ function renderIndicatorCell(
       );
     }
     case 'changePct': {
-      const val = inv.changePercent;
+      const val = data.changePercent;
       if (val === null || val === undefined) return <span className="text-secondary">—</span>;
       const num = Number(val);
       const sign = num > 0 ? '+' : '';
@@ -110,6 +113,9 @@ export function BacktestResultsPage() {
   const portfolioId = session?.portfolioId || urlPortfolioId;
 
   const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState<number | 'ALL'>(25);
+  const [filterActionsOnly, setFilterActionsOnly] = useState(false);
 
   // Detect which indicators are actively used in strategy rule(s)
   const usedIndicators: IndicatorType[] = useMemo(() => {
@@ -179,6 +185,95 @@ export function BacktestResultsPage() {
       indicators: firstPoint?.indicators,
     };
   }, [result]);
+
+  // Construct timeline rows across all simulation dates
+  const timelineRows = useMemo(() => {
+    if (!result) return [];
+
+    const curve = result.equityCurve || [];
+    if (curve.length === 0 && initialInvestment) {
+      return [
+        {
+          date: initialInvestment.date,
+          open: initialInvestment.open,
+          high: initialInvestment.high,
+          low: initialInvestment.low,
+          close: initialInvestment.close,
+          changePercent: initialInvestment.changePercent,
+          indicators: initialInvestment.indicators,
+          invested: initialInvestment.invested,
+          qty: initialInvestment.qty,
+          action: initialInvestment.action || 'Initial Entry',
+          actionReason: undefined,
+          conditionMatched: false,
+        },
+      ];
+    }
+
+    return curve.map((pt, idx) => {
+      const open = pt.open ?? pt.close ?? pt.stockClose ?? 0;
+      const high = pt.high ?? Math.max(open, pt.close ?? pt.stockClose ?? open);
+      const low = pt.low ?? Math.min(open, pt.close ?? pt.stockClose ?? open);
+      const close = pt.close ?? pt.stockClose ?? open;
+      const qty = pt.heldQty;
+      const invested =
+        pt.invested !== undefined
+          ? pt.invested
+          : idx === 0 && initialInvestment
+          ? initialInvestment.invested
+          : pt.holdingsValue > 0
+          ? pt.holdingsValue
+          : qty * close;
+
+      let action = pt.action;
+      if (!action) {
+        if (idx === 0) {
+          action = 'Initial Entry';
+        } else if (pt.conditionMatched) {
+          action = 'Condition Met';
+        }
+      }
+
+      return {
+        date: pt.date,
+        open,
+        high,
+        low,
+        close,
+        changePercent: pt.changePercent,
+        indicators: pt.indicators,
+        invested,
+        qty,
+        action,
+        actionReason: pt.actionReason,
+        conditionMatched: pt.conditionMatched || action === 'Condition Met',
+      };
+    });
+  }, [result, initialInvestment]);
+
+  // Filtered rows (All vs Actions Only)
+  const displayedRows = useMemo(() => {
+    let rows = timelineRows;
+    if (filterActionsOnly) {
+      rows = rows.filter((r) => !!r.action);
+    }
+    return rows;
+  }, [timelineRows, filterActionsOnly]);
+
+  const totalPages = useMemo(() => {
+    if (pageSize === 'ALL') return 1;
+    return Math.max(1, Math.ceil(displayedRows.length / pageSize));
+  }, [displayedRows.length, pageSize]);
+
+  const paginatedRows = useMemo(() => {
+    if (pageSize === 'ALL') return displayedRows;
+    const start = (currentPage - 1) * pageSize;
+    return displayedRows.slice(start, start + pageSize);
+  }, [displayedRows, currentPage, pageSize]);
+
+  const conditionMetCount = useMemo(() => {
+    return timelineRows.filter((r) => r.action === 'Condition Met').length;
+  }, [timelineRows]);
 
   if (!result || !rule) {
     return (
@@ -274,7 +369,7 @@ export function BacktestResultsPage() {
 
       {/* Main Content Area */}
       <main className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
-        {initialInvestment && (
+        {timelineRows.length > 0 && (
           <div
             className={`rounded-xl border p-4 sm:p-5 transition-colors ${
               isDark
@@ -282,7 +377,8 @@ export function BacktestResultsPage() {
                 : 'bg-white border-gray-200 shadow-xs'
             }`}
           >
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 mb-3 border-b border-divider">
+            {/* Header with Title and Filter Controls */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 mb-3 border-b border-divider">
               <div className="flex items-center gap-2">
                 <div
                   className={`p-1.5 rounded-lg border ${
@@ -299,10 +395,10 @@ export function BacktestResultsPage() {
                       isDark ? 'text-zinc-100' : 'text-gray-900'
                     }`}
                   >
-                    Initial Investment
+                    Simulation Timeline & Actions
                   </h2>
                   <p className={`text-[10px] sm:text-[11px] ${isDark ? 'text-zinc-400' : 'text-gray-500'}`}>
-                    Day 1 capital deployment on simulation start date ({initialInvestment.date})
+                    Day-by-day candle data, indicator readings, and condition events ({timelineRows.length} trading days)
                     {usedIndicators.length > 0 && (
                       <span className="ml-1.5 opacity-90 font-medium">
                         • Strategy Indicators: {usedIndicators.map((i) => INDICATOR_CONFIG[i]?.label || i).join(', ')}
@@ -312,25 +408,66 @@ export function BacktestResultsPage() {
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 text-[11px] font-mono">
-                <span
-                  className={`px-2 py-0.5 rounded border text-[10px] ${
-                    isDark
-                      ? 'bg-zinc-900 text-zinc-400 border-zinc-800'
-                      : 'bg-gray-50 text-gray-600 border-gray-200'
+              <div className="flex flex-wrap items-center gap-2 text-[11px] font-mono">
+                {/* Actions Only Filter Toggle */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFilterActionsOnly((prev) => !prev);
+                    setCurrentPage(1);
+                  }}
+                  className={`flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium border transition-colors cursor-pointer ${
+                    filterActionsOnly
+                      ? isDark
+                        ? 'bg-amber-500/20 text-amber-300 border-amber-500/50'
+                        : 'bg-amber-100 text-amber-900 border-amber-300'
+                      : isDark
+                      ? 'bg-zinc-800 text-zinc-300 border-zinc-700 hover:bg-zinc-700'
+                      : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100'
                   }`}
+                  title="Toggle to view only rows where Initial Entry or Condition Met actions occurred"
                 >
-                  Capital: <strong className={isDark ? 'text-zinc-200' : 'text-gray-900'}>{currencySymbol}{initialInvestment.initialCapital.toLocaleString()}</strong>
-                </span>
-                <span
-                  className={`px-2 py-0.5 rounded border text-[10px] ${
-                    isDark
-                      ? 'bg-zinc-900 text-zinc-400 border-zinc-800'
-                      : 'bg-gray-50 text-gray-600 border-gray-200'
-                  }`}
-                >
-                  Cash Remaining: <strong className={isDark ? 'text-zinc-200' : 'text-gray-900'}>{currencySymbol}{initialInvestment.cashRemaining.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
-                </span>
+                  <Filter className="w-2.5 h-2.5" />
+                  <span>{filterActionsOnly ? 'Actions Only' : 'All Dates'}</span>
+                  <span className="px-1 py-0.2 rounded text-[9px] bg-black/20 font-bold">
+                    {filterActionsOnly ? displayedRows.length : timelineRows.length}
+                  </span>
+                </button>
+
+                {conditionMetCount > 0 && (
+                  <span
+                    className={`px-2 py-0.5 rounded border text-[10px] ${
+                      isDark
+                        ? 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+                        : 'bg-amber-50 text-amber-800 border-amber-200'
+                    }`}
+                  >
+                    Signals: <strong>{conditionMetCount}</strong>
+                  </span>
+                )}
+
+                {initialInvestment && (
+                  <>
+                    <span
+                      className={`px-2 py-0.5 rounded border text-[10px] ${
+                        isDark
+                          ? 'bg-zinc-900 text-zinc-400 border-zinc-800'
+                          : 'bg-gray-50 text-gray-600 border-gray-200'
+                      }`}
+                    >
+                      Capital: <strong className={isDark ? 'text-zinc-200' : 'text-gray-900'}>{currencySymbol}{initialInvestment.initialCapital.toLocaleString()}</strong>
+                    </span>
+                    <span
+                      className={`px-2 py-0.5 rounded border text-[10px] ${
+                        isDark
+                          ? 'bg-zinc-900 text-zinc-400 border-zinc-800'
+                          : 'bg-gray-50 text-gray-600 border-gray-200'
+                      }`}
+                    >
+                      Cash Left: <strong className={isDark ? 'text-zinc-200' : 'text-gray-900'}>{currencySymbol}{initialInvestment.cashRemaining.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+                    </span>
+                  </>
+                )}
               </div>
             </div>
 
@@ -365,68 +502,173 @@ export function BacktestResultsPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-divider font-mono text-xs">
-                  <tr
-                    className={`transition-colors ${
-                      isDark ? 'hover:bg-zinc-800/40 text-zinc-200' : 'hover:bg-gray-50/80 text-gray-800'
-                    }`}
-                  >
-                    <td className="py-3 px-3 font-semibold text-primary whitespace-nowrap">
-                      {initialInvestment.date}
-                    </td>
-                    <td className="py-3 px-3">
-                      {currencySymbol}{initialInvestment.open.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </td>
-                    <td className="py-3 px-3 text-emerald-500">
-                      {currencySymbol}{initialInvestment.high.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </td>
-                    <td className="py-3 px-3 text-rose-500">
-                      {currencySymbol}{initialInvestment.low.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </td>
-                    <td className="py-3 px-3 font-semibold">
-                      {currencySymbol}{initialInvestment.close.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </td>
-                    {usedIndicators.map((ind) => (
-                      <td key={ind} className="py-3 px-3 text-center whitespace-nowrap">
-                        {renderIndicatorCell(ind, initialInvestment, currencySymbol)}
-                      </td>
-                    ))}
-                    <td className="py-3 px-3 text-right font-bold text-emerald-500">
-                      {currencySymbol}{initialInvestment.invested.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </td>
-                    <td className="py-3 px-3 text-right font-bold text-primary">
-                      {initialInvestment.qty.toLocaleString()}
-                    </td>
-                    <td className="py-3 px-3 text-right whitespace-nowrap">
-                      <span
-                        className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold tracking-wide uppercase border ${
-                          initialInvestment.action?.toLowerCase().includes('sell')
+                  {paginatedRows.map((row) => {
+                    const isInitial = row.action === 'Initial Entry';
+                    const isConditionMet = row.action === 'Condition Met';
+
+                    return (
+                      <tr
+                        key={row.date}
+                        className={`transition-colors ${
+                          isConditionMet
                             ? isDark
-                              ? 'bg-rose-500/10 text-rose-400 border-rose-500/30'
-                              : 'bg-rose-50 text-rose-700 border-rose-200'
+                              ? 'bg-amber-500/10 hover:bg-amber-500/15 text-zinc-100 font-medium'
+                              : 'bg-amber-50/70 hover:bg-amber-100/70 text-gray-900 font-medium'
+                            : isInitial
+                            ? isDark
+                              ? 'bg-emerald-500/5 hover:bg-emerald-500/10 text-zinc-100'
+                              : 'bg-emerald-50/40 hover:bg-emerald-50/70 text-gray-900'
                             : isDark
-                            ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
-                            : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            ? 'hover:bg-zinc-800/40 text-zinc-200'
+                            : 'hover:bg-gray-50/80 text-gray-800'
                         }`}
                       >
-                        {initialInvestment.action || 'Initial Entry'}
-                      </span>
-                    </td>
-                  </tr>
+                        <td className="py-2.5 px-3 font-semibold text-primary whitespace-nowrap">
+                          {row.date}
+                        </td>
+                        <td className="py-2.5 px-3">
+                          {currencySymbol}{row.open.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </td>
+                        <td className="py-2.5 px-3 text-emerald-500">
+                          {currencySymbol}{row.high.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </td>
+                        <td className="py-2.5 px-3 text-rose-500">
+                          {currencySymbol}{row.low.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </td>
+                        <td className="py-2.5 px-3 font-semibold">
+                          {currencySymbol}{row.close.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </td>
+                        {usedIndicators.map((ind) => (
+                          <td key={ind} className="py-2.5 px-3 text-center whitespace-nowrap">
+                            {renderIndicatorCell(ind, row, currencySymbol)}
+                          </td>
+                        ))}
+                        <td className="py-2.5 px-3 text-right font-bold text-emerald-500">
+                          {currencySymbol}{row.invested.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-bold text-primary">
+                          {row.qty.toLocaleString()}
+                        </td>
+                        <td className="py-2.5 px-3 text-right whitespace-nowrap">
+                          {isInitial ? (
+                            <span
+                              className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold tracking-wide uppercase border ${
+                                isDark
+                                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                                  : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              }`}
+                            >
+                              Initial Entry
+                            </span>
+                          ) : isConditionMet ? (
+                            <span
+                              title={row.actionReason}
+                              className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold tracking-wide uppercase border shadow-2xs ${
+                                isDark
+                                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/50'
+                                  : 'bg-amber-100 text-amber-800 border-amber-300'
+                              }`}
+                            >
+                              Condition Met
+                            </span>
+                          ) : (
+                            <span className="text-secondary opacity-30">—</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
 
+            {/* Footer with Pagination Controls */}
             <div
               className={`mt-3 pt-2.5 border-t flex flex-wrap items-center justify-between gap-2 text-[11px] ${
                 isDark ? 'border-zinc-800/80 text-zinc-400' : 'border-gray-100 text-gray-500'
               }`}
             >
-              <span>
-                Actual allocation: <strong className={isDark ? 'text-zinc-200' : 'text-gray-800'}>{currencySymbol}{initialInvestment.invested.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong> ({initialInvestment.initialCapital > 0 ? ((initialInvestment.invested / initialInvestment.initialCapital) * 100).toFixed(1) : 0}% of capital)
-              </span>
-              <span>
-                Remaining uninvested cash: <strong className={isDark ? 'text-zinc-200' : 'text-gray-800'}>{currencySymbol}{initialInvestment.cashRemaining.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
-              </span>
+              <div className="flex items-center gap-3">
+                <span>
+                  Showing{' '}
+                  <strong className={isDark ? 'text-zinc-200' : 'text-gray-800'}>
+                    {displayedRows.length === 0
+                      ? 0
+                      : pageSize === 'ALL'
+                      ? `1 to ${displayedRows.length}`
+                      : `${(currentPage - 1) * pageSize + 1} to ${Math.min(
+                          currentPage * pageSize,
+                          displayedRows.length
+                        )}`}
+                  </strong>{' '}
+                  of{' '}
+                  <strong className={isDark ? 'text-zinc-200' : 'text-gray-800'}>
+                    {displayedRows.length}
+                  </strong>{' '}
+                  dates {conditionMetCount > 0 && `(${conditionMetCount} condition triggers)`}
+                </span>
+
+                {/* Page Size Selector */}
+                <div className="flex items-center gap-1 font-mono text-[10px]">
+                  <span>Rows:</span>
+                  {[25, 50, 100, 'ALL'].map((size) => (
+                    <button
+                      key={size}
+                      type="button"
+                      onClick={() => {
+                        setPageSize(size as any);
+                        setCurrentPage(1);
+                      }}
+                      className={`px-1.5 py-0.5 rounded border transition-colors cursor-pointer ${
+                        pageSize === size
+                          ? isDark
+                            ? 'bg-zinc-800 text-zinc-100 border-zinc-700 font-bold'
+                            : 'bg-gray-200 text-gray-900 border-gray-300 font-bold'
+                          : isDark
+                          ? 'text-zinc-500 border-transparent hover:text-zinc-300'
+                          : 'text-gray-500 border-transparent hover:text-gray-800'
+                      }`}
+                    >
+                      {size}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Prev / Next Pagination */}
+              {totalPages > 1 && pageSize !== 'ALL' && (
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={currentPage <= 1}
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                    className={`p-1 rounded border transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed ${
+                      isDark
+                        ? 'bg-zinc-900 text-zinc-300 border-zinc-800 hover:bg-zinc-800'
+                        : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+                    }`}
+                  >
+                    <ChevronLeft className="w-3.5 h-3.5" />
+                  </button>
+
+                  <span className="font-mono text-[10px]">
+                    Page <strong>{currentPage}</strong> of <strong>{totalPages}</strong>
+                  </span>
+
+                  <button
+                    type="button"
+                    disabled={currentPage >= totalPages}
+                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                    className={`p-1 rounded border transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed ${
+                      isDark
+                        ? 'bg-zinc-900 text-zinc-300 border-zinc-800 hover:bg-zinc-800'
+                        : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+                    }`}
+                  >
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         )}
