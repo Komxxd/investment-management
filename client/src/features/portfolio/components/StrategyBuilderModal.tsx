@@ -1,7 +1,20 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
-import { X, Check, Plus, Trash2, Loader2, Play, TrendingUp } from 'lucide-react';
+import {
+  X,
+  Check,
+  Plus,
+  Trash2,
+  Loader2,
+  Play,
+  TrendingUp,
+  TrendingDown,
+  ShieldAlert,
+  ArrowUpRight,
+  ArrowDownRight,
+  Copy,
+} from 'lucide-react';
 import { api } from '../../../services/api/client';
 import { BacktestModal } from './BacktestModal';
 
@@ -32,6 +45,14 @@ export interface StrategyRule {
   sizingType?: SizingType | '';
   sizingValue?: number | '';
   conditions: StrategyCondition[];
+  entryConditions?: StrategyCondition[];
+  entrySizingType?: SizingType | '';
+  entrySizingValue?: number | '';
+  exitConditions?: StrategyCondition[];
+  exitSizingType?: SizingType | '';
+  exitSizingValue?: number | '';
+  stopLossPct?: number | '';
+  takeProfitPct?: number | '';
   enabled: boolean;
   createdAt: string;
   frequency: 'daily' | 'realtime';
@@ -53,71 +74,100 @@ export const BLANK_RULE: StrategyRule = {
   name: '',
   scope: 'global',
   targetSymbol: 'ALL',
-  action: '',
-  sizingType: '',
-  sizingValue: '',
+  action: 'BUY',
+  sizingType: 'QTY',
+  sizingValue: 10,
   conditions: [],
+  entryConditions: [],
+  entrySizingType: 'QTY',
+  entrySizingValue: 10,
+  exitConditions: [],
+  exitSizingType: 'DECREASE_PCT',
+  exitSizingValue: 100,
+  stopLossPct: '',
+  takeProfitPct: '',
   enabled: true,
   createdAt: '',
   frequency: 'daily'
 };
 
 export function formatRuleFormula(rule: StrategyRule): string {
-  const hasAction = !!rule.action;
-  const hasSizing = !!rule.sizingType || (rule.sizingValue !== '' && rule.sizingValue !== undefined);
-  const hasConditions = rule.conditions && rule.conditions.length > 0;
+  const formatConds = (conds: StrategyCondition[]) => {
+    return conds.map((cond, idx) => {
+      const conn = idx > 0 ? ` ${cond.connector || 'AND'} ` : '';
 
-  if (!hasAction && !hasSizing && !hasConditions && !rule.name) {
-    return 'Configure strategy parameters above to preview formula';
-  }
+      let left = cond.leftIndicator ? cond.leftIndicator : '[INDICATOR]';
+      if (cond.leftIndicator === 'rsi') left = 'RSI(day)';
+      else if (cond.leftIndicator === 'dma50') left = 'DMA(50)';
+      else if (cond.leftIndicator === 'dma200') left = 'DMA(200)';
+      else if (cond.leftIndicator === 'price') left = 'PRICE';
+      else if (cond.leftIndicator === 'changePct') left = 'CHANGE%';
 
-  const action = rule.action || '[ACTION]';
+      const op = cond.operator || '[OP]';
+
+      let right = '';
+      if (cond.rightType === 'indicator') {
+        if (cond.rightIndicator === 'dma200') right = 'DMA(200)';
+        else if (cond.rightIndicator === 'dma50') right = 'DMA(50)';
+        else if (cond.rightIndicator === 'rsi') right = 'RSI(day)';
+        else if (cond.rightIndicator === 'price') right = 'PRICE';
+        else right = cond.rightIndicator ? cond.rightIndicator : '[INDICATOR]';
+      } else {
+        right = (cond.rightValue !== '' && cond.rightValue !== undefined) ? String(cond.rightValue) : '[VALUE]';
+      }
+
+      const opFormatted = (op === 'CROSSINGOVER' || op === 'CROSSINGUNDER') ? ` ${op} ` : op;
+      return `${conn}${left}${opFormatted.startsWith(' ') ? '' : ' '}${opFormatted}${opFormatted.endsWith(' ') ? '' : ' '}${right}`;
+    }).join('');
+  };
+
+  const formatSizing = (sType?: string, sVal?: any) => {
+    if (sType === 'QTY') return `QTY(${sVal !== '' && sVal !== undefined ? sVal : '?'})`;
+    if (sType === 'VALUE') return `VALUE(${sVal !== '' && sVal !== undefined ? sVal : '?'})`;
+    if (sType === 'INCREASE_PCT') return `INCREASE%(${sVal !== '' && sVal !== undefined ? sVal : '?'})`;
+    if (sType === 'DECREASE_PCT') return `DECREASE%(${sVal !== '' && sVal !== undefined ? sVal : '?'})`;
+    if (sVal !== '' && sVal !== undefined) return `(${sVal})`;
+    return '[SIZING]';
+  };
+
   const target = rule.scope === 'global' ? 'ALL_PORTFOLIO' : (rule.targetSymbol || 'TARGET');
-  
-  let sizing = '';
-  if (rule.sizingType === 'QTY') sizing = `QTY(${rule.sizingValue !== '' && rule.sizingValue !== undefined ? rule.sizingValue : '?'})`;
-  else if (rule.sizingType === 'VALUE') sizing = `VALUE(${rule.sizingValue !== '' && rule.sizingValue !== undefined ? rule.sizingValue : '?'})`;
-  else if (rule.sizingType === 'INCREASE_PCT') sizing = `INCREASE%(${rule.sizingValue !== '' && rule.sizingValue !== undefined ? rule.sizingValue : '?'})`;
-  else if (rule.sizingType === 'DECREASE_PCT') sizing = `DECREASE%(${rule.sizingValue !== '' && rule.sizingValue !== undefined ? rule.sizingValue : '?'})`;
-  else if (rule.sizingValue !== '' && rule.sizingValue !== undefined) sizing = `(${rule.sizingValue})`;
-  else sizing = '[SIZING]';
 
-  if (!hasConditions) {
-    return `${action} ${target} ${sizing} IF [CONDITIONS]`;
+  const entryConds = (rule.entryConditions && rule.entryConditions.length > 0)
+    ? rule.entryConditions
+    : ((rule.action !== 'SELL' && rule.conditions && rule.conditions.length > 0) ? rule.conditions : []);
+
+  const exitConds = (rule.exitConditions && rule.exitConditions.length > 0)
+    ? rule.exitConditions
+    : ((rule.action === 'SELL' && rule.conditions && rule.conditions.length > 0) ? rule.conditions : []);
+
+  const parts: string[] = [];
+
+  const hasEntry = entryConds.length > 0 || (rule.entrySizingValue !== '' && rule.entrySizingValue !== undefined && rule.entrySizingValue !== null);
+  if (hasEntry) {
+    const entrySizing = formatSizing(rule.entrySizingType || rule.sizingType || 'QTY', rule.entrySizingValue ?? rule.sizingValue ?? 10);
+    const condStr = entryConds.length > 0 ? ` IF ${formatConds(entryConds)}` : '';
+    parts.push(`BUY ${target} ${entrySizing}${condStr}`);
   }
 
-  const conditionsStr = rule.conditions.map((cond, idx) => {
-    const conn = idx > 0 ? ` ${cond.connector || 'AND'} ` : '';
-    
-    let left = cond.leftIndicator ? cond.leftIndicator : '[INDICATOR]';
-    if (cond.leftIndicator === 'rsi') left = 'RSI(day)';
-    else if (cond.leftIndicator === 'dma50') left = 'DMA(50)';
-    else if (cond.leftIndicator === 'dma200') left = 'DMA(200)';
-    else if (cond.leftIndicator === 'price') left = 'PRICE';
-    else if (cond.leftIndicator === 'changePct') left = 'CHANGE%';
+  const hasExit = exitConds.length > 0 || (rule.stopLossPct !== '' && rule.stopLossPct !== undefined && rule.stopLossPct !== null) || (rule.takeProfitPct !== '' && rule.takeProfitPct !== undefined && rule.takeProfitPct !== null);
+  if (hasExit) {
+    const exitSizing = formatSizing(rule.exitSizingType || 'DECREASE_PCT', rule.exitSizingValue ?? 100);
+    const condStr = exitConds.length > 0 ? ` IF ${formatConds(exitConds)}` : '';
+    let riskStr = '';
+    if (rule.stopLossPct) riskStr += ` [SL -${rule.stopLossPct}%]`;
+    if (rule.takeProfitPct) riskStr += ` [TP +${rule.takeProfitPct}%]`;
+    parts.push(`SELL ${exitSizing}${condStr}${riskStr}`);
+  }
 
-    const op = cond.operator || '[OP]';
-    
-    let right = '';
-    if (cond.rightType === 'indicator') {
-      if (cond.rightIndicator === 'dma200') right = 'DMA(200)';
-      else if (cond.rightIndicator === 'dma50') right = 'DMA(50)';
-      else if (cond.rightIndicator === 'rsi') right = 'RSI(day)';
-      else if (cond.rightIndicator === 'price') right = 'PRICE';
-      else right = cond.rightIndicator ? cond.rightIndicator : '[INDICATOR]';
-    } else {
-      right = (cond.rightValue !== '' && cond.rightValue !== undefined) ? String(cond.rightValue) : '[VALUE]';
-    }
+  if (parts.length > 0) {
+    return parts.join(' | ');
+  }
 
-    const opFormatted = (op === 'CROSSINGOVER' || op === 'CROSSINGUNDER') ? ` ${op} ` : op;
-    return `${conn}${left}${opFormatted.startsWith(' ') ? '' : ' '}${opFormatted}${opFormatted.endsWith(' ') ? '' : ' '}${right}`;
-  }).join('');
-
-  return `${action} ${target} ${sizing} IF ${conditionsStr}`;
+  return 'Configure Entry (BUY) and Exit (SELL) parameters above to preview formula';
 }
 
 const CATEGORIES = [
-  { id: 'builder', name: 'Global Strategy' },
+  { id: 'builder', name: 'Strategy Builder' },
   { id: 'active', name: 'Saved Strategies' }
 ];
 
@@ -131,9 +181,33 @@ export function StrategyBuilderModal({
   currencySymbol = '₹'
 }: StrategyBuilderModalProps) {
   const [activeTab, setActiveTab] = useState<string>('builder');
+  const [actionTab, setActionTab] = useState<'entry' | 'exit'>('entry');
   const navigate = useNavigate();
-  
+
   const storageKey = `portfolio_strategies_${portfolioId || 'global'}`;
+
+  const normalizeRule = (r: StrategyRule): StrategyRule => {
+    const entryConds = (Array.isArray(r.entryConditions) && r.entryConditions.length > 0)
+      ? r.entryConditions
+      : (r.action !== 'SELL' && Array.isArray(r.conditions) ? r.conditions : []);
+
+    const exitConds = (Array.isArray(r.exitConditions) && r.exitConditions.length > 0)
+      ? r.exitConditions
+      : (r.action === 'SELL' && Array.isArray(r.conditions) ? r.conditions : []);
+
+    return {
+      ...r,
+      entryConditions: entryConds,
+      entrySizingType: r.entrySizingType || r.sizingType || 'QTY',
+      entrySizingValue: r.entrySizingValue !== undefined && r.entrySizingValue !== '' ? r.entrySizingValue : (r.sizingValue !== '' && r.sizingValue !== undefined ? r.sizingValue : 10),
+      exitConditions: exitConds,
+      exitSizingType: r.exitSizingType || 'DECREASE_PCT',
+      exitSizingValue: r.exitSizingValue !== undefined && r.exitSizingValue !== '' ? r.exitSizingValue : 100,
+      stopLossPct: r.stopLossPct ?? '',
+      takeProfitPct: r.takeProfitPct ?? '',
+      conditions: entryConds.length > 0 ? entryConds : exitConds,
+    };
+  };
 
   const [currentRule, setCurrentRule] = useState<StrategyRule>(() => BLANK_RULE);
 
@@ -143,7 +217,7 @@ export function StrategyBuilderModal({
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed)) {
-          return parsed.filter((r: any) => r.id !== 'rule-default');
+          return parsed.filter((r: any) => r.id !== 'rule-default').map(normalizeRule);
         }
       }
     } catch {
@@ -167,7 +241,7 @@ export function StrategyBuilderModal({
     try {
       const data = await api.get(`/api/strategies?portfolio_id=${portfolioId || ''}`);
       if (Array.isArray(data)) {
-        const cleaned = data.filter((r: any) => r.id !== 'rule-default');
+        const cleaned = data.filter((r: any) => r.id !== 'rule-default').map(normalizeRule);
         setSavedRules(cleaned);
         try {
           localStorage.setItem(storageKey, JSON.stringify(cleaned));
@@ -189,7 +263,7 @@ export function StrategyBuilderModal({
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed)) {
-          setSavedRules(parsed.filter((r: any) => r.id !== 'rule-default'));
+          setSavedRules(parsed.filter((r: any) => r.id !== 'rule-default').map(normalizeRule));
         }
       }
     } catch {}
@@ -225,15 +299,43 @@ export function StrategyBuilderModal({
     setApiNotice(null);
 
     const isGlobal = currentRule.scope === 'global' || !portfolioId;
+    const entryConds = currentRule.entryConditions || [];
+    const exitConds = currentRule.exitConditions || [];
+    const entrySizingType = currentRule.entrySizingType || currentRule.sizingType || 'QTY';
+    const entrySizingValue = currentRule.entrySizingValue !== '' && currentRule.entrySizingValue !== undefined ? Number(currentRule.entrySizingValue) : 10;
+    const exitSizingType = currentRule.exitSizingType || 'DECREASE_PCT';
+    const exitSizingValue = currentRule.exitSizingValue !== '' && currentRule.exitSizingValue !== undefined ? Number(currentRule.exitSizingValue) : 100;
+    const stopLossPct = currentRule.stopLossPct !== '' && currentRule.stopLossPct !== undefined && currentRule.stopLossPct !== null ? Number(currentRule.stopLossPct) : null;
+    const takeProfitPct = currentRule.takeProfitPct !== '' && currentRule.takeProfitPct !== undefined && currentRule.takeProfitPct !== null ? Number(currentRule.takeProfitPct) : null;
+
+    const structuredConditions = {
+      entry: entryConds,
+      exit: exitConds,
+      entrySizingType,
+      entrySizingValue,
+      exitSizingType,
+      exitSizingValue,
+      stopLossPct: stopLossPct ?? '',
+      takeProfitPct: takeProfitPct ?? '',
+    };
+
     const payload = {
       portfolio_id: isGlobal ? null : portfolioId,
       name: currentRule.name.trim() || 'Untitled Strategy',
       scope: currentRule.scope || 'global',
       target_symbol: currentRule.targetSymbol || 'ALL',
-      action: currentRule.action || 'BUY',
-      sizing_type: currentRule.sizingType || 'QTY',
-      sizing_value: currentRule.sizingValue !== '' && currentRule.sizingValue !== undefined ? Number(currentRule.sizingValue) : null,
-      conditions: currentRule.conditions || [],
+      action: 'BUY',
+      sizing_type: entrySizingType,
+      sizing_value: entrySizingValue,
+      conditions: structuredConditions,
+      entryConditions: entryConds,
+      entrySizingType,
+      entrySizingValue,
+      exitConditions: exitConds,
+      exitSizingType,
+      exitSizingValue,
+      stopLossPct,
+      takeProfitPct,
       enabled: currentRule.enabled ?? true,
       frequency: currentRule.frequency || 'daily'
     };
@@ -252,13 +354,22 @@ export function StrategyBuilderModal({
         ...currentRule,
         id: currentRule.id || `local-${Date.now()}`,
         name: currentRule.name.trim() || 'Untitled Strategy',
-        createdAt: currentRule.createdAt || new Date().toISOString()
+        createdAt: currentRule.createdAt || new Date().toISOString(),
+        entryConditions: entryConds,
+        entrySizingType,
+        entrySizingValue,
+        exitConditions: exitConds,
+        exitSizingType,
+        exitSizingValue,
+        stopLossPct: stopLossPct ?? '',
+        takeProfitPct: takeProfitPct ?? '',
+        conditions: entryConds.length > 0 ? entryConds : exitConds,
       };
-      setApiNotice('Saved locally. Run the Supabase SQL script to enable database sync.');
+      setApiNotice('Saved locally. Database sync will happen automatically.');
     }
 
     if (savedRule) {
-      const finalRule = savedRule;
+      const finalRule = normalizeRule(savedRule);
       setSavedRules(prev => {
         const existingIdx = prev.findIndex(r => r.id === finalRule.id);
         if (existingIdx >= 0) {
@@ -280,34 +391,75 @@ export function StrategyBuilderModal({
     setIsSaving(false);
   };
 
+  const currentConditions = actionTab === 'entry'
+    ? (currentRule.entryConditions || [])
+    : (currentRule.exitConditions || []);
+
   const handleAddCondition = () => {
     const newCond: StrategyCondition = {
       id: `cond-${Date.now()}`,
-      connector: currentRule.conditions.length > 0 ? 'AND' : undefined,
+      connector: currentConditions.length > 0 ? 'AND' : undefined,
       leftIndicator: '',
       operator: '',
       rightType: 'value',
       rightValue: '',
       rightIndicator: '',
     };
-    setCurrentRule(prev => ({
-      ...prev,
-      conditions: [...prev.conditions, newCond]
-    }));
+
+    setCurrentRule(prev => {
+      if (actionTab === 'entry') {
+        const nextEntry = [...(prev.entryConditions || []), newCond];
+        return {
+          ...prev,
+          entryConditions: nextEntry,
+          conditions: nextEntry,
+        };
+      } else {
+        const nextExit = [...(prev.exitConditions || []), newCond];
+        return {
+          ...prev,
+          exitConditions: nextExit,
+        };
+      }
+    });
   };
 
   const handleRemoveCondition = (id: string) => {
-    setCurrentRule(prev => ({
-      ...prev,
-      conditions: prev.conditions.filter(c => c.id !== id)
-    }));
+    setCurrentRule(prev => {
+      if (actionTab === 'entry') {
+        const nextEntry = (prev.entryConditions || []).filter(c => c.id !== id);
+        return {
+          ...prev,
+          entryConditions: nextEntry,
+          conditions: nextEntry,
+        };
+      } else {
+        const nextExit = (prev.exitConditions || []).filter(c => c.id !== id);
+        return {
+          ...prev,
+          exitConditions: nextExit,
+        };
+      }
+    });
   };
 
   const handleUpdateCondition = (id: string, updates: Partial<StrategyCondition>) => {
-    setCurrentRule(prev => ({
-      ...prev,
-      conditions: prev.conditions.map(c => c.id === id ? { ...c, ...updates } : c)
-    }));
+    setCurrentRule(prev => {
+      if (actionTab === 'entry') {
+        const nextEntry = (prev.entryConditions || []).map(c => c.id === id ? { ...c, ...updates } : c);
+        return {
+          ...prev,
+          entryConditions: nextEntry,
+          conditions: nextEntry,
+        };
+      } else {
+        const nextExit = (prev.exitConditions || []).map(c => c.id === id ? { ...c, ...updates } : c);
+        return {
+          ...prev,
+          exitConditions: nextExit,
+        };
+      }
+    });
   };
 
   const handleDeleteSavedRule = async (id: string) => {
@@ -340,7 +492,6 @@ export function StrategyBuilderModal({
     }
   };
 
-  // Only render after all hooks are evaluated
   if (!isOpen) return null;
 
   return createPortal(
@@ -351,12 +502,17 @@ export function StrategyBuilderModal({
         onClick={onClose} 
       />
 
-      {/* Modal Dialog Matching Indices Setting & Indicators UI */}
-      <div className="relative w-full max-w-2xl sm:max-w-3xl h-[85vh] md:h-[540px] max-h-[calc(100vh-2rem)] bg-surface border border-divider rounded-xl shadow-2xl flex flex-col overflow-hidden text-primary">
+      {/* Modal Dialog */}
+      <div className="relative w-full max-w-2xl sm:max-w-3xl h-[88vh] md:h-[640px] max-h-[calc(100vh-2rem)] bg-surface border border-divider rounded-xl shadow-2xl flex flex-col overflow-hidden text-primary">
         
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 sm:px-6 sm:py-4 border-b border-divider shrink-0 bg-surface">
-          <h2 className="text-base sm:text-lg font-semibold text-primary">Strategy Builder</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-base sm:text-lg font-semibold text-primary">Strategy Builder</h2>
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20 font-medium">
+              Dual-Action: Buy & Sell
+            </span>
+          </div>
           <button
             onClick={onClose}
             className="p-1.5 sm:p-2 -mr-1 sm:-mr-2 text-secondary hover:text-primary hover:bg-surface-hover rounded-lg transition-colors"
@@ -365,12 +521,12 @@ export function StrategyBuilderModal({
           </button>
         </div>
 
-        {/* Body (Two Column Layout matching SettingsModal & AddIndicatorsModal) */}
+        {/* Body */}
         <div className="p-4 sm:p-6 overflow-hidden flex-1 flex flex-row gap-3 sm:gap-6 min-h-0 bg-surface">
           
           {/* Left Column: Categories List */}
-          <div className="w-28 sm:w-40 md:w-48 shrink-0 flex flex-col min-h-0 pr-2 sm:pr-4 border-r border-divider">
-            <h3 className="text-xs sm:text-sm font-medium text-primary mb-2 sm:mb-3 px-2 sm:px-3">Categories</h3>
+          <div className="w-28 sm:w-40 md:w-44 shrink-0 flex flex-col min-h-0 pr-2 sm:pr-4 border-r border-divider">
+            <h3 className="text-xs sm:text-sm font-medium text-primary mb-2 sm:mb-3 px-2 sm:px-3">Navigation</h3>
             <div className="flex flex-col gap-1 overflow-y-auto no-scrollbar flex-1 pb-4">
               {CATEGORIES.map(cat => {
                 const isActive = activeTab === cat.id;
@@ -399,14 +555,14 @@ export function StrategyBuilderModal({
               <div className="space-y-4">
                 
                 {/* Section Header */}
-                <div className="flex items-center justify-between mb-2 shrink-0">
+                <div className="flex items-center justify-between mb-1 shrink-0">
                   <div>
-                    <h3 className="text-xs sm:text-sm font-medium text-primary mb-0.5 sm:mb-1">Global Strategy</h3>
+                    <h3 className="text-xs sm:text-sm font-medium text-primary mb-0.5">Dual-Action Strategy</h3>
                     <p className="text-[10px] sm:text-xs text-secondary">
-                      Configure signal-based portfolio conditions and monitoring rules.
+                      Configure both Entry (BUY) and Exit (SELL) conditions in a single unified trading strategy.
                     </p>
                   </div>
-                  {(currentRule.name || currentRule.action || currentRule.sizingType || (currentRule.sizingValue !== '' && currentRule.sizingValue !== undefined) || currentRule.conditions.length > 0) && (
+                  {(currentRule.name || (currentRule.entryConditions && currentRule.entryConditions.length > 0) || (currentRule.exitConditions && currentRule.exitConditions.length > 0) || currentRule.stopLossPct || currentRule.takeProfitPct) && (
                     <button
                       type="button"
                       onClick={() => setCurrentRule(BLANK_RULE)}
@@ -427,14 +583,14 @@ export function StrategyBuilderModal({
                       type="text"
                       value={currentRule.name}
                       onChange={e => setCurrentRule(prev => ({ ...prev, name: e.target.value }))}
-                      placeholder="e.g. Portfolio Dip & Momentum"
+                      placeholder="e.g. RSI Dip Buy & Momentum Exit"
                       className="w-full bg-surface border border-divider rounded-lg px-2.5 py-1.5 text-xs text-primary focus:outline-none focus:border-primary"
                     />
                   </div>
 
                   <div>
                     <label className="block text-xs font-medium text-secondary mb-1">
-                      Target Scope
+                      Target Stock Scope
                     </label>
                     <select
                       value={currentRule.scope === 'global' ? 'ALL' : (currentRule.targetSymbol || 'ALL')}
@@ -459,269 +615,540 @@ export function StrategyBuilderModal({
                   </div>
                 </div>
 
-                {/* Action & Sizing Selection */}
-                <div className="space-y-2">
-                  <label className="block text-xs font-medium text-secondary">
-                    Action & Sizing
-                  </label>
-                  <div className="flex flex-wrap items-center gap-2">
-                    {/* Action Selector */}
-                    <div className="inline-flex items-center p-0.5 bg-surface border border-divider rounded-lg">
-                      <button
-                        type="button"
-                        onClick={() => setCurrentRule(prev => ({ ...prev, action: prev.action === 'BUY' ? '' : 'BUY' }))}
-                        className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
-                          currentRule.action === 'BUY'
-                            ? 'bg-primary text-surface font-semibold'
-                            : 'text-secondary hover:text-primary'
-                        }`}
-                      >
-                        BUY
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setCurrentRule(prev => ({ ...prev, action: prev.action === 'SELL' ? '' : 'SELL' }))}
-                        className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
-                          currentRule.action === 'SELL'
-                            ? 'bg-primary text-surface font-semibold'
-                            : 'text-secondary hover:text-primary'
-                        }`}
-                      >
-                        SELL
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setCurrentRule(prev => ({ ...prev, action: prev.action === 'ALERT' ? '' : 'ALERT' }))}
-                        className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
-                          currentRule.action === 'ALERT'
-                            ? 'bg-primary text-surface font-semibold'
-                            : 'text-secondary hover:text-primary'
-                        }`}
-                      >
-                        ALERT
-                      </button>
-                    </div>
+                {/* Sub-tab Switcher: Entry (BUY) vs Exit (SELL) */}
+                <div className="flex items-center gap-2 border-b border-divider pb-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setActionTab('entry')}
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                      actionTab === 'entry'
+                        ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shadow-sm'
+                        : 'text-secondary hover:text-primary hover:bg-surface-hover border border-transparent'
+                    }`}
+                  >
+                    <div className={`w-2 h-2 rounded-full ${actionTab === 'entry' ? 'bg-emerald-400' : 'bg-emerald-500/40'}`} />
+                    <span>Entry Rule (BUY)</span>
+                    <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-surface border border-divider font-mono">
+                      {currentRule.entryConditions?.length ?? 0}
+                    </span>
+                  </button>
 
-                    {/* Sizing Selector */}
-                    <div className="inline-flex items-center p-0.5 bg-surface border border-divider rounded-lg">
-                      <button
-                        type="button"
-                        onClick={() => setCurrentRule(prev => ({ ...prev, sizingType: prev.sizingType === 'QTY' ? '' : 'QTY' }))}
-                        className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
-                          currentRule.sizingType === 'QTY'
-                            ? 'bg-primary text-surface font-semibold'
-                            : 'text-secondary hover:text-primary'
-                        }`}
-                      >
-                        QTY
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setCurrentRule(prev => ({ ...prev, sizingType: prev.sizingType === 'VALUE' ? '' : 'VALUE' }))}
-                        className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
-                          currentRule.sizingType === 'VALUE'
-                            ? 'bg-primary text-surface font-semibold'
-                            : 'text-secondary hover:text-primary'
-                        }`}
-                      >
-                        VALUE
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setCurrentRule(prev => ({ ...prev, sizingType: prev.sizingType === 'INCREASE_PCT' ? '' : 'INCREASE_PCT' }))}
-                        className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
-                          currentRule.sizingType === 'INCREASE_PCT'
-                            ? 'bg-primary text-surface font-semibold'
-                            : 'text-secondary hover:text-primary'
-                        }`}
-                      >
-                        INCREASE%
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setCurrentRule(prev => ({ ...prev, sizingType: prev.sizingType === 'DECREASE_PCT' ? '' : 'DECREASE_PCT' }))}
-                        className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
-                          currentRule.sizingType === 'DECREASE_PCT'
-                            ? 'bg-primary text-surface font-semibold'
-                            : 'text-secondary hover:text-primary'
-                        }`}
-                      >
-                        DECREASE%
-                      </button>
-                    </div>
+                  <button
+                    type="button"
+                    onClick={() => setActionTab('exit')}
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                      actionTab === 'exit'
+                        ? 'bg-rose-500/15 text-rose-400 border border-rose-500/30 shadow-sm'
+                        : 'text-secondary hover:text-primary hover:bg-surface-hover border border-transparent'
+                    }`}
+                  >
+                    <div className={`w-2 h-2 rounded-full ${actionTab === 'exit' ? 'bg-rose-400' : 'bg-rose-500/40'}`} />
+                    <span>Exit Rule (SELL)</span>
+                    <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-surface border border-divider font-mono">
+                      {(currentRule.exitConditions?.length ?? 0) + (currentRule.stopLossPct ? 1 : 0) + (currentRule.takeProfitPct ? 1 : 0)}
+                    </span>
+                  </button>
+                </div>
 
-                    {/* Sizing Input */}
-                    <div className="flex items-center gap-1.5">
-                      <input
-                        type="number"
-                        min="1"
-                        value={currentRule.sizingValue !== undefined && currentRule.sizingValue !== null ? currentRule.sizingValue : ''}
-                        onChange={e => setCurrentRule(prev => ({ ...prev, sizingValue: e.target.value === '' ? '' : Number(e.target.value) }))}
-                        placeholder="Value"
-                        className="w-20 bg-surface border border-divider rounded-lg px-2.5 py-1 text-xs text-primary font-mono focus:outline-none focus:border-primary"
-                      />
-                      <span className="text-xs text-secondary font-mono">
-                        {currentRule.sizingType === 'QTY' && 'Qty'}
-                        {currentRule.sizingType === 'VALUE' && currencySymbol}
-                        {(currentRule.sizingType === 'INCREASE_PCT' || currentRule.sizingType === 'DECREASE_PCT') && '%'}
+                {/* ===================== TAB A: ENTRY (BUY) ===================== */}
+                {actionTab === 'entry' && (
+                  <div className="space-y-3.5 bg-emerald-500/5 p-3 rounded-lg border border-emerald-500/20">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-400">
+                        <ArrowUpRight className="w-3.5 h-3.5" />
+                        <span>Position Entry (When to Buy)</span>
+                      </div>
+                      <span className="text-[10px] text-secondary">
+                        Executes when no position is open or to scale in
                       </span>
                     </div>
-                  </div>
-                </div>
 
-                {/* Conditions Block */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label className="block text-xs font-medium text-secondary">
-                      Conditions (IF)
-                    </label>
+                    {/* Entry Sizing */}
+                    <div className="space-y-1.5">
+                      <label className="block text-[11px] font-medium text-secondary">
+                        BUY Sizing & Allocation
+                      </label>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div className="inline-flex items-center p-0.5 bg-surface border border-divider rounded-lg">
+                          <button
+                            type="button"
+                            onClick={() => setCurrentRule(prev => ({ ...prev, entrySizingType: 'QTY' }))}
+                            className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${
+                              (currentRule.entrySizingType || currentRule.sizingType || 'QTY') === 'QTY'
+                                ? 'bg-emerald-500 text-white font-semibold'
+                                : 'text-secondary hover:text-primary'
+                            }`}
+                          >
+                            QTY
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setCurrentRule(prev => ({ ...prev, entrySizingType: 'VALUE' }))}
+                            className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${
+                              (currentRule.entrySizingType || currentRule.sizingType) === 'VALUE'
+                                ? 'bg-emerald-500 text-white font-semibold'
+                                : 'text-secondary hover:text-primary'
+                            }`}
+                          >
+                            VALUE
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setCurrentRule(prev => ({ ...prev, entrySizingType: 'INCREASE_PCT' }))}
+                            className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${
+                              (currentRule.entrySizingType || currentRule.sizingType) === 'INCREASE_PCT'
+                                ? 'bg-emerald-500 text-white font-semibold'
+                                : 'text-secondary hover:text-primary'
+                            }`}
+                          >
+                            INCREASE%
+                          </button>
+                        </div>
 
-                    <button
-                      type="button"
-                      onClick={handleAddCondition}
-                      className="text-xs font-medium text-secondary hover:text-primary transition-colors flex items-center gap-1 cursor-pointer"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>Add Condition</span>
-                    </button>
-                  </div>
-
-                  {currentRule.conditions.length === 0 ? (
-                    <div className="p-4 border border-dashed border-divider rounded-lg text-center space-y-2">
-                      <p className="text-xs text-secondary">No conditions configured yet.</p>
-                      <button
-                        type="button"
-                        onClick={handleAddCondition}
-                        className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-primary border border-divider rounded-md hover:bg-surface-hover transition-colors cursor-pointer"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                        <span>Add Condition</span>
-                      </button>
+                        {/* Sizing Value */}
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="number"
+                            min="1"
+                            value={currentRule.entrySizingValue !== undefined && currentRule.entrySizingValue !== null ? currentRule.entrySizingValue : (currentRule.sizingValue || '')}
+                            onChange={e => setCurrentRule(prev => ({ ...prev, entrySizingValue: e.target.value === '' ? '' : Number(e.target.value) }))}
+                            placeholder="Value"
+                            className="w-24 bg-surface border border-divider rounded-lg px-2.5 py-1 text-xs text-primary font-mono focus:outline-none focus:border-emerald-500"
+                          />
+                          <span className="text-xs text-secondary font-mono">
+                            {(currentRule.entrySizingType || currentRule.sizingType || 'QTY') === 'QTY' && 'Shares'}
+                            {(currentRule.entrySizingType || currentRule.sizingType) === 'VALUE' && currencySymbol}
+                            {(currentRule.entrySizingType || currentRule.sizingType) === 'INCREASE_PCT' && '%'}
+                          </span>
+                        </div>
+                      </div>
                     </div>
-                  ) : (
+
+                    {/* Entry Conditions List */}
                     <div className="space-y-2">
-                      {currentRule.conditions.map((cond, idx) => (
-                        <div key={cond.id} className="space-y-1.5">
-                          {idx > 0 && (
-                            <div className="flex items-center gap-2 pl-2">
-                              <button
-                                type="button"
-                                onClick={() => handleUpdateCondition(cond.id, {
-                                  connector: cond.connector === 'OR' ? 'AND' : 'OR'
-                                })}
-                                className="px-2 py-0.5 rounded text-[10px] font-mono border border-divider bg-surface text-secondary hover:text-primary transition-colors"
-                              >
-                                {cond.connector || 'AND'}
-                              </button>
-                              <div className="h-[1px] flex-1 bg-divider" />
+                      <div className="flex items-center justify-between">
+                        <label className="block text-[11px] font-medium text-secondary">
+                          Entry Conditions (IF)
+                        </label>
+
+                        <button
+                          type="button"
+                          onClick={handleAddCondition}
+                          className="text-xs font-medium text-emerald-400 hover:text-emerald-300 transition-colors flex items-center gap-1 cursor-pointer"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>Add Condition</span>
+                        </button>
+                      </div>
+
+                      {(currentRule.entryConditions || []).length === 0 ? (
+                        <div className="p-3.5 border border-dashed border-emerald-500/30 rounded-lg text-center space-y-2 bg-surface/50">
+                          <p className="text-xs text-secondary">No entry conditions configured yet.</p>
+                          <button
+                            type="button"
+                            onClick={handleAddCondition}
+                            className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-emerald-400 border border-emerald-500/30 rounded-md hover:bg-emerald-500/10 transition-colors cursor-pointer"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>Add Entry Condition (e.g. RSI &lt; 30)</span>
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {(currentRule.entryConditions || []).map((cond, idx) => (
+                            <div key={cond.id} className="space-y-1.5">
+                              {idx > 0 && (
+                                <div className="flex items-center gap-2 pl-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleUpdateCondition(cond.id, {
+                                      connector: cond.connector === 'OR' ? 'AND' : 'OR'
+                                    })}
+                                    className="px-2 py-0.5 rounded text-[10px] font-mono border border-divider bg-surface text-secondary hover:text-primary transition-colors"
+                                  >
+                                    {cond.connector || 'AND'}
+                                  </button>
+                                  <div className="h-[1px] flex-1 bg-divider" />
+                                </div>
+                              )}
+
+                              <div className="flex flex-wrap items-center gap-2 p-2 bg-surface border border-divider rounded-lg">
+                                {/* Left Indicator */}
+                                <select
+                                  value={cond.leftIndicator || ''}
+                                  onChange={e => handleUpdateCondition(cond.id, { leftIndicator: e.target.value as any })}
+                                  className="bg-surface border border-divider rounded-lg px-2 py-1 text-xs text-primary focus:outline-none focus:border-emerald-500"
+                                >
+                                  <option value="" disabled>Indicator</option>
+                                  <option value="rsi">RSI(14, day)</option>
+                                  <option value="dma50">DMA(50)</option>
+                                  <option value="dma200">DMA(200)</option>
+                                  <option value="price">Current Price</option>
+                                  <option value="changePct">Day Change %</option>
+                                </select>
+
+                                {/* Operator */}
+                                <select
+                                  value={cond.operator || ''}
+                                  onChange={e => handleUpdateCondition(cond.id, { operator: e.target.value as any })}
+                                  className="bg-surface border border-divider rounded-lg px-2 py-1 text-xs font-mono text-primary focus:outline-none focus:border-emerald-500"
+                                >
+                                  <option value="" disabled>Op</option>
+                                  <option value="<">&lt;</option>
+                                  <option value=">">&gt;</option>
+                                  <option value="<=">&lt;=</option>
+                                  <option value=">=">&gt;=</option>
+                                  <option value="CROSSINGOVER">CROSSINGOVER</option>
+                                  <option value="CROSSINGUNDER">CROSSINGUNDER</option>
+                                  <option value="==">==</option>
+                                </select>
+
+                                {/* Right Type Toggle */}
+                                <div className="inline-flex items-center p-0.5 bg-surface border border-divider rounded">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleUpdateCondition(cond.id, { rightType: 'value' })}
+                                    className={`px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                                      cond.rightType === 'value'
+                                        ? 'bg-primary text-surface font-semibold'
+                                        : 'text-secondary hover:text-primary'
+                                    }`}
+                                  >
+                                    Val
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleUpdateCondition(cond.id, { rightType: 'indicator' })}
+                                    className={`px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                                      cond.rightType === 'indicator'
+                                        ? 'bg-primary text-surface font-semibold'
+                                        : 'text-secondary hover:text-primary'
+                                    }`}
+                                  >
+                                    Ind
+                                  </button>
+                                </div>
+
+                                {/* Right Value or Select */}
+                                {cond.rightType === 'value' ? (
+                                  <input
+                                    type="number"
+                                    value={cond.rightValue !== undefined && cond.rightValue !== null ? cond.rightValue : ''}
+                                    onChange={e => handleUpdateCondition(cond.id, { rightValue: e.target.value === '' ? '' : Number(e.target.value) })}
+                                    placeholder="Value"
+                                    className="w-20 bg-surface border border-divider rounded-lg px-2 py-1 text-xs text-primary font-mono focus:outline-none focus:border-emerald-500"
+                                  />
+                                ) : (
+                                  <select
+                                    value={cond.rightIndicator || ''}
+                                    onChange={e => handleUpdateCondition(cond.id, { rightIndicator: e.target.value as any })}
+                                    className="bg-surface border border-divider rounded-lg px-2 py-1 text-xs text-primary focus:outline-none focus:border-emerald-500"
+                                  >
+                                    <option value="" disabled>Indicator</option>
+                                    <option value="dma200">DMA(200)</option>
+                                    <option value="dma50">DMA(50)</option>
+                                    <option value="rsi">RSI(14)</option>
+                                    <option value="price">Current Price</option>
+                                  </select>
+                                )}
+
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveCondition(cond.id)}
+                                  className="ml-auto p-1 text-secondary hover:text-rose-400 rounded transition-colors cursor-pointer"
+                                  title="Remove condition"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
                             </div>
-                          )}
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
 
-                          <div className="flex flex-wrap items-center gap-2 p-2.5 bg-surface border border-divider rounded-lg">
-                            {/* Left Indicator */}
-                            <select
-                              value={cond.leftIndicator || ''}
-                              onChange={e => handleUpdateCondition(cond.id, { leftIndicator: e.target.value as any })}
-                              className="bg-surface border border-divider rounded-lg px-2.5 py-1.5 text-xs text-primary focus:outline-none focus:border-primary"
-                            >
-                              <option value="" disabled>Select Indicator</option>
-                              <option value="rsi">RSI(14, day)</option>
-                              <option value="dma50">DMA(50)</option>
-                              <option value="dma200">DMA(200)</option>
-                              <option value="price">Current Price</option>
-                              <option value="changePct">Day Change %</option>
-                            </select>
+                {/* ===================== TAB B: EXIT (SELL) ===================== */}
+                {actionTab === 'exit' && (
+                  <div className="space-y-3.5 bg-rose-500/5 p-3 rounded-lg border border-rose-500/20">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 text-xs font-semibold text-rose-400">
+                        <ArrowDownRight className="w-3.5 h-3.5" />
+                        <span>Position Exit (When to Sell)</span>
+                      </div>
+                      <span className="text-[10px] text-secondary">
+                        Executes when holding position to lock gains or stop losses
+                      </span>
+                    </div>
 
-                            {/* Operator */}
-                            <select
-                              value={cond.operator || ''}
-                              onChange={e => handleUpdateCondition(cond.id, { operator: e.target.value as any })}
-                              className="bg-surface border border-divider rounded-lg px-2.5 py-1.5 text-xs font-mono text-primary focus:outline-none focus:border-primary"
-                            >
-                              <option value="" disabled>Select Operator</option>
-                              <option value="<">&lt;</option>
-                              <option value=">">&gt;</option>
-                              <option value="<=">&lt;=</option>
-                              <option value=">=">&gt;=</option>
-                              <option value="CROSSINGOVER">CROSSINGOVER</option>
-                              <option value="CROSSINGUNDER">CROSSINGUNDER</option>
-                              <option value="==">==</option>
-                            </select>
+                    {/* Exit Sizing */}
+                    <div className="space-y-1.5">
+                      <label className="block text-[11px] font-medium text-secondary">
+                        SELL Sizing & Liquidation
+                      </label>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div className="inline-flex items-center p-0.5 bg-surface border border-divider rounded-lg">
+                          <button
+                            type="button"
+                            onClick={() => setCurrentRule(prev => ({ ...prev, exitSizingType: 'DECREASE_PCT' }))}
+                            className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${
+                              (currentRule.exitSizingType || 'DECREASE_PCT') === 'DECREASE_PCT'
+                                ? 'bg-rose-500 text-white font-semibold'
+                                : 'text-secondary hover:text-primary'
+                            }`}
+                          >
+                            DECREASE%
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setCurrentRule(prev => ({ ...prev, exitSizingType: 'QTY' }))}
+                            className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${
+                              currentRule.exitSizingType === 'QTY'
+                                ? 'bg-rose-500 text-white font-semibold'
+                                : 'text-secondary hover:text-primary'
+                            }`}
+                          >
+                            QTY
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setCurrentRule(prev => ({ ...prev, exitSizingType: 'VALUE' }))}
+                            className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${
+                              currentRule.exitSizingType === 'VALUE'
+                                ? 'bg-rose-500 text-white font-semibold'
+                                : 'text-secondary hover:text-primary'
+                            }`}
+                          >
+                            VALUE
+                          </button>
+                        </div>
 
-                            {/* Right Type Toggle */}
-                            <div className="inline-flex items-center p-0.5 bg-surface border border-divider rounded-lg">
-                              <button
-                                type="button"
-                                onClick={() => handleUpdateCondition(cond.id, { rightType: 'value' })}
-                                className={`px-2 py-1 rounded text-[10px] font-medium transition-colors ${
-                                  cond.rightType === 'value'
-                                    ? 'bg-primary text-surface font-semibold'
-                                    : 'text-secondary hover:text-primary'
-                                }`}
-                              >
-                                Value
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleUpdateCondition(cond.id, { rightType: 'indicator' })}
-                                className={`px-2 py-1 rounded text-[10px] font-medium transition-colors ${
-                                  cond.rightType === 'indicator'
-                                    ? 'bg-primary text-surface font-semibold'
-                                    : 'text-secondary hover:text-primary'
-                                }`}
-                              >
-                                Indicator
-                              </button>
+                        {/* Sizing Value */}
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="number"
+                            min="1"
+                            value={currentRule.exitSizingValue !== undefined && currentRule.exitSizingValue !== null ? currentRule.exitSizingValue : 100}
+                            onChange={e => setCurrentRule(prev => ({ ...prev, exitSizingValue: e.target.value === '' ? '' : Number(e.target.value) }))}
+                            placeholder="100"
+                            className="w-24 bg-surface border border-divider rounded-lg px-2.5 py-1 text-xs text-primary font-mono focus:outline-none focus:border-rose-500"
+                          />
+                          <span className="text-xs text-secondary font-mono">
+                            {(currentRule.exitSizingType || 'DECREASE_PCT') === 'DECREASE_PCT' && '% (100% = Full Exit)'}
+                            {currentRule.exitSizingType === 'QTY' && 'Shares'}
+                            {currentRule.exitSizingType === 'VALUE' && currencySymbol}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Exit Conditions List */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="block text-[11px] font-medium text-secondary">
+                          Exit Technical Conditions (IF)
+                        </label>
+
+                        <button
+                          type="button"
+                          onClick={handleAddCondition}
+                          className="text-xs font-medium text-rose-400 hover:text-rose-300 transition-colors flex items-center gap-1 cursor-pointer"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>Add Condition</span>
+                        </button>
+                      </div>
+
+                      {(currentRule.exitConditions || []).length === 0 ? (
+                        <div className="p-3.5 border border-dashed border-rose-500/30 rounded-lg text-center space-y-2 bg-surface/50">
+                          <p className="text-xs text-secondary">No technical exit conditions configured yet.</p>
+                          <button
+                            type="button"
+                            onClick={handleAddCondition}
+                            className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-rose-400 border border-rose-500/30 rounded-md hover:bg-rose-500/10 transition-colors cursor-pointer"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>Add Exit Condition (e.g. RSI &gt; 70)</span>
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {(currentRule.exitConditions || []).map((cond, idx) => (
+                            <div key={cond.id} className="space-y-1.5">
+                              {idx > 0 && (
+                                <div className="flex items-center gap-2 pl-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleUpdateCondition(cond.id, {
+                                      connector: cond.connector === 'OR' ? 'AND' : 'OR'
+                                    })}
+                                    className="px-2 py-0.5 rounded text-[10px] font-mono border border-divider bg-surface text-secondary hover:text-primary transition-colors"
+                                  >
+                                    {cond.connector || 'AND'}
+                                  </button>
+                                  <div className="h-[1px] flex-1 bg-divider" />
+                                </div>
+                              )}
+
+                              <div className="flex flex-wrap items-center gap-2 p-2 bg-surface border border-divider rounded-lg">
+                                {/* Left Indicator */}
+                                <select
+                                  value={cond.leftIndicator || ''}
+                                  onChange={e => handleUpdateCondition(cond.id, { leftIndicator: e.target.value as any })}
+                                  className="bg-surface border border-divider rounded-lg px-2 py-1 text-xs text-primary focus:outline-none focus:border-rose-500"
+                                >
+                                  <option value="" disabled>Indicator</option>
+                                  <option value="rsi">RSI(14, day)</option>
+                                  <option value="dma50">DMA(50)</option>
+                                  <option value="dma200">DMA(200)</option>
+                                  <option value="price">Current Price</option>
+                                  <option value="changePct">Day Change %</option>
+                                </select>
+
+                                {/* Operator */}
+                                <select
+                                  value={cond.operator || ''}
+                                  onChange={e => handleUpdateCondition(cond.id, { operator: e.target.value as any })}
+                                  className="bg-surface border border-divider rounded-lg px-2 py-1 text-xs font-mono text-primary focus:outline-none focus:border-rose-500"
+                                >
+                                  <option value="" disabled>Op</option>
+                                  <option value="<">&lt;</option>
+                                  <option value=">">&gt;</option>
+                                  <option value="<=">&lt;=</option>
+                                  <option value=">=">&gt;=</option>
+                                  <option value="CROSSINGOVER">CROSSINGOVER</option>
+                                  <option value="CROSSINGUNDER">CROSSINGUNDER</option>
+                                  <option value="==">==</option>
+                                </select>
+
+                                {/* Right Type Toggle */}
+                                <div className="inline-flex items-center p-0.5 bg-surface border border-divider rounded">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleUpdateCondition(cond.id, { rightType: 'value' })}
+                                    className={`px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                                      cond.rightType === 'value'
+                                        ? 'bg-primary text-surface font-semibold'
+                                        : 'text-secondary hover:text-primary'
+                                    }`}
+                                  >
+                                    Val
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleUpdateCondition(cond.id, { rightType: 'indicator' })}
+                                    className={`px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                                      cond.rightType === 'indicator'
+                                        ? 'bg-primary text-surface font-semibold'
+                                        : 'text-secondary hover:text-primary'
+                                    }`}
+                                  >
+                                    Ind
+                                  </button>
+                                </div>
+
+                                {/* Right Value or Select */}
+                                {cond.rightType === 'value' ? (
+                                  <input
+                                    type="number"
+                                    value={cond.rightValue !== undefined && cond.rightValue !== null ? cond.rightValue : ''}
+                                    onChange={e => handleUpdateCondition(cond.id, { rightValue: e.target.value === '' ? '' : Number(e.target.value) })}
+                                    placeholder="Value"
+                                    className="w-20 bg-surface border border-divider rounded-lg px-2 py-1 text-xs text-primary font-mono focus:outline-none focus:border-rose-500"
+                                  />
+                                ) : (
+                                  <select
+                                    value={cond.rightIndicator || ''}
+                                    onChange={e => handleUpdateCondition(cond.id, { rightIndicator: e.target.value as any })}
+                                    className="bg-surface border border-divider rounded-lg px-2 py-1 text-xs text-primary focus:outline-none focus:border-rose-500"
+                                  >
+                                    <option value="" disabled>Indicator</option>
+                                    <option value="dma200">DMA(200)</option>
+                                    <option value="dma50">DMA(50)</option>
+                                    <option value="rsi">RSI(14)</option>
+                                    <option value="price">Current Price</option>
+                                  </select>
+                                )}
+
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveCondition(cond.id)}
+                                  className="ml-auto p-1 text-secondary hover:text-rose-400 rounded transition-colors cursor-pointer"
+                                  title="Remove condition"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
                             </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
 
-                            {/* Right Value or Select */}
-                            {cond.rightType === 'value' ? (
-                              <input
-                                type="number"
-                                value={cond.rightValue !== undefined && cond.rightValue !== null ? cond.rightValue : ''}
-                                onChange={e => handleUpdateCondition(cond.id, { rightValue: e.target.value === '' ? '' : Number(e.target.value) })}
-                                placeholder="Value"
-                                className="w-20 bg-surface border border-divider rounded-lg px-2.5 py-1.5 text-xs text-primary font-mono focus:outline-none focus:border-primary"
-                              />
-                            ) : (
-                              <select
-                                value={cond.rightIndicator || ''}
-                                onChange={e => handleUpdateCondition(cond.id, { rightIndicator: e.target.value as any })}
-                                className="bg-surface border border-divider rounded-lg px-2.5 py-1.5 text-xs text-primary focus:outline-none focus:border-primary"
-                              >
-                                <option value="" disabled>Select Indicator</option>
-                                <option value="dma200">DMA(200)</option>
-                                <option value="dma50">DMA(50)</option>
-                                <option value="rsi">RSI(14)</option>
-                                <option value="price">Current Price</option>
-                              </select>
-                            )}
-
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveCondition(cond.id)}
-                              className="ml-auto p-1.5 text-secondary hover:text-primary rounded transition-colors cursor-pointer"
-                              title="Remove condition"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
+                    {/* Risk Management Guards (Stop Loss / Take Profit) */}
+                    <div className="pt-2 border-t border-divider/60 space-y-2">
+                      <div className="flex items-center gap-1.5 text-[11px] font-medium text-primary">
+                        <ShieldAlert className="w-3.5 h-3.5 text-amber-400" />
+                        <span>Automated Risk Management (Optional)</span>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="p-2 bg-surface border border-divider rounded-lg flex items-center justify-between">
+                          <label className="text-[11px] text-secondary">
+                            Stop-Loss (SL) %
+                          </label>
+                          <div className="flex items-center gap-1">
+                            <span className="text-[11px] text-rose-400 font-mono">-</span>
+                            <input
+                              type="number"
+                              min="0.5"
+                              step="0.5"
+                              value={currentRule.stopLossPct !== undefined && currentRule.stopLossPct !== null ? currentRule.stopLossPct : ''}
+                              onChange={e => setCurrentRule(prev => ({ ...prev, stopLossPct: e.target.value === '' ? '' : Number(e.target.value) }))}
+                              placeholder="e.g. 5"
+                              className="w-16 bg-surface-hover border border-divider rounded px-2 py-0.5 text-xs text-primary font-mono text-right focus:outline-none focus:border-rose-500"
+                            />
+                            <span className="text-[11px] text-secondary font-mono">%</span>
                           </div>
                         </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
 
-                {/* Clean Formula Preview */}
+                        <div className="p-2 bg-surface border border-divider rounded-lg flex items-center justify-between">
+                          <label className="text-[11px] text-secondary">
+                            Take-Profit (TP) %
+                          </label>
+                          <div className="flex items-center gap-1">
+                            <span className="text-[11px] text-emerald-400 font-mono">+</span>
+                            <input
+                              type="number"
+                              min="0.5"
+                              step="0.5"
+                              value={currentRule.takeProfitPct !== undefined && currentRule.takeProfitPct !== null ? currentRule.takeProfitPct : ''}
+                              onChange={e => setCurrentRule(prev => ({ ...prev, takeProfitPct: e.target.value === '' ? '' : Number(e.target.value) }))}
+                              placeholder="e.g. 10"
+                              className="w-16 bg-surface-hover border border-divider rounded px-2 py-0.5 text-xs text-primary font-mono text-right focus:outline-none focus:border-emerald-500"
+                            />
+                            <span className="text-[11px] text-secondary font-mono">%</span>
+                          </div>
+                        </div>
+                      </div>
+                      <p className="text-[10px] text-secondary">
+                        Triggers automated exit if stock drops by SL % or gains TP % from average entry price.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Clean Dual-Action Formula Preview */}
                 <div className="p-3 bg-surface border border-divider rounded-lg space-y-1.5">
                   <div className="flex items-center justify-between text-secondary text-xs">
-                    <span className="font-medium text-primary">Formula Preview</span>
+                    <span className="font-medium text-primary">Unified Strategy Formula</span>
                     <button
                       type="button"
                       onClick={handleCopyFormula}
-                      className="text-secondary hover:text-primary text-[11px] transition-colors"
+                      className="text-secondary hover:text-primary text-[11px] transition-colors flex items-center gap-1"
                     >
-                      {copied ? 'Copied' : 'Copy'}
+                      <Copy className="w-3 h-3" />
+                      <span>{copied ? 'Copied' : 'Copy'}</span>
                     </button>
                   </div>
                   <div className="p-2.5 bg-surface-hover/50 rounded border border-divider font-mono text-xs text-primary overflow-x-auto whitespace-nowrap">
@@ -732,20 +1159,21 @@ export function StrategyBuilderModal({
               </div>
             )}
 
-            {/* TAB 2: ACTIVE STRATEGIES */}
+            {/* TAB 2: SAVED STRATEGIES */}
             {activeTab === 'active' && (
               <div className="space-y-3">
                 <div className="flex items-center justify-between mb-2 shrink-0">
                   <div>
-                    <h3 className="text-xs sm:text-sm font-medium text-primary mb-0.5 sm:mb-1">Saved Strategies</h3>
+                    <h3 className="text-xs sm:text-sm font-medium text-primary mb-0.5">Saved Strategies</h3>
                     <p className="text-[10px] sm:text-xs text-secondary">
-                      Active rules monitored for signals.
+                      Active dual-action rules monitored for entry and exit signals.
                     </p>
                   </div>
                   <button
                     type="button"
                     onClick={() => {
                       setCurrentRule(BLANK_RULE);
+                      setActionTab('entry');
                       setActiveTab('builder');
                     }}
                     className="px-2.5 py-1 text-xs font-medium text-secondary hover:text-primary border border-divider rounded-lg hover:bg-surface-hover transition-colors cursor-pointer"
@@ -767,75 +1195,90 @@ export function StrategyBuilderModal({
                   </div>
                 ) : savedRules.length === 0 ? (
                   <div className="p-8 text-center text-xs text-secondary border border-divider rounded-lg">
-                    No strategies saved yet.
+                    No strategies saved yet. Click "+ New" to build your first dual-action strategy.
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    {savedRules.map(rule => (
-                      <div
-                        key={rule.id}
-                        className="p-3 rounded-lg border border-divider bg-surface flex items-start justify-between gap-3"
-                      >
-                        <div className="space-y-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs sm:text-sm font-medium text-primary truncate">{rule.name}</span>
-                            <span className="text-[10px] text-secondary font-mono">
-                              ({rule.scope === 'global' ? 'Global' : (rule.targetSymbol || 'All')})
-                            </span>
+                    {savedRules.map(rule => {
+                      const entryCount = rule.entryConditions?.length ?? 0;
+                      const exitCount = rule.exitConditions?.length ?? 0;
+                      return (
+                        <div
+                          key={rule.id}
+                          className="p-3 rounded-lg border border-divider bg-surface flex items-start justify-between gap-3"
+                        >
+                          <div className="space-y-1.5 min-w-0 flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-xs sm:text-sm font-medium text-primary truncate">{rule.name}</span>
+                              <span className="text-[10px] text-secondary font-mono px-1.5 py-0.5 rounded bg-surface-hover border border-divider">
+                                {rule.scope === 'global' ? 'Global' : (rule.targetSymbol || 'All')}
+                              </span>
+                              {entryCount > 0 && (
+                                <span className="text-[10px] text-emerald-400 font-medium px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20">
+                                  BUY: {entryCount} cond
+                                </span>
+                              )}
+                              {(exitCount > 0 || rule.stopLossPct || rule.takeProfitPct) && (
+                                <span className="text-[10px] text-rose-400 font-medium px-1.5 py-0.5 rounded bg-rose-500/10 border border-rose-500/20">
+                                  SELL: {exitCount} cond{rule.stopLossPct ? ` · SL -${rule.stopLossPct}%` : ''}{rule.takeProfitPct ? ` · TP +${rule.takeProfitPct}%` : ''}
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-xs font-mono text-secondary truncate">
+                              {formatRuleFormula(rule)}
+                            </div>
                           </div>
-                          <div className="text-xs font-mono text-secondary truncate">
-                            {formatRuleFormula(rule)}
+
+                          <div className="flex items-center gap-2 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => handleToggleRuleStatus(rule.id)}
+                              className={`px-2 py-1 rounded text-[10px] font-medium border border-divider transition-colors cursor-pointer ${
+                                rule.enabled
+                                  ? 'bg-primary/10 text-primary border-primary/30'
+                                  : 'text-secondary hover:text-primary'
+                              }`}
+                            >
+                              {rule.enabled ? 'Active' : 'Paused'}
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setBacktestTargetRule(rule);
+                                setIsBacktestOpen(true);
+                              }}
+                              className="px-2 py-1 text-xs text-secondary hover:text-primary transition-colors cursor-pointer flex items-center gap-1"
+                              title="Backtest this strategy"
+                            >
+                              <Play className="w-3 h-3 fill-current text-primary" />
+                              <span>Test</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setCurrentRule(normalizeRule(rule));
+                                setActionTab('entry');
+                                setActiveTab('builder');
+                              }}
+                              className="px-2 py-1 text-xs text-secondary hover:text-primary transition-colors cursor-pointer"
+                            >
+                              Edit
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteSavedRule(rule.id)}
+                              className="p-1 text-secondary hover:text-primary transition-colors cursor-pointer"
+                              title="Delete"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
                           </div>
                         </div>
-
-                        <div className="flex items-center gap-2 shrink-0">
-                          <button
-                            type="button"
-                            onClick={() => handleToggleRuleStatus(rule.id)}
-                            className={`px-2 py-1 rounded text-[10px] font-medium border border-divider transition-colors cursor-pointer ${
-                              rule.enabled
-                                ? 'bg-primary/10 text-primary border-primary/30'
-                                : 'text-secondary hover:text-primary'
-                            }`}
-                          >
-                            {rule.enabled ? 'Active' : 'Paused'}
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setBacktestTargetRule(rule);
-                              setIsBacktestOpen(true);
-                            }}
-                            className="px-2 py-1 text-xs text-secondary hover:text-primary transition-colors cursor-pointer flex items-center gap-1"
-                            title="Backtest this strategy"
-                          >
-                            <Play className="w-3 h-3 fill-current text-primary" />
-                            <span>Test</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setCurrentRule(rule);
-                              setActiveTab('builder');
-                            }}
-                            className="px-2 py-1 text-xs text-secondary hover:text-primary transition-colors cursor-pointer"
-                          >
-                            Edit
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteSavedRule(rule.id)}
-                            className="p-1 text-secondary hover:text-primary transition-colors cursor-pointer"
-                            title="Delete"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -844,10 +1287,10 @@ export function StrategyBuilderModal({
           </div>
         </div>
 
-        {/* Footer Matching Indices Setting & Indicators UI */}
+        {/* Footer */}
         <div className="px-6 py-3.5 border-t border-divider bg-surface flex items-center justify-between shrink-0">
           <div className="text-xs text-secondary">
-            {savedRules.filter(r => r.enabled).length} active rule(s)
+            {savedRules.filter(r => r.enabled).length} active strategy rule(s)
           </div>
 
           <div className="flex items-center gap-2.5">

@@ -73,15 +73,12 @@ export function evaluateCondition(cond: StrategyCondition, data: StockMarketData
   }
 }
 
-export function evaluateRule(rule: StrategyRule, data: StockMarketData): { matched: boolean; action: 'BUY' | 'SELL' | 'NONE' } {
-  if (!rule.enabled || !rule.conditions || rule.conditions.length === 0) {
-    return { matched: false, action: 'NONE' };
-  }
+export function evaluateConditionList(conditions: StrategyCondition[], data: StockMarketData): boolean {
+  if (!conditions || conditions.length === 0) return false;
+  let result = evaluateCondition(conditions[0], data);
 
-  let result = evaluateCondition(rule.conditions[0], data);
-
-  for (let i = 1; i < rule.conditions.length; i++) {
-    const cond = rule.conditions[i];
+  for (let i = 1; i < conditions.length; i++) {
+    const cond = conditions[i];
     const condRes = evaluateCondition(cond, data);
     const connector = cond.connector || 'AND';
 
@@ -92,7 +89,34 @@ export function evaluateRule(rule: StrategyRule, data: StockMarketData): { match
     }
   }
 
-  if (result) {
+  return result;
+}
+
+export function evaluateRule(rule: StrategyRule, data: StockMarketData): { matched: boolean; action: 'BUY' | 'SELL' | 'NONE' } {
+  if (!rule.enabled) {
+    return { matched: false, action: 'NONE' };
+  }
+
+  const entryConds = (Array.isArray(rule.entryConditions) && rule.entryConditions.length > 0)
+    ? rule.entryConditions
+    : (rule.action !== 'SELL' && Array.isArray(rule.conditions) ? rule.conditions : []);
+
+  const exitConds = (Array.isArray(rule.exitConditions) && rule.exitConditions.length > 0)
+    ? rule.exitConditions
+    : (rule.action === 'SELL' && Array.isArray(rule.conditions) ? rule.conditions : []);
+
+  // 1. Check Exit conditions first
+  if (exitConds.length > 0 && evaluateConditionList(exitConds, data)) {
+    return { matched: true, action: 'SELL' };
+  }
+
+  // 2. Check Entry conditions
+  if (entryConds.length > 0 && evaluateConditionList(entryConds, data)) {
+    return { matched: true, action: 'BUY' };
+  }
+
+  // 3. Fallback for generic legacy rules
+  if (rule.conditions && rule.conditions.length > 0 && evaluateConditionList(rule.conditions, data)) {
     const action = (rule.action === 'BUY' || rule.action === 'SELL') ? rule.action : 'NONE';
     return { matched: true, action };
   }

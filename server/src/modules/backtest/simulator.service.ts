@@ -273,15 +273,51 @@ export function runSimulation(
     const canCheckConditionToday = !pendingOrder && lastConditionMetDay !== currentDay && i !== startIndex;
 
     if (canCheckConditionToday) {
-      for (const rule of rules) {
+      // Prioritize exit (SELL) rules when holding a position
+      const sortedRules = position.qty > 0
+        ? [...rules].sort((a, b) => (a.action === 'SELL' ? -1 : 1))
+        : [...rules].sort((a, b) => (a.action === 'BUY' ? -1 : 1));
+
+      for (const rule of sortedRules) {
+        // Stop Loss and Take Profit risk guards
+        if (position.qty > 0 && position.avgPrice > 0 && (rule.stopLossPct || rule.takeProfitPct)) {
+          const pnlPct = ((bar.close - position.avgPrice) / position.avgPrice) * 100;
+          if (rule.stopLossPct && pnlPct <= -Math.abs(Number(rule.stopLossPct))) {
+            conditionMatchedToday = true;
+            matchReason = `Stop Loss Hit (${pnlPct.toFixed(2)}% <= -${rule.stopLossPct}%)`;
+            lastConditionMetDay = currentDay;
+            pendingOrder = {
+              action: 'SELL',
+              rule: { ...rule, action: 'SELL', sizingType: 'DECREASE_PCT', sizingValue: 100 },
+              signalDate: bar.date,
+              signalPrice: bar.close,
+              reason: matchReason,
+            };
+            break;
+          }
+          if (rule.takeProfitPct && pnlPct >= Math.abs(Number(rule.takeProfitPct))) {
+            conditionMatchedToday = true;
+            matchReason = `Take Profit Hit (+${pnlPct.toFixed(2)}% >= +${rule.takeProfitPct}%)`;
+            lastConditionMetDay = currentDay;
+            pendingOrder = {
+              action: 'SELL',
+              rule: { ...rule, action: 'SELL', sizingType: 'DECREASE_PCT', sizingValue: 100 },
+              signalDate: bar.date,
+              signalPrice: bar.close,
+              reason: matchReason,
+            };
+            break;
+          }
+        }
+
         const evalRes = evaluateRuleOnBar(rule, bar, prevBar);
         if (evalRes.matched && evalRes.action !== 'NONE') {
+          // If action is SELL and we have no position, skip it and continue checking other rules
+          if (evalRes.action === 'SELL' && position.qty <= 0) continue;
+
           conditionMatchedToday = true;
           matchReason = evalRes.reason;
-          lastConditionMetDay = currentDay; // Mark that condition has met for today
-
-          // Skip redundant signals for order execution
-          if (evalRes.action === 'SELL' && position.qty <= 0) continue;
+          lastConditionMetDay = currentDay;
 
           pendingOrder = {
             action: evalRes.action,

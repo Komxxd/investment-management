@@ -154,8 +154,12 @@ export function BacktestResultsPage() {
 
     const set = new Set<IndicatorType>();
     for (const r of rulesToCheck) {
-      if (!r.conditions || !Array.isArray(r.conditions)) continue;
-      for (const cond of r.conditions) {
+      const allConds = [
+        ...(Array.isArray(r.entryConditions) ? r.entryConditions : []),
+        ...(Array.isArray(r.exitConditions) ? r.exitConditions : []),
+        ...(Array.isArray(r.conditions) ? r.conditions : []),
+      ];
+      for (const cond of allConds) {
         if (cond.leftIndicator && cond.leftIndicator !== 'price') {
           set.add(cond.leftIndicator);
         }

@@ -331,8 +331,14 @@ export function BacktestModal({
       return;
     }
 
-    if (!rule.conditions || rule.conditions.length === 0) {
-      setError('Strategy must have at least one condition to backtest.');
+    const hasAnyConditions = (rule.entryConditions && rule.entryConditions.length > 0) ||
+      (rule.exitConditions && rule.exitConditions.length > 0) ||
+      (rule.conditions && rule.conditions.length > 0) ||
+      (rule.stopLossPct !== undefined && rule.stopLossPct !== '' && rule.stopLossPct !== null) ||
+      (rule.takeProfitPct !== undefined && rule.takeProfitPct !== '' && rule.takeProfitPct !== null);
+
+    if (!hasAnyConditions) {
+      setError('Strategy must have at least one condition or risk guard to backtest.');
       return;
     }
 

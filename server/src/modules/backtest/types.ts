@@ -21,6 +21,14 @@ export interface StrategyRule {
   sizingType: 'QTY' | 'VALUE' | 'INCREASE_PCT' | 'DECREASE_PCT';
   sizingValue: number | string;
   conditions: StrategyCondition[];
+  entryConditions?: StrategyCondition[];
+  entrySizingType?: 'QTY' | 'VALUE' | 'INCREASE_PCT' | 'DECREASE_PCT';
+  entrySizingValue?: number | string;
+  exitConditions?: StrategyCondition[];
+  exitSizingType?: 'QTY' | 'VALUE' | 'INCREASE_PCT' | 'DECREASE_PCT';
+  exitSizingValue?: number | string;
+  stopLossPct?: number | string;
+  takeProfitPct?: number | string;
   enabled?: boolean;
   frequency?: string;
 }

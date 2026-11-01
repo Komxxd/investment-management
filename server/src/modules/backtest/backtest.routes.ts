@@ -113,6 +113,28 @@ router.post('/run', optionalAuthMiddleware, async (req: any, res: any) => {
         .single();
 
       if (!error && stratRow) {
+        let entryConditions: any[] = [];
+        let exitConditions: any[] = [];
+        let exitSizingType: 'QTY' | 'VALUE' | 'INCREASE_PCT' | 'DECREASE_PCT' = 'DECREASE_PCT';
+        let exitSizingValue = 100;
+        let stopLossPct = '';
+        let takeProfitPct = '';
+
+        if (Array.isArray(stratRow.conditions)) {
+          if (stratRow.action === 'SELL') {
+            exitConditions = stratRow.conditions;
+          } else {
+            entryConditions = stratRow.conditions;
+          }
+        } else if (stratRow.conditions && typeof stratRow.conditions === 'object') {
+          entryConditions = Array.isArray(stratRow.conditions.entry) ? stratRow.conditions.entry : [];
+          exitConditions = Array.isArray(stratRow.conditions.exit) ? stratRow.conditions.exit : [];
+          exitSizingType = stratRow.conditions.exitSizingType || 'DECREASE_PCT';
+          exitSizingValue = stratRow.conditions.exitSizingValue ?? 100;
+          stopLossPct = stratRow.conditions.stopLossPct ?? '';
+          takeProfitPct = stratRow.conditions.takeProfitPct ?? '';
+        }
+
         finalRules = [
           {
             id: stratRow.id,
@@ -120,7 +142,15 @@ router.post('/run', optionalAuthMiddleware, async (req: any, res: any) => {
             action: stratRow.action || 'BUY',
             sizingType: stratRow.sizing_type || 'QTY',
             sizingValue: stratRow.sizing_value || 10,
-            conditions: Array.isArray(stratRow.conditions) ? stratRow.conditions : [],
+            conditions: entryConditions.length > 0 ? entryConditions : exitConditions,
+            entryConditions,
+            entrySizingType: stratRow.sizing_type || 'QTY',
+            entrySizingValue: stratRow.sizing_value || 10,
+            exitConditions,
+            exitSizingType: exitSizingType,
+            exitSizingValue,
+            stopLossPct,
+            takeProfitPct,
             enabled: stratRow.enabled ?? true,
           },
         ];
@@ -178,8 +208,61 @@ router.post('/run', optionalAuthMiddleware, async (req: any, res: any) => {
       nominalStartStr = nStart.toISOString().split('T')[0];
     }
 
+    // 5. Expand finalRules into paired entry (BUY) and exit (SELL) rules
+    const executableRules: StrategyRule[] = [];
+    for (const r of finalRules) {
+      let entryConds: any[] = [];
+      let exitConds: any[] = [];
+
+      if (Array.isArray(r.entryConditions) && r.entryConditions.length > 0) {
+        entryConds = r.entryConditions;
+      } else if (r.action !== 'SELL' && Array.isArray(r.conditions) && r.conditions.length > 0) {
+        entryConds = r.conditions;
+      }
+
+      if (Array.isArray(r.exitConditions) && r.exitConditions.length > 0) {
+        exitConds = r.exitConditions;
+      } else if (r.action === 'SELL' && Array.isArray(r.conditions) && r.conditions.length > 0) {
+        exitConds = r.conditions;
+      }
+
+      if (entryConds.length > 0) {
+        executableRules.push({
+          ...r,
+          id: `${r.id || 'rule'}_entry`,
+          name: `${r.name || 'Strategy'} (Entry)`,
+          action: 'BUY' as const,
+          sizingType: r.entrySizingType || r.sizingType || 'QTY',
+          sizingValue: r.entrySizingValue !== undefined && r.entrySizingValue !== '' ? r.entrySizingValue : (r.sizingValue || 10),
+          conditions: entryConds,
+          stopLossPct: r.stopLossPct,
+          takeProfitPct: r.takeProfitPct,
+        });
+      }
+
+      const hasExitRisk = (r.stopLossPct !== undefined && r.stopLossPct !== '' && r.stopLossPct !== null) ||
+                          (r.takeProfitPct !== undefined && r.takeProfitPct !== '' && r.takeProfitPct !== null);
+      if (exitConds.length > 0 || hasExitRisk) {
+        executableRules.push({
+          ...r,
+          id: `${r.id || 'rule'}_exit`,
+          name: `${r.name || 'Strategy'} (Exit)`,
+          action: 'SELL' as const,
+          sizingType: r.exitSizingType || 'DECREASE_PCT',
+          sizingValue: r.exitSizingValue !== undefined && r.exitSizingValue !== '' ? r.exitSizingValue : 100,
+          conditions: exitConds,
+          stopLossPct: r.stopLossPct,
+          takeProfitPct: r.takeProfitPct,
+        });
+      }
+
+      if (entryConds.length === 0 && exitConds.length === 0 && Array.isArray(r.conditions) && r.conditions.length > 0) {
+        executableRules.push(r);
+      }
+    }
+
     // 5. Run simulation
-    const simResult = runSimulation(symbol, bars, finalRules, {
+    const simResult = runSimulation(symbol, bars, executableRules.length > 0 ? executableRules : finalRules, {
       initialCapital: finalCapital,
       slippagePct: finalSlippage,
       feePct: finalFee,

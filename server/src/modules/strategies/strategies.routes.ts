@@ -6,6 +6,38 @@ const router = Router();
 // Helper to normalize DB row into client-friendly model
 function formatStrategy(row: any) {
   if (!row) return null;
+  const rawConditions = row.conditions;
+  let conditions: any[] = [];
+  let entryConditions: any[] = [];
+  let exitConditions: any[] = [];
+  let entrySizingType = row.sizing_type || 'QTY';
+  let entrySizingValue = row.sizing_value !== null && row.sizing_value !== undefined ? Number(row.sizing_value) : '';
+  let exitSizingType = 'DECREASE_PCT';
+  let exitSizingValue: any = 100;
+  let stopLossPct: any = '';
+  let takeProfitPct: any = '';
+
+  if (Array.isArray(rawConditions)) {
+    conditions = rawConditions;
+    if (row.action === 'SELL') {
+      exitConditions = rawConditions;
+      exitSizingType = row.sizing_type || 'DECREASE_PCT';
+      exitSizingValue = row.sizing_value !== null ? Number(row.sizing_value) : 100;
+    } else {
+      entryConditions = rawConditions;
+    }
+  } else if (rawConditions && typeof rawConditions === 'object') {
+    entryConditions = Array.isArray(rawConditions.entry) ? rawConditions.entry : [];
+    exitConditions = Array.isArray(rawConditions.exit) ? rawConditions.exit : [];
+    conditions = entryConditions.length > 0 ? entryConditions : (exitConditions.length > 0 ? exitConditions : []);
+    entrySizingType = rawConditions.entrySizingType || row.sizing_type || 'QTY';
+    entrySizingValue = rawConditions.entrySizingValue !== undefined ? rawConditions.entrySizingValue : (row.sizing_value !== null ? Number(row.sizing_value) : '');
+    exitSizingType = rawConditions.exitSizingType || 'DECREASE_PCT';
+    exitSizingValue = rawConditions.exitSizingValue !== undefined ? rawConditions.exitSizingValue : 100;
+    stopLossPct = rawConditions.stopLossPct ?? '';
+    takeProfitPct = rawConditions.takeProfitPct ?? '';
+  }
+
   return {
     id: row.id,
     portfolioId: row.portfolio_id,
@@ -15,11 +47,19 @@ function formatStrategy(row: any) {
     targetSymbol: row.target_symbol || 'ALL',
     target_symbol: row.target_symbol || 'ALL',
     action: row.action || 'BUY',
-    sizingType: row.sizing_type || 'QTY',
-    sizing_type: row.sizing_type || 'QTY',
-    sizingValue: row.sizing_value !== null && row.sizing_value !== undefined ? Number(row.sizing_value) : '',
-    sizing_value: row.sizing_value !== null && row.sizing_value !== undefined ? Number(row.sizing_value) : '',
-    conditions: Array.isArray(row.conditions) ? row.conditions : [],
+    sizingType: entrySizingType,
+    sizing_type: entrySizingType,
+    sizingValue: entrySizingValue,
+    sizing_value: entrySizingValue,
+    conditions,
+    entryConditions,
+    entrySizingType,
+    entrySizingValue,
+    exitConditions,
+    exitSizingType,
+    exitSizingValue,
+    stopLossPct,
+    takeProfitPct,
     enabled: row.enabled ?? true,
     frequency: row.frequency || 'daily',
     createdAt: row.created_at,
@@ -91,6 +131,25 @@ router.post('/', authMiddleware, async (req: any, res: any) => {
       ? Number(rawSizingValue)
       : null;
 
+    const resolvedEntry = Array.isArray(req.body.entryConditions || req.body.entry_conditions)
+      ? (req.body.entryConditions || req.body.entry_conditions)
+      : (Array.isArray(conditions) && action !== 'SELL' ? conditions : []);
+
+    const resolvedExit = Array.isArray(req.body.exitConditions || req.body.exit_conditions)
+      ? (req.body.exitConditions || req.body.exit_conditions)
+      : (Array.isArray(conditions) && action === 'SELL' ? conditions : []);
+
+    const structuredConditions = {
+      entry: resolvedEntry,
+      exit: resolvedExit,
+      entrySizingType: req.body.entrySizingType || req.body.entry_sizing_type || finalSizingType,
+      entrySizingValue: req.body.entrySizingValue !== undefined ? req.body.entrySizingValue : finalSizingValue,
+      exitSizingType: req.body.exitSizingType || req.body.exit_sizing_type || 'DECREASE_PCT',
+      exitSizingValue: req.body.exitSizingValue !== undefined ? req.body.exitSizingValue : 100,
+      stopLossPct: req.body.stopLossPct ?? req.body.stop_loss_pct ?? '',
+      takeProfitPct: req.body.takeProfitPct ?? req.body.take_profit_pct ?? '',
+    };
+
     const insertPayload = {
       user_id: req.user.id,
       portfolio_id: finalPortfolioId,
@@ -100,7 +159,7 @@ router.post('/', authMiddleware, async (req: any, res: any) => {
       action: action || 'BUY',
       sizing_type: finalSizingType,
       sizing_value: finalSizingValue,
-      conditions: Array.isArray(conditions) ? conditions : [],
+      conditions: structuredConditions,
       enabled: enabled !== undefined ? !!enabled : true,
       frequency: frequency || 'daily'
     };
@@ -162,7 +221,26 @@ router.put('/:id', authMiddleware, async (req: any, res: any) => {
       const val = sizing_value !== undefined ? sizing_value : sizingValue;
       updatePayload.sizing_value = val !== '' && val !== null ? Number(val) : null;
     }
-    if (conditions !== undefined) updatePayload.conditions = Array.isArray(conditions) ? conditions : [];
+    if (conditions !== undefined || req.body.entryConditions !== undefined || req.body.exitConditions !== undefined) {
+      const resolvedEntry = Array.isArray(req.body.entryConditions || req.body.entry_conditions)
+        ? (req.body.entryConditions || req.body.entry_conditions)
+        : (Array.isArray(conditions) ? conditions : []);
+
+      const resolvedExit = Array.isArray(req.body.exitConditions || req.body.exit_conditions)
+        ? (req.body.exitConditions || req.body.exit_conditions)
+        : [];
+
+      updatePayload.conditions = {
+        entry: resolvedEntry,
+        exit: resolvedExit,
+        entrySizingType: req.body.entrySizingType || req.body.entry_sizing_type || updatePayload.sizing_type || 'QTY',
+        entrySizingValue: req.body.entrySizingValue !== undefined ? req.body.entrySizingValue : updatePayload.sizing_value,
+        exitSizingType: req.body.exitSizingType || req.body.exit_sizing_type || 'DECREASE_PCT',
+        exitSizingValue: req.body.exitSizingValue !== undefined ? req.body.exitSizingValue : 100,
+        stopLossPct: req.body.stopLossPct ?? req.body.stop_loss_pct ?? '',
+        takeProfitPct: req.body.takeProfitPct ?? req.body.take_profit_pct ?? '',
+      };
+    }
     if (enabled !== undefined) updatePayload.enabled = !!enabled;
     if (frequency !== undefined) updatePayload.frequency = frequency;
     if (portfolio_id !== undefined || portfolioId !== undefined) {
