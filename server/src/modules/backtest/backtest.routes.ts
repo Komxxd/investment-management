@@ -46,8 +46,8 @@ router.get('/data-range', optionalAuthMiddleware, async (req: any, res: any) => 
       timeframe === 'hour'
         ? 0
         : totalCandles >= 200
-        ? 200
-        : Math.min(50, Math.max(14, Math.floor(totalCandles / 3)));
+          ? 200
+          : Math.min(50, Math.max(14, Math.floor(totalCandles / 3)));
     const backtestableCandles = candles.slice(warmupBars);
     const backtestableStartDate = toDateOnly(backtestableCandles[0]?.date || dataStartDate);
     const backtestableEndDate = dataEndDate;
@@ -90,9 +90,9 @@ router.post('/run', optionalAuthMiddleware, async (req: any, res: any) => {
       end_date,
       initialCapital = 100000,
       initial_capital,
-      slippagePct = 0.0005,
+      slippagePct = 0,
       slippage_pct,
-      feePct = 0.001,
+      feePct = 0,
       fee_pct,
     } = req.body;
 
@@ -166,8 +166,8 @@ router.post('/run', optionalAuthMiddleware, async (req: any, res: any) => {
     const finalStartDate = start_date || startDate;
     const finalEndDate = end_date || endDate;
     const finalCapital = Number(initial_capital || initialCapital) || 100000;
-    const finalSlippage = Number(slippage_pct !== undefined ? slippage_pct : slippagePct);
-    const finalFee = Number(fee_pct !== undefined ? fee_pct : feePct);
+    const finalSlippage = Number(slippage_pct !== undefined ? slippage_pct : (slippagePct ?? 0));
+    const finalFee = Number(fee_pct !== undefined ? fee_pct : (feePct ?? 0));
 
     // 1. Fetch historical candles with warmup period (under hourdata or daydata)
     const candles = await ensureHistoricalCandles(symbol, {
@@ -211,48 +211,70 @@ router.post('/run', optionalAuthMiddleware, async (req: any, res: any) => {
     // 5. Expand finalRules into paired entry (BUY) and exit (SELL) rules
     const executableRules: StrategyRule[] = [];
     for (const r of finalRules) {
+      const rawConds: any = r.conditions;
       let entryConds: any[] = [];
       let exitConds: any[] = [];
 
       if (Array.isArray(r.entryConditions) && r.entryConditions.length > 0) {
         entryConds = r.entryConditions;
+      } else if (rawConds && Array.isArray(rawConds.entry) && rawConds.entry.length > 0) {
+        entryConds = rawConds.entry;
       } else if (r.action !== 'SELL' && Array.isArray(r.conditions) && r.conditions.length > 0) {
         entryConds = r.conditions;
       }
 
       if (Array.isArray(r.exitConditions) && r.exitConditions.length > 0) {
         exitConds = r.exitConditions;
+      } else if (rawConds && Array.isArray(rawConds.exit) && rawConds.exit.length > 0) {
+        exitConds = rawConds.exit;
       } else if (r.action === 'SELL' && Array.isArray(r.conditions) && r.conditions.length > 0) {
         exitConds = r.conditions;
       }
 
-      if (entryConds.length > 0) {
+      const entrySizingType = r.entrySizingType || (rawConds && rawConds.entrySizingType) || r.sizingType || 'QTY';
+      const entrySizingValue = r.entrySizingValue !== undefined && r.entrySizingValue !== ''
+        ? r.entrySizingValue
+        : ((rawConds && rawConds.entrySizingValue !== undefined && rawConds.entrySizingValue !== '')
+          ? rawConds.entrySizingValue
+          : (r.sizingValue || 10));
+
+      const exitSizingType = r.exitSizingType || (rawConds && rawConds.exitSizingType) || 'DECREASE_PCT';
+      const exitSizingValue = r.exitSizingValue !== undefined && r.exitSizingValue !== ''
+        ? r.exitSizingValue
+        : ((rawConds && rawConds.exitSizingValue !== undefined && rawConds.exitSizingValue !== '')
+          ? rawConds.exitSizingValue
+          : 100);
+
+      const stopLossPct = r.stopLossPct ?? (rawConds && rawConds.stopLossPct);
+      const takeProfitPct = r.takeProfitPct ?? (rawConds && rawConds.takeProfitPct);
+
+      if (entryConds.length > 0 || r.action !== 'SELL') {
         executableRules.push({
           ...r,
           id: `${r.id || 'rule'}_entry`,
           name: `${r.name || 'Strategy'} (Entry)`,
           action: 'BUY' as const,
-          sizingType: r.entrySizingType || r.sizingType || 'QTY',
-          sizingValue: r.entrySizingValue !== undefined && r.entrySizingValue !== '' ? r.entrySizingValue : (r.sizingValue || 10),
+          sizingType: entrySizingType,
+          sizingValue: entrySizingValue,
           conditions: entryConds,
-          stopLossPct: r.stopLossPct,
-          takeProfitPct: r.takeProfitPct,
+          stopLossPct,
+          takeProfitPct,
         });
       }
 
-      const hasExitRisk = (r.stopLossPct !== undefined && r.stopLossPct !== '' && r.stopLossPct !== null) ||
-                          (r.takeProfitPct !== undefined && r.takeProfitPct !== '' && r.takeProfitPct !== null);
-      if (exitConds.length > 0 || hasExitRisk) {
+      const hasExitRisk = (stopLossPct !== undefined && stopLossPct !== '' && stopLossPct !== null) ||
+        (takeProfitPct !== undefined && takeProfitPct !== '' && takeProfitPct !== null);
+      if (exitConds.length > 0 || hasExitRisk || r.action === 'SELL') {
         executableRules.push({
           ...r,
           id: `${r.id || 'rule'}_exit`,
           name: `${r.name || 'Strategy'} (Exit)`,
           action: 'SELL' as const,
-          sizingType: r.exitSizingType || 'DECREASE_PCT',
-          sizingValue: r.exitSizingValue !== undefined && r.exitSizingValue !== '' ? r.exitSizingValue : 100,
+          sizingType: exitSizingType,
+          sizingValue: exitSizingValue,
           conditions: exitConds,
-          stopLossPct: r.stopLossPct,
-          takeProfitPct: r.takeProfitPct,
+          stopLossPct,
+          takeProfitPct,
         });
       }
 
@@ -284,10 +306,10 @@ router.post('/run', optionalAuthMiddleware, async (req: any, res: any) => {
       },
       initialInvestment: simResult.initialInvestment
         ? {
-            ...simResult.initialInvestment,
-            date: cleanDate(simResult.initialInvestment.date),
-            time: simResult.initialInvestment.time,
-          }
+          ...simResult.initialInvestment,
+          date: cleanDate(simResult.initialInvestment.date),
+          time: simResult.initialInvestment.time,
+        }
         : undefined,
       trades: simResult.trades.map((t) => ({
         ...t,

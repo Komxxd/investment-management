@@ -10,7 +10,6 @@ import {
   Play,
   TrendingUp,
   TrendingDown,
-  ShieldAlert,
   ArrowUpRight,
   ArrowDownRight,
   Copy,
@@ -91,7 +90,63 @@ export const BLANK_RULE: StrategyRule = {
   frequency: 'daily'
 };
 
+export function normalizeRule(r: StrategyRule): StrategyRule {
+  if (!r) return BLANK_RULE;
+
+  const rawConditions: any = r.conditions;
+
+  let entryConds: StrategyCondition[] = [];
+  if (Array.isArray(r.entryConditions) && r.entryConditions.length > 0) {
+    entryConds = r.entryConditions;
+  } else if (rawConditions && Array.isArray(rawConditions.entry) && rawConditions.entry.length > 0) {
+    entryConds = rawConditions.entry;
+  } else if (r.action !== 'SELL' && Array.isArray(rawConditions) && rawConditions.length > 0) {
+    entryConds = rawConditions;
+  }
+
+  let exitConds: StrategyCondition[] = [];
+  if (Array.isArray(r.exitConditions) && r.exitConditions.length > 0) {
+    exitConds = r.exitConditions;
+  } else if (rawConditions && Array.isArray(rawConditions.exit) && rawConditions.exit.length > 0) {
+    exitConds = rawConditions.exit;
+  } else if (r.action === 'SELL' && Array.isArray(rawConditions) && rawConditions.length > 0) {
+    exitConds = rawConditions;
+  }
+
+  const entrySizingType = r.entrySizingType || (rawConditions && rawConditions.entrySizingType) || r.sizingType || 'QTY';
+  const entrySizingValue = r.entrySizingValue !== undefined && r.entrySizingValue !== '' 
+    ? r.entrySizingValue 
+    : (rawConditions && rawConditions.entrySizingValue !== undefined && rawConditions.entrySizingValue !== ''
+        ? rawConditions.entrySizingValue
+        : (r.sizingValue !== '' && r.sizingValue !== undefined ? r.sizingValue : 10));
+
+  const exitSizingType = r.exitSizingType || (rawConditions && rawConditions.exitSizingType) || 'DECREASE_PCT';
+  const exitSizingValue = r.exitSizingValue !== undefined && r.exitSizingValue !== ''
+    ? r.exitSizingValue
+    : (rawConditions && rawConditions.exitSizingValue !== undefined && rawConditions.exitSizingValue !== ''
+        ? rawConditions.exitSizingValue
+        : 100);
+
+  const stopLossPct = r.stopLossPct ?? (rawConditions && rawConditions.stopLossPct) ?? '';
+  const takeProfitPct = r.takeProfitPct ?? (rawConditions && rawConditions.takeProfitPct) ?? '';
+
+  return {
+    ...r,
+    entryConditions: entryConds,
+    entrySizingType,
+    entrySizingValue,
+    exitConditions: exitConds,
+    exitSizingType,
+    exitSizingValue,
+    stopLossPct,
+    takeProfitPct,
+    conditions: entryConds.length > 0 ? entryConds : exitConds,
+  };
+}
+
 export function formatRuleFormula(rule: StrategyRule): string {
+  if (!rule) return 'Configure Entry (BUY) and Exit (SELL) parameters above to preview formula';
+
   const formatConds = (conds: StrategyCondition[]) => {
     return conds.map((cond, idx) => {
       const conn = idx > 0 ? ` ${cond.connector || 'AND'} ` : '';
@@ -130,32 +185,27 @@ export function formatRuleFormula(rule: StrategyRule): string {
     return '[SIZING]';
   };
 
-  const target = rule.scope === 'global' ? 'ALL_PORTFOLIO' : (rule.targetSymbol || 'TARGET');
-
-  const entryConds = (rule.entryConditions && rule.entryConditions.length > 0)
-    ? rule.entryConditions
-    : ((rule.action !== 'SELL' && rule.conditions && rule.conditions.length > 0) ? rule.conditions : []);
-
-  const exitConds = (rule.exitConditions && rule.exitConditions.length > 0)
-    ? rule.exitConditions
-    : ((rule.action === 'SELL' && rule.conditions && rule.conditions.length > 0) ? rule.conditions : []);
+  const norm = normalizeRule(rule);
+  const target = norm.scope === 'global' ? 'ALL_PORTFOLIO' : (norm.targetSymbol || 'TARGET');
+  const entryConds = norm.entryConditions || [];
+  const exitConds = norm.exitConditions || [];
 
   const parts: string[] = [];
 
-  const hasEntry = entryConds.length > 0 || (rule.entrySizingValue !== '' && rule.entrySizingValue !== undefined && rule.entrySizingValue !== null);
+  const hasEntry = entryConds.length > 0 || (norm.entrySizingValue !== '' && norm.entrySizingValue !== undefined && norm.entrySizingValue !== null);
   if (hasEntry) {
-    const entrySizing = formatSizing(rule.entrySizingType || rule.sizingType || 'QTY', rule.entrySizingValue ?? rule.sizingValue ?? 10);
+    const entrySizing = formatSizing(norm.entrySizingType, norm.entrySizingValue);
     const condStr = entryConds.length > 0 ? ` IF ${formatConds(entryConds)}` : '';
     parts.push(`BUY ${target} ${entrySizing}${condStr}`);
   }
 
-  const hasExit = exitConds.length > 0 || (rule.stopLossPct !== '' && rule.stopLossPct !== undefined && rule.stopLossPct !== null) || (rule.takeProfitPct !== '' && rule.takeProfitPct !== undefined && rule.takeProfitPct !== null);
+  const hasExit = exitConds.length > 0 || (norm.stopLossPct !== '' && norm.stopLossPct !== undefined && norm.stopLossPct !== null) || (norm.takeProfitPct !== '' && norm.takeProfitPct !== undefined && norm.takeProfitPct !== null);
   if (hasExit) {
-    const exitSizing = formatSizing(rule.exitSizingType || 'DECREASE_PCT', rule.exitSizingValue ?? 100);
+    const exitSizing = formatSizing(norm.exitSizingType, norm.exitSizingValue);
     const condStr = exitConds.length > 0 ? ` IF ${formatConds(exitConds)}` : '';
     let riskStr = '';
-    if (rule.stopLossPct) riskStr += ` [SL -${rule.stopLossPct}%]`;
-    if (rule.takeProfitPct) riskStr += ` [TP +${rule.takeProfitPct}%]`;
+    if (norm.stopLossPct) riskStr += ` [SL -${norm.stopLossPct}%]`;
+    if (norm.takeProfitPct) riskStr += ` [TP +${norm.takeProfitPct}%]`;
     parts.push(`SELL ${exitSizing}${condStr}${riskStr}`);
   }
 
@@ -186,28 +236,7 @@ export function StrategyBuilderModal({
 
   const storageKey = `portfolio_strategies_${portfolioId || 'global'}`;
 
-  const normalizeRule = (r: StrategyRule): StrategyRule => {
-    const entryConds = (Array.isArray(r.entryConditions) && r.entryConditions.length > 0)
-      ? r.entryConditions
-      : (r.action !== 'SELL' && Array.isArray(r.conditions) ? r.conditions : []);
 
-    const exitConds = (Array.isArray(r.exitConditions) && r.exitConditions.length > 0)
-      ? r.exitConditions
-      : (r.action === 'SELL' && Array.isArray(r.conditions) ? r.conditions : []);
-
-    return {
-      ...r,
-      entryConditions: entryConds,
-      entrySizingType: r.entrySizingType || r.sizingType || 'QTY',
-      entrySizingValue: r.entrySizingValue !== undefined && r.entrySizingValue !== '' ? r.entrySizingValue : (r.sizingValue !== '' && r.sizingValue !== undefined ? r.sizingValue : 10),
-      exitConditions: exitConds,
-      exitSizingType: r.exitSizingType || 'DECREASE_PCT',
-      exitSizingValue: r.exitSizingValue !== undefined && r.exitSizingValue !== '' ? r.exitSizingValue : 100,
-      stopLossPct: r.stopLossPct ?? '',
-      takeProfitPct: r.takeProfitPct ?? '',
-      conditions: entryConds.length > 0 ? entryConds : exitConds,
-    };
-  };
 
   const [currentRule, setCurrentRule] = useState<StrategyRule>(() => BLANK_RULE);
 
@@ -620,13 +649,12 @@ export function StrategyBuilderModal({
                   <button
                     type="button"
                     onClick={() => setActionTab('entry')}
-                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${
                       actionTab === 'entry'
-                        ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shadow-sm'
+                        ? 'bg-primary/10 text-primary border border-primary/20 shadow-xs'
                         : 'text-secondary hover:text-primary hover:bg-surface-hover border border-transparent'
                     }`}
                   >
-                    <div className={`w-2 h-2 rounded-full ${actionTab === 'entry' ? 'bg-emerald-400' : 'bg-emerald-500/40'}`} />
                     <span>Entry Rule (BUY)</span>
                     <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-surface border border-divider font-mono">
                       {currentRule.entryConditions?.length ?? 0}
@@ -636,26 +664,25 @@ export function StrategyBuilderModal({
                   <button
                     type="button"
                     onClick={() => setActionTab('exit')}
-                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${
                       actionTab === 'exit'
-                        ? 'bg-rose-500/15 text-rose-400 border border-rose-500/30 shadow-sm'
+                        ? 'bg-primary/10 text-primary border border-primary/20 shadow-xs'
                         : 'text-secondary hover:text-primary hover:bg-surface-hover border border-transparent'
                     }`}
                   >
-                    <div className={`w-2 h-2 rounded-full ${actionTab === 'exit' ? 'bg-rose-400' : 'bg-rose-500/40'}`} />
                     <span>Exit Rule (SELL)</span>
                     <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-surface border border-divider font-mono">
-                      {(currentRule.exitConditions?.length ?? 0) + (currentRule.stopLossPct ? 1 : 0) + (currentRule.takeProfitPct ? 1 : 0)}
+                      {currentRule.exitConditions?.length ?? 0}
                     </span>
                   </button>
                 </div>
 
                 {/* ===================== TAB A: ENTRY (BUY) ===================== */}
                 {actionTab === 'entry' && (
-                  <div className="space-y-3.5 bg-emerald-500/5 p-3 rounded-lg border border-emerald-500/20">
+                  <div className="space-y-3.5 bg-surface p-3.5 rounded-lg border border-divider">
                     <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-400">
-                        <ArrowUpRight className="w-3.5 h-3.5" />
+                      <div className="flex items-center gap-1.5 text-xs font-medium text-primary">
+                        <ArrowUpRight className="w-3.5 h-3.5 text-secondary" />
                         <span>Position Entry (When to Buy)</span>
                       </div>
                       <span className="text-[10px] text-secondary">
@@ -675,7 +702,7 @@ export function StrategyBuilderModal({
                             onClick={() => setCurrentRule(prev => ({ ...prev, entrySizingType: 'QTY' }))}
                             className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${
                               (currentRule.entrySizingType || currentRule.sizingType || 'QTY') === 'QTY'
-                                ? 'bg-emerald-500 text-white font-semibold'
+                                ? 'bg-primary text-surface font-semibold'
                                 : 'text-secondary hover:text-primary'
                             }`}
                           >
@@ -686,7 +713,7 @@ export function StrategyBuilderModal({
                             onClick={() => setCurrentRule(prev => ({ ...prev, entrySizingType: 'VALUE' }))}
                             className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${
                               (currentRule.entrySizingType || currentRule.sizingType) === 'VALUE'
-                                ? 'bg-emerald-500 text-white font-semibold'
+                                ? 'bg-primary text-surface font-semibold'
                                 : 'text-secondary hover:text-primary'
                             }`}
                           >
@@ -697,7 +724,7 @@ export function StrategyBuilderModal({
                             onClick={() => setCurrentRule(prev => ({ ...prev, entrySizingType: 'INCREASE_PCT' }))}
                             className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${
                               (currentRule.entrySizingType || currentRule.sizingType) === 'INCREASE_PCT'
-                                ? 'bg-emerald-500 text-white font-semibold'
+                                ? 'bg-primary text-surface font-semibold'
                                 : 'text-secondary hover:text-primary'
                             }`}
                           >
@@ -713,7 +740,7 @@ export function StrategyBuilderModal({
                             value={currentRule.entrySizingValue !== undefined && currentRule.entrySizingValue !== null ? currentRule.entrySizingValue : (currentRule.sizingValue || '')}
                             onChange={e => setCurrentRule(prev => ({ ...prev, entrySizingValue: e.target.value === '' ? '' : Number(e.target.value) }))}
                             placeholder="Value"
-                            className="w-24 bg-surface border border-divider rounded-lg px-2.5 py-1 text-xs text-primary font-mono focus:outline-none focus:border-emerald-500"
+                            className="w-24 bg-surface border border-divider rounded-lg px-2.5 py-1 text-xs text-primary font-mono focus:outline-none focus:border-primary"
                           />
                           <span className="text-xs text-secondary font-mono">
                             {(currentRule.entrySizingType || currentRule.sizingType || 'QTY') === 'QTY' && 'Shares'}
@@ -734,7 +761,7 @@ export function StrategyBuilderModal({
                         <button
                           type="button"
                           onClick={handleAddCondition}
-                          className="text-xs font-medium text-emerald-400 hover:text-emerald-300 transition-colors flex items-center gap-1 cursor-pointer"
+                          className="text-xs font-medium text-primary hover:text-primary/80 transition-colors flex items-center gap-1 cursor-pointer"
                         >
                           <Plus className="w-3.5 h-3.5" />
                           <span>Add Condition</span>
@@ -742,12 +769,12 @@ export function StrategyBuilderModal({
                       </div>
 
                       {(currentRule.entryConditions || []).length === 0 ? (
-                        <div className="p-3.5 border border-dashed border-emerald-500/30 rounded-lg text-center space-y-2 bg-surface/50">
+                        <div className="p-3.5 border border-dashed border-divider rounded-lg text-center space-y-2 bg-surface-hover/30">
                           <p className="text-xs text-secondary">No entry conditions configured yet.</p>
                           <button
                             type="button"
                             onClick={handleAddCondition}
-                            className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-emerald-400 border border-emerald-500/30 rounded-md hover:bg-emerald-500/10 transition-colors cursor-pointer"
+                            className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-primary border border-divider rounded-md hover:bg-surface-hover transition-colors cursor-pointer"
                           >
                             <Plus className="w-3.5 h-3.5" />
                             <span>Add Entry Condition (e.g. RSI &lt; 30)</span>
@@ -777,7 +804,7 @@ export function StrategyBuilderModal({
                                 <select
                                   value={cond.leftIndicator || ''}
                                   onChange={e => handleUpdateCondition(cond.id, { leftIndicator: e.target.value as any })}
-                                  className="bg-surface border border-divider rounded-lg px-2 py-1 text-xs text-primary focus:outline-none focus:border-emerald-500"
+                                  className="bg-surface border border-divider rounded-lg px-2 py-1 text-xs text-primary focus:outline-none focus:border-primary"
                                 >
                                   <option value="" disabled>Indicator</option>
                                   <option value="rsi">RSI(14, day)</option>
@@ -791,7 +818,7 @@ export function StrategyBuilderModal({
                                 <select
                                   value={cond.operator || ''}
                                   onChange={e => handleUpdateCondition(cond.id, { operator: e.target.value as any })}
-                                  className="bg-surface border border-divider rounded-lg px-2 py-1 text-xs font-mono text-primary focus:outline-none focus:border-emerald-500"
+                                  className="bg-surface border border-divider rounded-lg px-2 py-1 text-xs font-mono text-primary focus:outline-none focus:border-primary"
                                 >
                                   <option value="" disabled>Op</option>
                                   <option value="<">&lt;</option>
@@ -836,13 +863,13 @@ export function StrategyBuilderModal({
                                     value={cond.rightValue !== undefined && cond.rightValue !== null ? cond.rightValue : ''}
                                     onChange={e => handleUpdateCondition(cond.id, { rightValue: e.target.value === '' ? '' : Number(e.target.value) })}
                                     placeholder="Value"
-                                    className="w-20 bg-surface border border-divider rounded-lg px-2 py-1 text-xs text-primary font-mono focus:outline-none focus:border-emerald-500"
+                                    className="w-20 bg-surface border border-divider rounded-lg px-2 py-1 text-xs text-primary font-mono focus:outline-none focus:border-primary"
                                   />
                                 ) : (
                                   <select
                                     value={cond.rightIndicator || ''}
                                     onChange={e => handleUpdateCondition(cond.id, { rightIndicator: e.target.value as any })}
-                                    className="bg-surface border border-divider rounded-lg px-2 py-1 text-xs text-primary focus:outline-none focus:border-emerald-500"
+                                    className="bg-surface border border-divider rounded-lg px-2 py-1 text-xs text-primary focus:outline-none focus:border-primary"
                                   >
                                     <option value="" disabled>Indicator</option>
                                     <option value="dma200">DMA(200)</option>
@@ -855,7 +882,7 @@ export function StrategyBuilderModal({
                                 <button
                                   type="button"
                                   onClick={() => handleRemoveCondition(cond.id)}
-                                  className="ml-auto p-1 text-secondary hover:text-rose-400 rounded transition-colors cursor-pointer"
+                                  className="ml-auto p-1 text-secondary hover:text-primary rounded transition-colors cursor-pointer"
                                   title="Remove condition"
                                 >
                                   <Trash2 className="w-3.5 h-3.5" />
@@ -871,41 +898,30 @@ export function StrategyBuilderModal({
 
                 {/* ===================== TAB B: EXIT (SELL) ===================== */}
                 {actionTab === 'exit' && (
-                  <div className="space-y-3.5 bg-rose-500/5 p-3 rounded-lg border border-rose-500/20">
+                  <div className="space-y-3.5 bg-surface p-3.5 rounded-lg border border-divider">
                     <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1.5 text-xs font-semibold text-rose-400">
-                        <ArrowDownRight className="w-3.5 h-3.5" />
+                      <div className="flex items-center gap-1.5 text-xs font-medium text-primary">
+                        <ArrowDownRight className="w-3.5 h-3.5 text-secondary" />
                         <span>Position Exit (When to Sell)</span>
                       </div>
                       <span className="text-[10px] text-secondary">
-                        Executes when holding position to lock gains or stop losses
+                        Executes when position is open to scale out or exit
                       </span>
                     </div>
 
                     {/* Exit Sizing */}
                     <div className="space-y-1.5">
                       <label className="block text-[11px] font-medium text-secondary">
-                        SELL Sizing & Liquidation
+                        SELL Sizing & Allocation
                       </label>
                       <div className="flex flex-wrap items-center gap-2">
                         <div className="inline-flex items-center p-0.5 bg-surface border border-divider rounded-lg">
                           <button
                             type="button"
-                            onClick={() => setCurrentRule(prev => ({ ...prev, exitSizingType: 'DECREASE_PCT' }))}
-                            className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${
-                              (currentRule.exitSizingType || 'DECREASE_PCT') === 'DECREASE_PCT'
-                                ? 'bg-rose-500 text-white font-semibold'
-                                : 'text-secondary hover:text-primary'
-                            }`}
-                          >
-                            DECREASE%
-                          </button>
-                          <button
-                            type="button"
                             onClick={() => setCurrentRule(prev => ({ ...prev, exitSizingType: 'QTY' }))}
                             className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${
                               currentRule.exitSizingType === 'QTY'
-                                ? 'bg-rose-500 text-white font-semibold'
+                                ? 'bg-primary text-surface font-semibold'
                                 : 'text-secondary hover:text-primary'
                             }`}
                           >
@@ -916,11 +932,22 @@ export function StrategyBuilderModal({
                             onClick={() => setCurrentRule(prev => ({ ...prev, exitSizingType: 'VALUE' }))}
                             className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${
                               currentRule.exitSizingType === 'VALUE'
-                                ? 'bg-rose-500 text-white font-semibold'
+                                ? 'bg-primary text-surface font-semibold'
                                 : 'text-secondary hover:text-primary'
                             }`}
                           >
                             VALUE
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setCurrentRule(prev => ({ ...prev, exitSizingType: 'DECREASE_PCT' }))}
+                            className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${
+                              (currentRule.exitSizingType || 'DECREASE_PCT') === 'DECREASE_PCT'
+                                ? 'bg-primary text-surface font-semibold'
+                                : 'text-secondary hover:text-primary'
+                            }`}
+                          >
+                            DECREASE%
                           </button>
                         </div>
 
@@ -931,13 +958,13 @@ export function StrategyBuilderModal({
                             min="1"
                             value={currentRule.exitSizingValue !== undefined && currentRule.exitSizingValue !== null ? currentRule.exitSizingValue : 100}
                             onChange={e => setCurrentRule(prev => ({ ...prev, exitSizingValue: e.target.value === '' ? '' : Number(e.target.value) }))}
-                            placeholder="100"
-                            className="w-24 bg-surface border border-divider rounded-lg px-2.5 py-1 text-xs text-primary font-mono focus:outline-none focus:border-rose-500"
+                            placeholder="Value"
+                            className="w-24 bg-surface border border-divider rounded-lg px-2.5 py-1 text-xs text-primary font-mono focus:outline-none focus:border-primary"
                           />
                           <span className="text-xs text-secondary font-mono">
-                            {(currentRule.exitSizingType || 'DECREASE_PCT') === 'DECREASE_PCT' && '% (100% = Full Exit)'}
                             {currentRule.exitSizingType === 'QTY' && 'Shares'}
                             {currentRule.exitSizingType === 'VALUE' && currencySymbol}
+                            {(currentRule.exitSizingType || 'DECREASE_PCT') === 'DECREASE_PCT' && '%'}
                           </span>
                         </div>
                       </div>
@@ -947,13 +974,13 @@ export function StrategyBuilderModal({
                     <div className="space-y-2">
                       <div className="flex items-center justify-between">
                         <label className="block text-[11px] font-medium text-secondary">
-                          Exit Technical Conditions (IF)
+                          Exit Conditions (IF)
                         </label>
 
                         <button
                           type="button"
                           onClick={handleAddCondition}
-                          className="text-xs font-medium text-rose-400 hover:text-rose-300 transition-colors flex items-center gap-1 cursor-pointer"
+                          className="text-xs font-medium text-primary hover:text-primary/80 transition-colors flex items-center gap-1 cursor-pointer"
                         >
                           <Plus className="w-3.5 h-3.5" />
                           <span>Add Condition</span>
@@ -961,12 +988,12 @@ export function StrategyBuilderModal({
                       </div>
 
                       {(currentRule.exitConditions || []).length === 0 ? (
-                        <div className="p-3.5 border border-dashed border-rose-500/30 rounded-lg text-center space-y-2 bg-surface/50">
-                          <p className="text-xs text-secondary">No technical exit conditions configured yet.</p>
+                        <div className="p-3.5 border border-dashed border-divider rounded-lg text-center space-y-2 bg-surface-hover/30">
+                          <p className="text-xs text-secondary">No exit conditions configured yet.</p>
                           <button
                             type="button"
                             onClick={handleAddCondition}
-                            className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-rose-400 border border-rose-500/30 rounded-md hover:bg-rose-500/10 transition-colors cursor-pointer"
+                            className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-primary border border-divider rounded-md hover:bg-surface-hover transition-colors cursor-pointer"
                           >
                             <Plus className="w-3.5 h-3.5" />
                             <span>Add Exit Condition (e.g. RSI &gt; 70)</span>
@@ -996,7 +1023,7 @@ export function StrategyBuilderModal({
                                 <select
                                   value={cond.leftIndicator || ''}
                                   onChange={e => handleUpdateCondition(cond.id, { leftIndicator: e.target.value as any })}
-                                  className="bg-surface border border-divider rounded-lg px-2 py-1 text-xs text-primary focus:outline-none focus:border-rose-500"
+                                  className="bg-surface border border-divider rounded-lg px-2 py-1 text-xs text-primary focus:outline-none focus:border-primary"
                                 >
                                   <option value="" disabled>Indicator</option>
                                   <option value="rsi">RSI(14, day)</option>
@@ -1010,7 +1037,7 @@ export function StrategyBuilderModal({
                                 <select
                                   value={cond.operator || ''}
                                   onChange={e => handleUpdateCondition(cond.id, { operator: e.target.value as any })}
-                                  className="bg-surface border border-divider rounded-lg px-2 py-1 text-xs font-mono text-primary focus:outline-none focus:border-rose-500"
+                                  className="bg-surface border border-divider rounded-lg px-2 py-1 text-xs font-mono text-primary focus:outline-none focus:border-primary"
                                 >
                                   <option value="" disabled>Op</option>
                                   <option value="<">&lt;</option>
@@ -1055,13 +1082,13 @@ export function StrategyBuilderModal({
                                     value={cond.rightValue !== undefined && cond.rightValue !== null ? cond.rightValue : ''}
                                     onChange={e => handleUpdateCondition(cond.id, { rightValue: e.target.value === '' ? '' : Number(e.target.value) })}
                                     placeholder="Value"
-                                    className="w-20 bg-surface border border-divider rounded-lg px-2 py-1 text-xs text-primary font-mono focus:outline-none focus:border-rose-500"
+                                    className="w-20 bg-surface border border-divider rounded-lg px-2 py-1 text-xs text-primary font-mono focus:outline-none focus:border-primary"
                                   />
                                 ) : (
                                   <select
                                     value={cond.rightIndicator || ''}
                                     onChange={e => handleUpdateCondition(cond.id, { rightIndicator: e.target.value as any })}
-                                    className="bg-surface border border-divider rounded-lg px-2 py-1 text-xs text-primary focus:outline-none focus:border-rose-500"
+                                    className="bg-surface border border-divider rounded-lg px-2 py-1 text-xs text-primary focus:outline-none focus:border-primary"
                                   >
                                     <option value="" disabled>Indicator</option>
                                     <option value="dma200">DMA(200)</option>
@@ -1074,7 +1101,7 @@ export function StrategyBuilderModal({
                                 <button
                                   type="button"
                                   onClick={() => handleRemoveCondition(cond.id)}
-                                  className="ml-auto p-1 text-secondary hover:text-rose-400 rounded transition-colors cursor-pointer"
+                                  className="ml-auto p-1 text-secondary hover:text-primary rounded transition-colors cursor-pointer"
                                   title="Remove condition"
                                 >
                                   <Trash2 className="w-3.5 h-3.5" />
@@ -1084,56 +1111,6 @@ export function StrategyBuilderModal({
                           ))}
                         </div>
                       )}
-                    </div>
-
-                    {/* Risk Management Guards (Stop Loss / Take Profit) */}
-                    <div className="pt-2 border-t border-divider/60 space-y-2">
-                      <div className="flex items-center gap-1.5 text-[11px] font-medium text-primary">
-                        <ShieldAlert className="w-3.5 h-3.5 text-amber-400" />
-                        <span>Automated Risk Management (Optional)</span>
-                      </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <div className="p-2 bg-surface border border-divider rounded-lg flex items-center justify-between">
-                          <label className="text-[11px] text-secondary">
-                            Stop-Loss (SL) %
-                          </label>
-                          <div className="flex items-center gap-1">
-                            <span className="text-[11px] text-rose-400 font-mono">-</span>
-                            <input
-                              type="number"
-                              min="0.5"
-                              step="0.5"
-                              value={currentRule.stopLossPct !== undefined && currentRule.stopLossPct !== null ? currentRule.stopLossPct : ''}
-                              onChange={e => setCurrentRule(prev => ({ ...prev, stopLossPct: e.target.value === '' ? '' : Number(e.target.value) }))}
-                              placeholder="e.g. 5"
-                              className="w-16 bg-surface-hover border border-divider rounded px-2 py-0.5 text-xs text-primary font-mono text-right focus:outline-none focus:border-rose-500"
-                            />
-                            <span className="text-[11px] text-secondary font-mono">%</span>
-                          </div>
-                        </div>
-
-                        <div className="p-2 bg-surface border border-divider rounded-lg flex items-center justify-between">
-                          <label className="text-[11px] text-secondary">
-                            Take-Profit (TP) %
-                          </label>
-                          <div className="flex items-center gap-1">
-                            <span className="text-[11px] text-emerald-400 font-mono">+</span>
-                            <input
-                              type="number"
-                              min="0.5"
-                              step="0.5"
-                              value={currentRule.takeProfitPct !== undefined && currentRule.takeProfitPct !== null ? currentRule.takeProfitPct : ''}
-                              onChange={e => setCurrentRule(prev => ({ ...prev, takeProfitPct: e.target.value === '' ? '' : Number(e.target.value) }))}
-                              placeholder="e.g. 10"
-                              className="w-16 bg-surface-hover border border-divider rounded px-2 py-0.5 text-xs text-primary font-mono text-right focus:outline-none focus:border-emerald-500"
-                            />
-                            <span className="text-[11px] text-secondary font-mono">%</span>
-                          </div>
-                        </div>
-                      </div>
-                      <p className="text-[10px] text-secondary">
-                        Triggers automated exit if stock drops by SL % or gains TP % from average entry price.
-                      </p>
                     </div>
                   </div>
                 )}
@@ -1214,12 +1191,12 @@ export function StrategyBuilderModal({
                                 {rule.scope === 'global' ? 'Global' : (rule.targetSymbol || 'All')}
                               </span>
                               {entryCount > 0 && (
-                                <span className="text-[10px] text-emerald-400 font-medium px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20">
+                                <span className="text-[10px] text-secondary font-mono px-1.5 py-0.5 rounded bg-surface-hover border border-divider">
                                   BUY: {entryCount} cond
                                 </span>
                               )}
                               {(exitCount > 0 || rule.stopLossPct || rule.takeProfitPct) && (
-                                <span className="text-[10px] text-rose-400 font-medium px-1.5 py-0.5 rounded bg-rose-500/10 border border-rose-500/20">
+                                <span className="text-[10px] text-secondary font-mono px-1.5 py-0.5 rounded bg-surface-hover border border-divider">
                                   SELL: {exitCount} cond{rule.stopLossPct ? ` · SL -${rule.stopLossPct}%` : ''}{rule.takeProfitPct ? ` · TP +${rule.takeProfitPct}%` : ''}
                                 </span>
                               )}

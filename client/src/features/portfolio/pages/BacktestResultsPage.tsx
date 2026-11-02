@@ -11,9 +11,11 @@ import {
   CalendarDays,
   TrendingUp,
   ShieldAlert,
+  ArrowUpRight,
+  ArrowDownRight,
 } from 'lucide-react';
 import type { StrategyRule, IndicatorType } from '../components/StrategyBuilderModal';
-import { formatRuleFormula } from '../components/StrategyBuilderModal';
+import { formatRuleFormula, normalizeRule } from '../components/StrategyBuilderModal';
 import type { BacktestResponse, InitialInvestmentInfo, BarIndicators } from '../services/backtestService';
 import { usePortfolioContext } from '../hooks/PortfolioContext';
 import { useCurrency } from '../../../app/providers/CurrencyProvider';
@@ -139,6 +141,10 @@ export function BacktestResultsPage() {
   const rule: StrategyRule | null = session?.rule || null;
   const portfolioId = session?.portfolioId || urlPortfolioId;
 
+  const activeConfigRule = useMemo(() => (rule ? normalizeRule(rule) : null), [rule]);
+  const entryConditionsList = useMemo(() => activeConfigRule?.entryConditions || [], [activeConfigRule]);
+  const exitConditionsList = useMemo(() => activeConfigRule?.exitConditions || [], [activeConfigRule]);
+
   const [selectedTab, setSelectedTab] = useState<string>('overview');
   const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
 
@@ -154,10 +160,11 @@ export function BacktestResultsPage() {
 
     const set = new Set<IndicatorType>();
     for (const r of rulesToCheck) {
+      const norm = normalizeRule(r);
       const allConds = [
-        ...(Array.isArray(r.entryConditions) ? r.entryConditions : []),
-        ...(Array.isArray(r.exitConditions) ? r.exitConditions : []),
-        ...(Array.isArray(r.conditions) ? r.conditions : []),
+        ...(Array.isArray(norm.entryConditions) ? norm.entryConditions : []),
+        ...(Array.isArray(norm.exitConditions) ? norm.exitConditions : []),
+        ...(Array.isArray(norm.conditions) ? norm.conditions : []),
       ];
       for (const cond of allConds) {
         if (cond.leftIndicator && cond.leftIndicator !== 'price') {
@@ -197,7 +204,7 @@ export function BacktestResultsPage() {
     const high = firstPoint?.high ?? Math.max(open, close);
     const low = firstPoint?.low ?? Math.min(open, close);
     const qty = firstPoint?.heldQty || firstTrade?.qty || (close > 0 ? Math.floor(initialCap / close) : 0);
-    const invested = firstPoint?.holdingsValue || firstTrade?.totalCost || (qty * (open || close));
+    const invested = firstPoint?.invested || firstTrade?.totalCost || (qty * (open || close));
     const cashRemaining = Math.max(0, initialCap - invested);
 
     return {
@@ -236,6 +243,7 @@ export function BacktestResultsPage() {
           indicators: initialInvestment.indicators,
           invested: initialInvestment.invested,
           qty: initialInvestment.qty,
+          holdingValue: initialInvestment.invested,
           equity: initialInvestment.invested + (initialInvestment.cashRemaining || 0),
           unrealizedPnl: 0,
           realizedPnl: 0,
@@ -297,10 +305,15 @@ export function BacktestResultsPage() {
           ? pt.totalPnl
           : parseFloat((realizedPnl + unrealizedPnl).toFixed(2));
 
+      const holdingValue =
+        pt.holdingsValue !== undefined
+          ? pt.holdingsValue
+          : parseFloat((qty * close).toFixed(2));
+
       const equity =
         pt.equity !== undefined
           ? pt.equity
-          : parseFloat(((pt.cash ?? 0) + (pt.holdingsValue > 0 ? pt.holdingsValue : qty * close)).toFixed(2));
+          : parseFloat(((pt.cash ?? 0) + holdingValue).toFixed(2));
 
       return {
         date: rowDate,
@@ -313,6 +326,7 @@ export function BacktestResultsPage() {
         indicators: pt.indicators,
         invested,
         qty,
+        holdingValue,
         equity,
         unrealizedPnl,
         realizedPnl,
@@ -1259,7 +1273,9 @@ export function BacktestResultsPage() {
                       ))}
                       <th className="py-2.5 px-3 font-medium text-right">Invested</th>
                       <th className="py-2.5 px-3 font-medium text-right">Qty</th>
-                      <th className="py-2.5 px-3 font-medium text-right whitespace-nowrap">Equity Value</th>
+                      <th className="py-2.5 px-3 font-medium text-right whitespace-nowrap" title="Current market value of held shares (Qty × Close)">
+                        Holding Value
+                      </th>
                       <th className="py-2.5 px-3 font-medium text-right whitespace-nowrap">Unrealized P&L</th>
                       <th className="py-2.5 px-3 font-medium text-right whitespace-nowrap">Realized P&L</th>
                       <th className="py-2.5 px-3 font-medium text-right whitespace-nowrap">Total P&L</th>
@@ -1317,7 +1333,7 @@ export function BacktestResultsPage() {
                             {row.qty.toLocaleString()}
                           </td>
                           <td className="py-2 px-3 text-right tabular-nums font-bold text-primary whitespace-nowrap">
-                            {currencySymbol}{row.equity.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            {currencySymbol}{row.holdingValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </td>
                           <td className="py-2 px-3 text-right tabular-nums font-semibold whitespace-nowrap">
                             <span className={row.unrealizedPnl > 0 ? 'text-success' : row.unrealizedPnl < 0 ? 'text-danger' : 'text-secondary opacity-70'}>
@@ -1376,7 +1392,7 @@ export function BacktestResultsPage() {
       {/* Config Details Modal */}
       {isConfigModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
-          <div className="bg-surface border border-divider rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl p-5 space-y-4">
+          <div className="bg-surface border border-divider rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl p-5 space-y-4 text-primary">
             <div className="flex items-center justify-between pb-3 border-b border-divider">
               <h3 className="text-sm font-bold text-primary">Strategy Configuration</h3>
               <button
@@ -1386,26 +1402,87 @@ export function BacktestResultsPage() {
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <div className="space-y-3 text-xs">
-              <div>
-                <label className="text-secondary block mb-1">Strategy Name</label>
-                <div className="font-semibold text-primary">{rule.name}</div>
+            <div className="space-y-3.5 text-xs">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-secondary block mb-1 font-medium">Strategy Name</label>
+                  <div className="font-semibold text-primary">{activeConfigRule?.name || rule?.name || 'Untitled Strategy'}</div>
+                </div>
+                <div>
+                  <label className="text-secondary block mb-1 font-medium">Target Stock</label>
+                  <div className="font-mono text-primary font-bold">{result?.symbol}</div>
+                </div>
               </div>
-              <div>
-                <label className="text-secondary block mb-1">Target Stock</label>
-                <div className="font-mono text-primary font-bold">{result.symbol}</div>
+
+              {/* Entry Rule Section */}
+              <div className="p-3 bg-surface border border-divider rounded-xl space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 font-semibold text-primary">
+                    <ArrowUpRight className="w-3.5 h-3.5 text-secondary" />
+                    <span>Entry Rule (BUY)</span>
+                  </div>
+                  <span className="text-[10px] font-mono text-secondary px-2 py-0.5 rounded bg-surface-hover border border-divider">
+                    {activeConfigRule?.entrySizingType || 'QTY'} ({activeConfigRule?.entrySizingValue || 10})
+                  </span>
+                </div>
+                {entryConditionsList.length > 0 ? (
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {entryConditionsList.map((cond, idx) => (
+                      <span
+                        key={cond.id || idx}
+                        className="px-2 py-1 rounded text-[11px] font-mono bg-surface-hover border border-divider text-primary"
+                      >
+                        {idx > 0 && <span className="text-secondary font-bold mr-1">{cond.connector || 'AND'}</span>}
+                        {cond.leftIndicator?.toUpperCase()} {cond.operator}{' '}
+                        {cond.rightType === 'indicator' ? cond.rightIndicator?.toUpperCase() : cond.rightValue}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-secondary italic">No entry conditions (Direct Entry on signal)</p>
+                )}
               </div>
+
+              {/* Exit Rule Section */}
+              <div className="p-3 bg-surface border border-divider rounded-xl space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 font-semibold text-primary">
+                    <ArrowDownRight className="w-3.5 h-3.5 text-secondary" />
+                    <span>Exit Rule (SELL)</span>
+                  </div>
+                  <span className="text-[10px] font-mono text-secondary px-2 py-0.5 rounded bg-surface-hover border border-divider">
+                    {activeConfigRule?.exitSizingType || 'DECREASE_PCT'} ({activeConfigRule?.exitSizingValue ?? 100}%)
+                  </span>
+                </div>
+                {exitConditionsList.length > 0 ? (
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {exitConditionsList.map((cond, idx) => (
+                      <span
+                        key={cond.id || idx}
+                        className="px-2 py-1 rounded text-[11px] font-mono bg-surface-hover border border-divider text-primary"
+                      >
+                        {idx > 0 && <span className="text-secondary font-bold mr-1">{cond.connector || 'AND'}</span>}
+                        {cond.leftIndicator?.toUpperCase()} {cond.operator}{' '}
+                        {cond.rightType === 'indicator' ? cond.rightIndicator?.toUpperCase() : cond.rightValue}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-secondary italic">No exit conditions configured</p>
+                )}
+              </div>
+
               <div>
-                <label className="text-secondary block mb-1">Formula</label>
-                <div className="p-3 bg-background border border-divider rounded-lg font-mono text-xs text-primary overflow-x-auto">
-                  {formatRuleFormula(rule)}
+                <label className="text-secondary block mb-1 font-medium">Unified Formula</label>
+                <div className="p-2.5 bg-background border border-divider rounded-lg font-mono text-xs text-primary overflow-x-auto whitespace-nowrap">
+                  {formatRuleFormula(activeConfigRule || rule!)}
                 </div>
               </div>
             </div>
             <div className="pt-2 flex justify-end">
               <button
                 onClick={() => setIsConfigModalOpen(false)}
-                className="px-4 py-1.5 rounded-lg bg-primary text-surface text-xs font-semibold cursor-pointer"
+                className="px-4 py-1.5 rounded-lg bg-primary text-surface text-xs font-semibold cursor-pointer hover:opacity-90 transition-opacity"
               >
                 Close
               </button>

@@ -22,7 +22,7 @@ import { usePortfolioContext } from '../hooks/PortfolioContext';
 import { useCurrency } from '../../../app/providers/CurrencyProvider';
 import { api } from '../../../services/api/client';
 import { BacktestModal } from '../components/BacktestModal';
-import { formatRuleFormula, type StrategyRule } from '../components/StrategyBuilderModal';
+import { formatRuleFormula, normalizeRule, type StrategyRule } from '../components/StrategyBuilderModal';
 
 export function BacktestPage() {
   const navigate = useNavigate();
@@ -72,7 +72,7 @@ export function BacktestPage() {
       serverStrategies.forEach((s) => {
         if (s && s.id) {
           strategiesMap.set(s.id, {
-            ...s,
+            ...normalizeRule(s),
             portfolioId: resolvePortfolioId(s),
           });
         }
@@ -89,7 +89,7 @@ export function BacktestPage() {
                 if (s && s.id && s.id !== 'rule-default') {
                   if (!strategiesMap.has(s.id)) {
                     strategiesMap.set(s.id, {
-                      ...s,
+                      ...normalizeRule(s),
                       portfolioId: s.portfolioId || s.portfolio_id || p.id,
                     });
                   }
@@ -109,7 +109,7 @@ export function BacktestPage() {
             parsed.forEach((s: any) => {
               if (s && s.id && s.id !== 'rule-default' && !strategiesMap.has(s.id)) {
                 strategiesMap.set(s.id, {
-                  ...s,
+                  ...normalizeRule(s),
                   portfolioId: resolvePortfolioId(s),
                 });
               }
@@ -194,7 +194,7 @@ export function BacktestPage() {
 
   // Handle opening backtest modal for a selected strategy
   const handleOpenBacktest = (rule: StrategyRule) => {
-    setActiveStrategyToTest(rule);
+    setActiveStrategyToTest(normalizeRule(rule));
     setIsBacktestModalOpen(true);
   };
 
@@ -477,12 +477,23 @@ export function BacktestPage() {
                           {/* Condition Tags */}
                           {hasConditions && (
                             <div className="flex flex-wrap gap-1">
-                              {strategy.conditions.map((cond, idx) => (
+                              {(strategy.entryConditions && strategy.entryConditions.length > 0 ? strategy.entryConditions : strategy.conditions).map((cond, idx) => (
                                 <span
-                                  key={cond.id || idx}
+                                  key={`entry-${cond.id || idx}`}
                                   className="px-2 py-0.5 rounded text-[10px] font-mono bg-surface-hover border border-divider text-secondary"
                                 >
-                                  {cond.leftIndicator?.toUpperCase()} {cond.operator}{' '}
+                                  BUY: {cond.leftIndicator?.toUpperCase()} {cond.operator}{' '}
+                                  {cond.rightType === 'indicator'
+                                    ? cond.rightIndicator?.toUpperCase()
+                                    : cond.rightValue}
+                                </span>
+                              ))}
+                              {strategy.exitConditions?.map((cond, idx) => (
+                                <span
+                                  key={`exit-${cond.id || idx}`}
+                                  className="px-2 py-0.5 rounded text-[10px] font-mono bg-surface-hover border border-divider text-secondary"
+                                >
+                                  SELL: {cond.leftIndicator?.toUpperCase()} {cond.operator}{' '}
                                   {cond.rightType === 'indicator'
                                     ? cond.rightIndicator?.toUpperCase()
                                     : cond.rightValue}

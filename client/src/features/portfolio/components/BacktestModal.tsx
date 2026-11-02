@@ -12,7 +12,7 @@ import {
   ChevronRight,
   ChevronDown,
 } from 'lucide-react';
-import type { StrategyRule } from './StrategyBuilderModal';
+import { type StrategyRule, normalizeRule } from './StrategyBuilderModal';
 import {
   runBacktest,
   getBacktestDataRange,
@@ -59,13 +59,15 @@ export function BacktestModal({
 }: BacktestModalProps) {
   const navigate = useNavigate();
 
+  const normalizedRule = useMemo(() => normalizeRule(rule), [rule]);
+
   // Target stock resolved strictly from the strategy
   const targetStock = useMemo(() => {
-    if (rule.targetSymbol && rule.targetSymbol !== 'ALL') {
-      return rule.targetSymbol;
+    if (normalizedRule.targetSymbol && normalizedRule.targetSymbol !== 'ALL') {
+      return normalizedRule.targetSymbol;
     }
     return stocks[0]?.symbol || 'RELIANCE.NS';
-  }, [rule.targetSymbol, stocks]);
+  }, [normalizedRule.targetSymbol, stocks]);
 
   // Default dates: From 1st of current month to today (matches Screenshot 2: 2026-10-01 to 2026-10-26)
   const defaultDates = useMemo(() => {
@@ -331,11 +333,11 @@ export function BacktestModal({
       return;
     }
 
-    const hasAnyConditions = (rule.entryConditions && rule.entryConditions.length > 0) ||
-      (rule.exitConditions && rule.exitConditions.length > 0) ||
-      (rule.conditions && rule.conditions.length > 0) ||
-      (rule.stopLossPct !== undefined && rule.stopLossPct !== '' && rule.stopLossPct !== null) ||
-      (rule.takeProfitPct !== undefined && rule.takeProfitPct !== '' && rule.takeProfitPct !== null);
+    const hasAnyConditions = (normalizedRule.entryConditions && normalizedRule.entryConditions.length > 0) ||
+      (normalizedRule.exitConditions && normalizedRule.exitConditions.length > 0) ||
+      (normalizedRule.conditions && normalizedRule.conditions.length > 0) ||
+      (normalizedRule.stopLossPct !== undefined && normalizedRule.stopLossPct !== '' && normalizedRule.stopLossPct !== null) ||
+      (normalizedRule.takeProfitPct !== undefined && normalizedRule.takeProfitPct !== '' && normalizedRule.takeProfitPct !== null);
 
     if (!hasAnyConditions) {
       setError('Strategy must have at least one condition or risk guard to backtest.');
@@ -348,18 +350,18 @@ export function BacktestModal({
     try {
       const res = await runBacktest({
         symbol: targetStock,
-        rules: [rule],
+        rules: [normalizedRule],
         startDate: fromDate,
         endDate: toDate,
         initialCapital: Number(initialCapital) || 100000,
-        slippagePct: 0.0005,
-        feePct: 0.001,
+        slippagePct: 0,
+        feePct: 0,
       });
 
       // Save latest session so the Backtest Results page can load smoothly on refresh
       const backtestSession = {
         result: res,
-        rule,
+        rule: normalizedRule,
         portfolioId: portfolioId || null,
         timestamp: Date.now(),
       };

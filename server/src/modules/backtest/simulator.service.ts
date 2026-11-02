@@ -41,8 +41,8 @@ export function runSimulation(
   options: SimulationOptions = {}
 ): SimulationResult {
   const initialCapital = options.initialCapital ?? 100000;
-  const slippagePct = options.slippagePct ?? 0.0005; // 0.05% slippage
-  const feePct = options.feePct ?? 0.001;           // 0.1% fees/taxes
+  const slippagePct = options.slippagePct ?? 0; // Default 0: exact values without slippage
+  const feePct = options.feePct ?? 0;           // Default 0: exact values without transaction fees
   const nominalStartDate = options.nominalStartDate;
   const nominalEndDate = options.nominalEndDate;
 
