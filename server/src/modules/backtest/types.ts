@@ -130,6 +130,20 @@ export interface SimulationOptions {
   nominalEndDate?: string;   // Backtest simulation end date
 }
 
+export interface PortfolioBacktestConfig {
+  portfolioId?: string;
+  portfolioName?: string;
+  mode: 'ONE_TIME' | 'SIP';
+  startDate?: string;
+  endDate?: string;
+  timeframe?: 'hour' | 'day';
+  initialCapital?: number;
+  sipAmount?: number;
+  frequency?: 'monthly' | 'weekly' | 'daily';
+  sipDay?: number;
+  sipTime?: string;
+}
+
 export interface SimulationResult {
   symbol: string;
   initialCapital: number;

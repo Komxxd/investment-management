@@ -4,6 +4,7 @@ import { getAnonClient } from '../../config/supabase';
 import { ensureHistoricalCandles, readLocalCandles } from '../prices/data-storage.service';
 import { computeRollingIndicators } from './rolling-indicators.service';
 import { runSimulation } from './simulator.service';
+import { simulatePortfolio } from './portfolio-simulator.service';
 import { computeBacktestMetrics } from './metrics.service';
 import { StrategyRule, BacktestResponse } from './types';
 
@@ -327,6 +328,89 @@ router.post('/run', optionalAuthMiddleware, async (req: any, res: any) => {
   } catch (err: any) {
     console.error('[Backtest Route Error]:', err);
     return res.status(500).json({ error: err.message || 'Failed to execute backtest.' });
+  }
+});
+
+/**
+ * POST /api/backtest/portfolio/run
+ * Executes a full portfolio backtest using either:
+ * - SIP: Recurring investment at specified date and time
+ * - ONE_TIME: Lump-sum investment (Buy & Hold) between start and end date
+ */
+router.post('/portfolio/run', optionalAuthMiddleware, async (req: any, res: any) => {
+  try {
+    const {
+      portfolioId,
+      portfolio_id,
+      portfolioName,
+      portfolio_name,
+      mode = 'ONE_TIME',
+      startDate,
+      start_date,
+      endDate,
+      end_date,
+      timeframe = 'hour',
+      initialCapital = 100000,
+      initial_capital,
+      sipAmount = 10000,
+      sip_amount,
+      frequency = 'monthly',
+      sipDay = 5,
+      sip_day,
+      sipTime = '09:15',
+      sip_time,
+      stocks: passedStocks,
+    } = req.body;
+
+    const targetPortfolioId = portfolio_id || portfolioId;
+    let portfolioStocks = Array.isArray(passedStocks) ? passedStocks : [];
+
+    // If stocks were not passed directly in body, query database
+    if (portfolioStocks.length === 0 && targetPortfolioId) {
+      const client = req.supabase || getAnonClient();
+      const { data: dbStocks, error } = await client
+        .from('stocks')
+        .select('*')
+        .eq('portfolio_id', targetPortfolioId);
+
+      if (!error && Array.isArray(dbStocks)) {
+        portfolioStocks = dbStocks;
+      }
+    }
+
+    if (portfolioStocks.length === 0) {
+      return res.status(400).json({
+        error: 'No stocks provided or found for this portfolio. Please add stocks to the portfolio first.',
+      });
+    }
+
+    const finalMode = mode === 'SIP' ? 'SIP' : 'ONE_TIME';
+    const finalStartDate = start_date || startDate;
+    const finalEndDate = end_date || endDate;
+    const finalCapital = Number(initial_capital || initialCapital) || 100000;
+    const finalSipAmount = Number(sip_amount || sipAmount) || 10000;
+    const finalSipDay = Number(sip_day || sipDay) || 5;
+    const finalSipTime = sip_time || sipTime || '09:15';
+    const finalName = portfolio_name || portfolioName || 'Portfolio';
+
+    const result = await simulatePortfolio(portfolioStocks, {
+      portfolioId: targetPortfolioId,
+      portfolioName: finalName,
+      mode: finalMode,
+      startDate: finalStartDate,
+      endDate: finalEndDate,
+      timeframe: timeframe === 'day' ? 'day' : 'hour',
+      initialCapital: finalCapital,
+      sipAmount: finalSipAmount,
+      frequency,
+      sipDay: finalSipDay,
+      sipTime: finalSipTime,
+    });
+
+    return res.json(result);
+  } catch (err: any) {
+    console.error('[Portfolio Backtest Error]:', err);
+    return res.status(500).json({ error: err.message || 'Failed to execute portfolio backtest.' });
   }
 });
 

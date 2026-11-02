@@ -132,6 +132,29 @@ export async function runBacktest(request: BacktestRequest): Promise<BacktestRes
   return api.post('/api/backtest/run', { timeframe: 'hour', ...request });
 }
 
+export interface PortfolioBacktestRequest {
+  portfolioId: string;
+  portfolioName?: string;
+  mode: 'ONE_TIME' | 'SIP';
+  startDate?: string;
+  endDate?: string;
+  timeframe?: 'hour' | 'day';
+  initialCapital?: number; // for ONE_TIME
+  sipAmount?: number;     // for SIP
+  frequency?: 'monthly' | 'weekly' | 'daily';
+  sipDay?: number;        // day of month (e.g. 5)
+  sipTime?: string;       // execution time (e.g. '09:15')
+  stocks?: any[];
+}
+
+/**
+ * Executes a full portfolio backtest on the backend across all constituent stocks
+ * using either a One-Time lump sum or recurring SIP.
+ */
+export async function runPortfolioBacktest(request: PortfolioBacktestRequest): Promise<BacktestResponse> {
+  return api.post('/api/backtest/portfolio/run', { timeframe: 'hour', ...request });
+}
+
 export interface BacktestDataRange {
   symbol: string;
   totalCandles: number;
