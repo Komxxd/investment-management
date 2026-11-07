@@ -184,8 +184,6 @@ export function BacktestResultsPage() {
   const initialInvestment: InitialInvestmentInfo | null = useMemo(() => {
     if (!result) return null;
     const firstPoint = result.equityCurve?.[0];
-    const initialCap = result.summary.initialCapital || 100000;
-    const firstTrade = result.trades?.[0];
 
     if (result.initialInvestment) {
       return {
@@ -196,34 +194,7 @@ export function BacktestResultsPage() {
       };
     }
 
-    // Fallback if not directly present in cached session
-    const rawDate = result.summary.startDate || firstPoint?.date || firstTrade?.entryDate || 'N/A';
-    const date = rawDate.includes(' ') ? rawDate.split(' ')[0] : rawDate.split('T')[0];
-    const time = firstPoint?.time || (rawDate.includes(' ') ? rawDate.split(' ')[1] : undefined);
-    const close = firstPoint?.close ?? firstPoint?.stockClose ?? firstTrade?.entryPrice ?? 0;
-    const open = firstPoint?.open ?? close;
-    const high = firstPoint?.high ?? Math.max(open, close);
-    const low = firstPoint?.low ?? Math.min(open, close);
-    const qty = firstPoint?.heldQty || firstTrade?.qty || (close > 0 ? Math.floor(initialCap / close) : 0);
-    const invested = firstPoint?.invested || firstTrade?.totalCost || (qty * (open || close));
-    const cashRemaining = Math.max(0, initialCap - invested);
-
-    return {
-      date,
-      time,
-      action: 'Initial Entry',
-      open,
-      high,
-      low,
-      close,
-      invested,
-      qty,
-      execPrice: open || close,
-      cashRemaining,
-      initialCapital: initialCap,
-      changePercent: firstPoint?.changePercent,
-      indicators: firstPoint?.indicators,
-    };
+    return null;
   }, [result]);
 
   // Construct timeline rows across all simulation dates
@@ -280,7 +251,7 @@ export function BacktestResultsPage() {
       let action: string | undefined = undefined;
       let isConditionMatched = false;
 
-      if (pt.action === 'Initial Entry' || idx === 0) {
+      if (pt.action === 'Initial Entry') {
         if (!seenInitialEntry) {
           action = 'Initial Entry';
           seenInitialEntry = true;
@@ -292,6 +263,8 @@ export function BacktestResultsPage() {
           action = 'Condition Met';
           isConditionMatched = true;
         }
+      } else if (pt.action) {
+        action = pt.action;
       }
 
       const unrealizedPnl =
@@ -343,7 +316,7 @@ export function BacktestResultsPage() {
   const tradingDays: TradingDayItem[] = useMemo(() => {
     if (!result) return [];
 
-    const initialCap = result.summary?.initialCapital || 100000;
+    const initialCap = result.summary?.initialCapital ?? 0;
     const curve = result.equityCurve || [];
 
     const pointsByDate = new Map<string, typeof curve>();
@@ -381,6 +354,7 @@ export function BacktestResultsPage() {
     const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     const fullMonthNames = ['JANUARY', 'FEBRUARY', 'MARCH', 'APRIL', 'MAY', 'JUNE', 'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER'];
 
+    let prevTotalPnl = 0;
     let prevEquity = initialCap;
     const days: TradingDayItem[] = [];
 
@@ -391,8 +365,14 @@ export function BacktestResultsPage() {
       const rawEndEquity = lastPt?.equity ?? (lastPt ? lastPt.holdingsValue + lastPt.cash : 0);
       const endEquity = rawEndEquity > 0 ? rawEndEquity : prevEquity;
       const startEquity = prevEquity;
-      const dayPnL = endEquity - startEquity;
+
+      const totalPnl =
+        lastPt?.totalPnl !== undefined
+          ? lastPt.totalPnl
+          : parseFloat((endEquity - initialCap).toFixed(2));
+      const dayPnL = parseFloat((totalPnl - prevTotalPnl).toFixed(2));
       const pnlPercent = startEquity > 0 ? (dayPnL / startEquity) * 100 : 0;
+      const totalPnlPercent = initialCap > 0 ? (totalPnl / initialCap) * 100 : 0;
 
       const parts = d.split('-');
       const year = parts[0] || '';
@@ -405,12 +385,6 @@ export function BacktestResultsPage() {
       const signalsCount = timelineRows.filter(
         (r) => r.date === d && r.action === 'Condition Met'
       ).length;
-
-      const totalPnl =
-        lastPt?.totalPnl !== undefined
-          ? lastPt.totalPnl
-          : parseFloat((endEquity - initialCap).toFixed(2));
-      const totalPnlPercent = initialCap > 0 ? (totalPnl / initialCap) * 100 : 0;
 
       days.push({
         dateStr: d,
@@ -430,6 +404,7 @@ export function BacktestResultsPage() {
       });
 
       prevEquity = endEquity;
+      prevTotalPnl = totalPnl;
     }
 
     return days;
@@ -459,6 +434,7 @@ export function BacktestResultsPage() {
     for (const yr of years) {
       const daysInYear = tradingDays.filter((d) => d.year === yr);
       const months: ({ pnl: number; pnlPercent: number } | null)[] = Array(12).fill(null);
+      const baseCapital = result?.summary?.initialCapital || (daysInYear[0]?.startEquity > 0 ? daysInYear[0].startEquity : 0);
 
       for (let m = 0; m < 12; m++) {
         const daysInMonth = daysInYear.filter((d) => {
@@ -467,47 +443,35 @@ export function BacktestResultsPage() {
         });
 
         if (daysInMonth.length > 0) {
-          const first = daysInMonth[0];
-          const last = daysInMonth[daysInMonth.length - 1];
-          const monthPnl = last.endEquity - first.startEquity;
-          const monthPct = first.startEquity > 0 ? (monthPnl / first.startEquity) * 100 : 0;
+          const monthPnl = parseFloat(daysInMonth.reduce((acc, d) => acc + d.pnl, 0).toFixed(2));
+          const monthPct = baseCapital > 0 ? parseFloat(((monthPnl / baseCapital) * 100).toFixed(2)) : 0;
           months[m] = { pnl: monthPnl, pnlPercent: monthPct };
         }
       }
 
-      const firstYearDay = daysInYear[0];
-      const lastYearDay = daysInYear[daysInYear.length - 1];
-      const totalPnl = lastYearDay.endEquity - firstYearDay.startEquity;
-      const totalPercent = firstYearDay.startEquity > 0 ? (totalPnl / firstYearDay.startEquity) * 100 : 0;
+      const totalPnl = parseFloat(daysInYear.reduce((acc, d) => acc + d.pnl, 0).toFixed(2));
+      const totalPercent = baseCapital > 0 ? parseFloat(((totalPnl / baseCapital) * 100).toFixed(2)) : 0;
 
       // Calculate max drawdown for this year (monetary decline & percentage from peak)
       let yearMaxDdVal = 0;
       let yearMaxDdPct = 0;
 
-      if (years.length === 1 && result?.summary?.maxDrawdownValue !== undefined && result.summary.maxDrawdownValue > 0) {
-        yearMaxDdVal = result.summary.maxDrawdownValue;
-        yearMaxDdPct = result.summary.maxDrawdownPct;
-      } else {
-        const yearPts = (result?.equityCurve || []).filter((pt) => pt.date.startsWith(yr));
-        if (yearPts.length > 0) {
-          let yPeak = yearPts[0].equity;
-          for (const pt of yearPts) {
-            if (pt.equity > yPeak) {
-              yPeak = pt.equity;
-            } else if (yPeak > 0) {
-              const ddVal = yPeak - pt.equity;
-              const ddPct = (ddVal / yPeak) * 100;
-              if (ddPct > yearMaxDdPct) {
-                yearMaxDdPct = ddPct;
-                yearMaxDdVal = ddVal;
-              }
+      const yearPts = (result?.equityCurve || []).filter((pt) => pt.date.startsWith(yr));
+      if (yearPts.length > 0) {
+        let yPeak = yearPts[0].equity;
+        for (const pt of yearPts) {
+          if (pt.equity > yPeak) {
+            yPeak = pt.equity;
+          } else if (yPeak > 0) {
+            const ddVal = yPeak - pt.equity;
+            const ddPct = (ddVal / yPeak) * 100;
+            if (ddVal > yearMaxDdVal) {
+              yearMaxDdVal = parseFloat(ddVal.toFixed(2));
+            }
+            if (ddPct > yearMaxDdPct) {
+              yearMaxDdPct = parseFloat(ddPct.toFixed(2));
             }
           }
-        }
-        if (yearMaxDdVal === 0 && (result?.summary?.maxDrawdownPct ?? 0) > 0) {
-          yearMaxDdPct = result?.summary?.maxDrawdownPct ?? 0;
-          const peakEq = result?.summary?.peakEquity || result?.summary?.initialCapital || 100000;
-          yearMaxDdVal = result?.summary?.maxDrawdownValue || (yearMaxDdPct / 100) * peakEq;
         }
       }
 
@@ -527,7 +491,7 @@ export function BacktestResultsPage() {
   const displayCagr = useMemo(() => {
     if (!result) return 0;
     const summary = result.summary;
-    const initialCap = summary?.initialCapital || 100000;
+    const initialCap = summary?.initialCapital ?? 0;
     const finalEq = summary?.finalEquity || initialCap;
     const curve = result.equityCurve || [];
 
@@ -551,14 +515,14 @@ export function BacktestResultsPage() {
   const peakEquityInfo = useMemo(() => {
     if (!result) return { value: 0, formattedDate: '' };
     const summary = result.summary;
-    const initialCap = summary?.initialCapital || 100000;
+    const initialCap = summary?.initialCapital ?? 0;
     const curve = result.equityCurve || [];
 
-    let maxEq = summary?.peakEquity || initialCap;
+    let maxEq = summary?.peakEquity || (curve.length > 0 ? Math.max(...curve.map(c => c.equity)) : initialCap);
     let maxDate = summary?.peakEquityDate || (curve[0]?.date || '');
 
     if (!summary?.peakEquity && curve.length > 0) {
-      maxEq = initialCap;
+      maxEq = curve[0]?.equity || 0;
       for (const pt of curve) {
         if (pt.equity > maxEq) {
           maxEq = pt.equity;
@@ -594,7 +558,7 @@ export function BacktestResultsPage() {
     let troughDate = summary?.maxDrawdownEndDate || '';
 
     if (!peakDate || !troughDate) {
-      const initialCap = summary?.initialCapital || 100000;
+      const initialCap = summary?.initialCapital ?? 0;
       let runningPeak = initialCap;
       let currentPeakDate = curve[0]?.date || '';
       let maxDd = 0;
@@ -655,7 +619,7 @@ export function BacktestResultsPage() {
       }
     }
 
-    const peak = peakEquityInfo.value || result.summary.peakEquity || result.summary.initialCapital || 100000;
+    const peak = peakEquityInfo.value || result.summary.peakEquity || result.summary.initialCapital || 0;
     return ((result.summary.maxDrawdownPct || 0) / 100) * peak;
   }, [result, yearReturns, peakEquityInfo]);
 
@@ -1097,10 +1061,12 @@ export function BacktestResultsPage() {
                     </div>
 
                     <div className="flex items-center justify-between text-xs pt-2 border-t border-divider">
-                      <span className="text-secondary">Initial Capital</span>
+                      <span className="text-secondary">
+                        {session?.mode ? 'Initial Capital' : 'Total Capital Invested'}
+                      </span>
                       <span className="font-mono text-primary font-semibold">
                         {currencySymbol}
-                        {(result.summary.initialCapital || 100000).toLocaleString()}
+                        {(result.summary.initialCapital ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </span>
                     </div>
 

@@ -89,7 +89,7 @@ router.post('/run', optionalAuthMiddleware, async (req: any, res: any) => {
       start_date,
       endDate,
       end_date,
-      initialCapital = 100000,
+      initialCapital,
       initial_capital,
       slippagePct = 0,
       slippage_pct,
@@ -166,7 +166,7 @@ router.post('/run', optionalAuthMiddleware, async (req: any, res: any) => {
     const finalYears = Number(years) || (finalTimeframe === 'hour' ? 2 : 3);
     const finalStartDate = start_date || startDate;
     const finalEndDate = end_date || endDate;
-    const finalCapital = Number(initial_capital || initialCapital) || 100000;
+    const finalCapital = Number(initial_capital !== undefined ? initial_capital : (initialCapital !== undefined ? initialCapital : 0));
     const finalSlippage = Number(slippage_pct !== undefined ? slippage_pct : (slippagePct ?? 0));
     const finalFee = Number(fee_pct !== undefined ? fee_pct : (feePct ?? 0));
 

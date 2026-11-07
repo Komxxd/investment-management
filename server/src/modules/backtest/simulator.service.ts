@@ -40,7 +40,7 @@ export function runSimulation(
   rules: StrategyRule[],
   options: SimulationOptions = {}
 ): SimulationResult {
-  const initialCapital = options.initialCapital ?? 100000;
+  const initialCapital = options.initialCapital ?? 0;
   const slippagePct = options.slippagePct ?? 0; // Default 0: exact values without slippage
   const feePct = options.feePct ?? 0;           // Default 0: exact values without transaction fees
   const nominalStartDate = options.nominalStartDate;
@@ -270,7 +270,7 @@ export function runSimulation(
     let matchReason = '';
 
     // Enforce: in a day, only once a condition meets
-    const canCheckConditionToday = !pendingOrder && lastConditionMetDay !== currentDay && i !== startIndex;
+    const canCheckConditionToday = !pendingOrder && lastConditionMetDay !== currentDay && (!initialInvestment || i !== startIndex);
 
     if (canCheckConditionToday) {
       // Prioritize exit (SELL) rules when holding a position
@@ -333,7 +333,7 @@ export function runSimulation(
 
     // Determine row action
     let dayAction: string | undefined = undefined;
-    if (i === startIndex) {
+    if (i === startIndex && initialInvestment) {
       dayAction = 'Initial Entry';
       lastConditionMetDay = currentDay;
     } else if (conditionMatchedToday) {

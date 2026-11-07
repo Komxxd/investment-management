@@ -81,7 +81,6 @@ export function BacktestModal({
 
   const [fromDate, setFromDate] = useState<string>(defaultDates.from);
   const [toDate, setToDate] = useState<string>(defaultDates.to);
-  const [initialCapital, setInitialCapital] = useState<number>(100000);
   const [selectingField, setSelectingField] = useState<'from' | 'to'>('from');
   const [pickerView, setPickerView] = useState<'days' | 'month-year'>('days');
 
@@ -353,7 +352,7 @@ export function BacktestModal({
         rules: [normalizedRule],
         startDate: fromDate,
         endDate: toDate,
-        initialCapital: Number(initialCapital) || 100000,
+        initialCapital: 0,
         slippagePct: 0,
         feePct: 0,
       });
@@ -421,27 +420,6 @@ export function BacktestModal({
               <span className="text-[10px] px-2 py-0.5 rounded font-mono font-bold bg-surface border border-divider text-secondary shrink-0">
                 {targetStock}
               </span>
-            </div>
-          </div>
-
-          {/* INITIAL CAPITAL */}
-          <div>
-            <label className="block text-[10px] uppercase font-bold tracking-wider text-secondary mb-1">
-              Initial Capital
-            </label>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-mono font-bold text-secondary">
-                {currencySymbol}
-              </span>
-              <input
-                type="number"
-                min="1000"
-                step="10000"
-                value={initialCapital}
-                onChange={(e) => setInitialCapital(Math.max(1000, Number(e.target.value)))}
-                className="w-full pl-7 pr-3 py-1.5 rounded-xl border border-divider bg-background text-primary font-mono text-xs font-semibold focus:outline-none focus:border-primary transition-colors"
-                placeholder="100000"
-              />
             </div>
           </div>
 
