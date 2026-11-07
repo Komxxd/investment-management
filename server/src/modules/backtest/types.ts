@@ -154,6 +154,7 @@ export interface SimulationResult {
   initialInvestment?: InitialInvestmentInfo;
   trades: BacktestTrade[];
   equityCurve: DailyEquityPoint[];
+  stocksData?: Record<string, DailyEquityPoint[]>;
 }
 
 export interface BacktestSummaryMetrics {
@@ -198,6 +199,7 @@ export interface BacktestResponse {
   initialInvestment?: InitialInvestmentInfo;
   trades: BacktestTrade[];
   equityCurve: DailyEquityPoint[];
+  stocksData?: Record<string, DailyEquityPoint[]>;
 }
 
 

@@ -110,6 +110,7 @@ export interface BacktestResponse {
   initialInvestment?: InitialInvestmentInfo;
   trades: BacktestTrade[];
   equityCurve: DailyEquityPoint[];
+  stocksData?: Record<string, DailyEquityPoint[]>;
 }
 
 export interface BacktestRequest {

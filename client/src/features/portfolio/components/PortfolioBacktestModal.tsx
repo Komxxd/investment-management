@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   X,
@@ -13,6 +13,8 @@ import {
   AlertCircle,
   Tag,
   CheckCircle2,
+  Check,
+  Search,
 } from 'lucide-react';
 import { runPortfolioBacktest } from '../services/backtestService';
 import type { StrategyRule } from './StrategyBuilderModal';
@@ -82,33 +84,65 @@ export function PortfolioBacktestModal({
     return stocks.filter((s) => s.portfolio_id === portfolio.id);
   }, [stocks, portfolio.id]);
 
-  // Compute allocation weights of constituent stocks
-  const stockAllocations = useMemo(() => {
-    if (portfolioStocks.length === 0) return [];
-    let totalBase = 0;
-    portfolioStocks.forEach((s) => {
-      const q = Number(s.quantity) || 0;
-      const p = Number(s.entry_price) || 0;
-      if (q > 0 && p > 0) totalBase += q * p;
-    });
-
-    return portfolioStocks.map((s) => {
-      const q = Number(s.quantity) || 0;
-      const p = Number(s.entry_price) || 0;
-      const weight = totalBase > 0 && q > 0 && p > 0 ? (q * p) / totalBase : 1 / portfolioStocks.length;
-      return {
-        symbol: s.symbol,
-        weight,
-        weightPercent: (weight * 100).toFixed(1),
-      };
-    });
+  // Unique constituent stock symbols in this portfolio
+  const constituentSymbols = useMemo(() => {
+    return Array.from(new Set(portfolioStocks.map((s) => s.symbol.trim().toUpperCase())));
   }, [portfolioStocks]);
+
+  // Selected constituent stocks for backtesting (defaults to all)
+  const [selectedSymbols, setSelectedSymbols] = useState<Set<string>>(() => new Set());
+  const [stockSearchQuery, setStockSearchQuery] = useState<string>('');
+
+  // Initialize all constituent stocks as selected when constituentSymbols change or modal opens
+  useEffect(() => {
+    if (constituentSymbols.length > 0) {
+      setSelectedSymbols(new Set(constituentSymbols));
+    }
+  }, [constituentSymbols, isOpen]);
+
+  // Toggle selection of a stock symbol
+  const toggleStock = (symbol: string) => {
+    setSelectedSymbols((prev) => {
+      const next = new Set(prev);
+      if (next.has(symbol)) {
+        next.delete(symbol);
+      } else {
+        next.add(symbol);
+      }
+      return next;
+    });
+  };
+
+  const selectAllStocks = () => {
+    setSelectedSymbols(new Set(constituentSymbols));
+  };
+
+  const deselectAllStocks = () => {
+    setSelectedSymbols(new Set());
+  };
+
+  // Filtered symbols by search query
+  const filteredDisplaySymbols = useMemo(() => {
+    if (!stockSearchQuery.trim()) return constituentSymbols;
+    const q = stockSearchQuery.toLowerCase().trim();
+    return constituentSymbols.filter((s) => s.toLowerCase().includes(q));
+  }, [constituentSymbols, stockSearchQuery]);
+
+  // Subset of portfolioStocks matching the selected symbols
+  const targetStocksToBacktest = useMemo(() => {
+    return portfolioStocks.filter((s) => selectedSymbols.has(s.symbol.trim().toUpperCase()));
+  }, [portfolioStocks, selectedSymbols]);
 
   if (!isOpen) return null;
 
   const handleRunBacktest = async () => {
     if (portfolioStocks.length === 0) {
       setError('This portfolio does not have any stocks configured. Please add stocks to this portfolio first.');
+      return;
+    }
+
+    if (targetStocksToBacktest.length === 0) {
+      setError('Please select at least one stock to backtest.');
       return;
     }
 
@@ -128,13 +162,18 @@ export function PortfolioBacktestModal({
         frequency: 'monthly',
         sipDay,
         sipTime,
-        stocks: portfolioStocks,
+        stocks: targetStocksToBacktest,
       });
 
       // Virtual rule representing this portfolio backtest for the results page
+      const isPartialSelection = selectedSymbols.size < constituentSymbols.length;
+      const virtualRuleName = isPartialSelection
+        ? `${portfolio.name} (${mode === 'SIP' ? 'SIP' : 'One-Time'} · ${selectedSymbols.size} Stocks)`
+        : `${portfolio.name} (${mode === 'SIP' ? 'SIP' : 'One-Time'})`;
+
       const virtualRule: StrategyRule = {
         id: `portfolio-${portfolio.id}-${mode}`,
-        name: `${portfolio.name} (${mode === 'SIP' ? 'SIP' : 'One-Time'})`,
+        name: virtualRuleName,
         scope: 'global',
         targetSymbol: portfolio.name,
         action: 'BUY',
@@ -160,6 +199,8 @@ export function PortfolioBacktestModal({
           sipTime,
           startDate: mode === 'SIP' ? sipStartDate : oneTimeStartDate,
           endDate: mode === 'SIP' ? sipEndDate : oneTimeEndDate,
+          portfolioName: portfolio.name,
+          constituents: Array.from(selectedSymbols),
         },
         timestamp: Date.now(),
       };
@@ -243,32 +284,109 @@ export function PortfolioBacktestModal({
             </div>
           </div>
 
-          {/* Constituent Assets Preview */}
-          <div className="p-3 rounded-xl bg-background border border-divider space-y-2">
-            <div className="flex items-center justify-between text-secondary">
-              <span className="font-semibold text-[11px] flex items-center gap-1.5">
+          {/* Constituent Assets Selection & Filter */}
+          <div className="p-3 rounded-xl bg-background border border-divider space-y-2.5">
+            <div className="flex items-center justify-between gap-2 text-secondary">
+              <span className="font-semibold text-[11px] flex items-center gap-1.5 text-primary">
                 <Tag className="w-3 h-3 text-primary" />
-                <span>Portfolio Constituents ({portfolioStocks.length})</span>
+                <span>
+                  Constituent Stocks ({selectedSymbols.size}/{constituentSymbols.length} Selected)
+                </span>
               </span>
-              <span className="text-[10px] font-mono">Weighted Allocation</span>
+
+              {constituentSymbols.length > 0 && (
+                <div className="flex items-center gap-2 text-[10px]">
+                  {selectedSymbols.size === constituentSymbols.length ? (
+                    <button
+                      type="button"
+                      onClick={deselectAllStocks}
+                      className="text-secondary hover:text-primary transition-colors cursor-pointer underline underline-offset-2"
+                    >
+                      Deselect All
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={selectAllStocks}
+                      className="text-primary hover:opacity-80 transition-opacity font-semibold cursor-pointer underline underline-offset-2"
+                    >
+                      Select All
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
 
-            {stockAllocations.length > 0 ? (
-              <div className="flex flex-wrap gap-1.5">
-                {stockAllocations.map((item) => (
-                  <span
-                    key={item.symbol}
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-surface border border-divider text-primary"
+            {/* Filter Search Input (visible if portfolio has more than 3 stocks) */}
+            {constituentSymbols.length > 3 && (
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 text-secondary absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                  type="text"
+                  value={stockSearchQuery}
+                  onChange={(e) => setStockSearchQuery(e.target.value)}
+                  placeholder="Filter stocks..."
+                  className="w-full pl-8 pr-7 py-1 text-xs bg-surface border border-divider rounded-lg text-primary placeholder:text-secondary/50 focus:outline-none focus:border-primary transition-colors font-mono"
+                />
+                {stockSearchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setStockSearchQuery('')}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-secondary hover:text-primary p-0.5 cursor-pointer"
                   >
-                    <span>{item.symbol}</span>
-                    <span className="text-secondary opacity-80">({item.weightPercent}%)</span>
-                  </span>
-                ))}
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
               </div>
+            )}
+
+            {constituentSymbols.length > 0 ? (
+              filteredDisplaySymbols.length > 0 ? (
+                <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto pt-0.5">
+                  {filteredDisplaySymbols.map((symbol) => {
+                    const isSelected = selectedSymbols.has(symbol);
+                    return (
+                      <button
+                        key={symbol}
+                        type="button"
+                        onClick={() => toggleStock(symbol)}
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-mono font-semibold border transition-all cursor-pointer shadow-2xs select-none ${
+                          isSelected
+                            ? 'bg-primary text-background border-primary shadow-xs'
+                            : 'bg-surface/50 border-divider text-secondary opacity-60 hover:opacity-100 hover:border-divider-hover'
+                        }`}
+                        title={isSelected ? `Click to exclude ${symbol}` : `Click to include ${symbol}`}
+                      >
+                        <span
+                          className={`w-3.5 h-3.5 rounded flex items-center justify-center shrink-0 text-[10px] ${
+                            isSelected
+                              ? 'bg-background text-primary'
+                              : 'border border-divider bg-background/50'
+                          }`}
+                        >
+                          {isSelected && <Check className="w-2.5 h-2.5 stroke-[3]" />}
+                        </span>
+                        <span>{symbol}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="text-[11px] text-secondary italic py-1">
+                  No stocks match &quot;{stockSearchQuery}&quot;
+                </p>
+              )
             ) : (
               <p className="text-[11px] text-danger italic">
                 No stocks added to this portfolio yet. Please add stocks before backtesting.
               </p>
+            )}
+
+            {constituentSymbols.length > 0 && selectedSymbols.size === 0 && (
+              <div className="p-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-500 text-[11px] font-medium flex items-center gap-1.5">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                <span>Select at least 1 stock to run this backtest.</span>
+              </div>
             )}
           </div>
 
@@ -497,7 +615,7 @@ export function PortfolioBacktestModal({
           <button
             type="button"
             onClick={handleRunBacktest}
-            disabled={isRunning || portfolioStocks.length === 0}
+            disabled={isRunning || portfolioStocks.length === 0 || selectedSymbols.size === 0}
             className="px-5 py-2 rounded-xl bg-primary text-background hover:opacity-90 transition-opacity text-xs font-semibold shadow-xs flex items-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isRunning ? (
@@ -510,6 +628,9 @@ export function PortfolioBacktestModal({
                 <Play className="w-3.5 h-3.5 fill-current" />
                 <span>
                   Run {mode === 'SIP' ? 'SIP' : 'One-Time'} Backtest
+                  {selectedSymbols.size > 0 && selectedSymbols.size < constituentSymbols.length
+                    ? ` (${selectedSymbols.size} Selected)`
+                    : ''}
                 </span>
               </>
             )}

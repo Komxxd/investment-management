@@ -1,4 +1,5 @@
 import { readLocalCandles, ensureHistoricalCandles } from '../prices/data-storage.service';
+import { computeRollingIndicators } from './rolling-indicators.service';
 import { computeBacktestMetrics } from './metrics.service';
 import {
   BacktestResponse,
@@ -65,34 +66,44 @@ export async function simulatePortfolio(
   }
 
   const validStocks = portfolioStocks.filter((s) => candleMap.has(s.symbol.trim().toUpperCase()));
+  const uniqueValidSymbols = Array.from(
+    new Set(validStocks.map((s) => s.symbol.trim().toUpperCase()))
+  );
 
-  // 2. Compute allocation weights
-  let totalBaseValue = 0;
-  for (const s of validStocks) {
-    const q = Number(s.quantity) || 0;
-    const p = Number(s.entry_price) || 0;
-    if (q > 0 && p > 0) {
-      totalBaseValue += q * p;
+  // 2. Precalculate rolling indicators for each constituent stock
+  const stockBarByTime = new Map<string, Map<string, any>>();
+  for (const [sym, candles] of candleMap.entries()) {
+    let dailyCandles: any = undefined;
+    if (timeframe === 'hour') {
+      try {
+        dailyCandles = readLocalCandles(sym, 'day');
+        if (!dailyCandles || dailyCandles.length === 0) {
+          dailyCandles = await ensureHistoricalCandles(sym, {
+            timeframe: 'day',
+            years: 3,
+          });
+        }
+      } catch (err: any) {
+        console.warn(`[Portfolio Backtest] Could not fetch daily candles for ${sym}:`, err.message);
+      }
     }
+
+    const bars = computeRollingIndicators(candles, dailyCandles);
+    const bMap = new Map<string, any>();
+    for (const b of bars) {
+      bMap.set(b.date, b);
+    }
+    stockBarByTime.set(sym, bMap);
   }
 
+  // 3. Allocate capital equally across all unique constituent stocks (no weighted allocation)
   const stockWeights = new Map<string, number>();
-  if (totalBaseValue > 0) {
-    for (const s of validStocks) {
-      const q = Number(s.quantity) || 0;
-      const p = Number(s.entry_price) || 0;
-      const w = (q * p) / totalBaseValue;
-      stockWeights.set(s.symbol.trim().toUpperCase(), w);
-    }
-  } else {
-    // Equal weighting fallback
-    const eqW = 1 / validStocks.length;
-    for (const s of validStocks) {
-      stockWeights.set(s.symbol.trim().toUpperCase(), eqW);
-    }
+  const eqW = uniqueValidSymbols.length > 0 ? 1 / uniqueValidSymbols.length : 0;
+  for (const sym of uniqueValidSymbols) {
+    stockWeights.set(sym, eqW);
   }
 
-  // 3. Build unified chronological timeline of all timestamps
+  // 4. Build unified chronological timeline of all timestamps
   const timestampSet = new Set<string>();
   const stockCandleByTime = new Map<string, Map<string, any>>();
 
@@ -121,13 +132,17 @@ export async function simulatePortfolio(
     throw new Error('No candle data found within the selected start and end date range.');
   }
 
-  // 4. State tracking for simulation
+  // 5. State tracking for simulation
   let cash = mode === 'ONE_TIME' ? initialCapital : 0;
   let totalCapitalInvested = mode === 'ONE_TIME' ? initialCapital : 0;
   const heldPositions = new Map<string, HeldPosition>();
   const lastKnownCandle = new Map<string, any>();
   const trades: BacktestTrade[] = [];
   const equityCurve: DailyEquityPoint[] = [];
+  const stocksData: Record<string, DailyEquityPoint[]> = {};
+  for (const sym of uniqueValidSymbols) {
+    stocksData[sym] = [];
+  }
   let initialInvestment: InitialInvestmentInfo | undefined = undefined;
   let peakEquity = mode === 'ONE_TIME' ? initialCapital : sipAmount;
   let benchmarkInitialVal = 0;
@@ -138,15 +153,14 @@ export async function simulatePortfolio(
   let lastSipWeek = '';
   let lastSipDay = '';
 
-  // 5. Run simulation across timeline
+  // 6. Run simulation across timeline
   for (let i = 0; i < timeline.length; i++) {
     const t = timeline[i];
     const datePart = t.includes(' ') ? t.split(' ')[0] : t.split('T')[0];
     const timePart = t.includes(' ') ? t.split(' ')[1] : undefined;
 
     // Update latest known candle for each stock
-    for (const s of validStocks) {
-      const sym = s.symbol.trim().toUpperCase();
+    for (const sym of uniqueValidSymbols) {
       const c = stockCandleByTime.get(sym)?.get(t);
       if (c) {
         lastKnownCandle.set(sym, c);
@@ -155,6 +169,7 @@ export async function simulatePortfolio(
 
     let candleAction: string | undefined = undefined;
     let actionReason: string | undefined = undefined;
+    const stockActionThisBar = new Map<string, { action: string; reason?: string }>();
 
     // =========================================================================
     // A. ONE_TIME LUMP SUM EXECUTION (on first bar)
@@ -165,12 +180,11 @@ export async function simulatePortfolio(
       let totalGrossOutlay = 0;
       let totalSharesBought = 0;
 
-      for (const s of validStocks) {
-        const sym = s.symbol.trim().toUpperCase();
-        const w = stockWeights.get(sym) || 1 / validStocks.length;
+      for (const sym of uniqueValidSymbols) {
+        const w = stockWeights.get(sym) || 1 / uniqueValidSymbols.length;
         const targetAlloc = initialCapital * w;
         const candle = stockCandleByTime.get(sym)?.get(t) || lastKnownCandle.get(sym);
-        const execPrice = candle ? candle.open : Number(s.entry_price) || 100;
+        const execPrice = candle ? candle.open : 100;
 
         if (execPrice > 0) {
           const fillQty = Math.floor(targetAlloc / execPrice);
@@ -195,6 +209,11 @@ export async function simulatePortfolio(
               totalCost: cost,
               status: 'OPEN',
               entryReason: 'One-Time Initial Allocation',
+            });
+
+            stockActionThisBar.set(sym, {
+              action: 'Initial Entry',
+              reason: 'One-Time Initial Allocation',
             });
           }
         }
@@ -267,12 +286,11 @@ export async function simulatePortfolio(
         let totalOutlayThisSip = 0;
         let sharesBoughtThisSip = 0;
 
-        for (const s of validStocks) {
-          const sym = s.symbol.trim().toUpperCase();
-          const w = stockWeights.get(sym) || 1 / validStocks.length;
+        for (const sym of uniqueValidSymbols) {
+          const w = stockWeights.get(sym) || 1 / uniqueValidSymbols.length;
           const targetAlloc = sipAmount * w;
           const candle = stockCandleByTime.get(sym)?.get(t) || lastKnownCandle.get(sym);
-          const execPrice = candle ? (candle.open || candle.close) : Number(s.entry_price) || 100;
+          const execPrice = candle ? (candle.open || candle.close) : 100;
 
           if (execPrice > 0) {
             const fillQty = Math.floor(targetAlloc / execPrice);
@@ -303,6 +321,11 @@ export async function simulatePortfolio(
                 totalCost: cost,
                 status: 'OPEN',
                 entryReason: `SIP Installment #${sipCount}`,
+              });
+
+              stockActionThisBar.set(sym, {
+                action: i === 0 ? 'Initial Entry' : 'SIP Buy',
+                reason: `SIP Installment #${sipCount}`,
               });
             }
           }
@@ -338,13 +361,53 @@ export async function simulatePortfolio(
     let aggregateLow = 0;
     let aggregateClose = 0;
 
-    for (const s of validStocks) {
-      const sym = s.symbol.trim().toUpperCase();
+    for (const sym of uniqueValidSymbols) {
       const pos = heldPositions.get(sym);
       const candle = stockCandleByTime.get(sym)?.get(t) || lastKnownCandle.get(sym);
+      const barData = stockBarByTime.get(sym)?.get(t);
+
+      const open = candle ? candle.open : (barData?.open ?? 0);
+      const high = candle ? candle.high : (barData?.high ?? 0);
+      const low = candle ? candle.low : (barData?.low ?? 0);
+      const close = candle ? candle.close : (barData?.close ?? 0);
+      const changePercent = barData?.changePercent;
+      const indicators = barData?.indicators;
+
+      const heldQty = pos ? pos.qty : 0;
+      const invested = pos ? pos.totalCost : 0;
+      const closeP = candle ? candle.close : (pos?.avgPrice || 0);
+      const stockHoldingVal = parseFloat((heldQty * closeP).toFixed(2));
+      const stockUnrealized = parseFloat((stockHoldingVal - invested).toFixed(2));
+      const stockRealized = 0;
+      const stockTotalPnl = stockUnrealized;
+      const act = stockActionThisBar.get(sym);
+
+      stocksData[sym].push({
+        date: datePart,
+        time: timePart,
+        open,
+        high,
+        low,
+        close,
+        changePercent,
+        indicators,
+        invested,
+        heldQty,
+        holdingsValue: stockHoldingVal,
+        equity: stockHoldingVal,
+        cash: 0,
+        unrealizedPnl: stockUnrealized,
+        realizedPnl: stockRealized,
+        totalPnl: stockTotalPnl,
+        stockClose: close,
+        benchmarkEquity: 0,
+        drawdownPercent: 0,
+        action: act?.action,
+        actionReason: act?.reason,
+        conditionMatched: Boolean(act),
+      });
 
       if (pos && pos.qty > 0) {
-        const closeP = candle ? candle.close : pos.avgPrice;
         totalHoldingsValue += pos.qty * closeP;
         totalCostBasis += pos.totalCost;
         totalHeldShares += pos.qty;
@@ -420,6 +483,7 @@ export async function simulatePortfolio(
     initialInvestment,
     trades,
     equityCurve,
+    stocksData,
   };
 
   const summary = computeBacktestMetrics(simResult);
@@ -441,6 +505,7 @@ export async function simulatePortfolio(
       : undefined,
     trades: simResult.trades,
     equityCurve: simResult.equityCurve,
+    stocksData,
   };
 }
 

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   Layers,
@@ -13,6 +13,8 @@ import {
   ShieldAlert,
   ArrowUpRight,
   ArrowDownRight,
+  ChevronDown,
+  Check,
 } from 'lucide-react';
 import type { StrategyRule, IndicatorType } from '../components/StrategyBuilderModal';
 import { formatRuleFormula, normalizeRule } from '../components/StrategyBuilderModal';
@@ -148,6 +150,41 @@ export function BacktestResultsPage() {
 
   const [selectedTab, setSelectedTab] = useState<string>('overview');
   const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
+
+  // Available constituent stocks for portfolio backtests
+  const availablePortfolioStocks: string[] = useMemo(() => {
+    if (result?.stocksData && Object.keys(result.stocksData).length > 0) {
+      return Object.keys(result.stocksData);
+    }
+    if (portfolioConfig?.constituents && Array.isArray(portfolioConfig.constituents)) {
+      return portfolioConfig.constituents as string[];
+    }
+    return [];
+  }, [result?.stocksData, portfolioConfig?.constituents]);
+
+  const [selectedStockSymbol, setSelectedStockSymbol] = useState<string>('');
+  const [isStockDropdownOpen, setIsStockDropdownOpen] = useState(false);
+  const stockDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (availablePortfolioStocks.length > 0) {
+      if (!selectedStockSymbol || !availablePortfolioStocks.includes(selectedStockSymbol)) {
+        setSelectedStockSymbol(availablePortfolioStocks[0]);
+      }
+    } else {
+      setSelectedStockSymbol('');
+    }
+  }, [availablePortfolioStocks, selectedStockSymbol]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (stockDropdownRef.current && !stockDropdownRef.current.contains(event.target as Node)) {
+        setIsStockDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   // Detect which indicators are actively used in strategy rule(s)
   const usedIndicators: IndicatorType[] = useMemo(() => {
@@ -739,8 +776,49 @@ export function BacktestResultsPage() {
 
   const dayCandles = useMemo(() => {
     if (selectedTab === 'overview') return [];
+
+    // If constituent stock data exists and a stock is selected, use that stock's candles for this day!
+    if (selectedStockSymbol && result?.stocksData?.[selectedStockSymbol]) {
+      const stockPoints = result.stocksData[selectedStockSymbol];
+      return stockPoints
+        .filter((r) => r.date === selectedTab)
+        .map((pt) => {
+          const open = pt.open ?? pt.close ?? pt.stockClose ?? 0;
+          const high = pt.high ?? Math.max(open, pt.close ?? pt.stockClose ?? open);
+          const low = pt.low ?? Math.min(open, pt.close ?? pt.stockClose ?? open);
+          const close = pt.close ?? pt.stockClose ?? open;
+          const qty = pt.heldQty ?? 0;
+          const invested = pt.invested ?? (qty * close);
+          const holdingValue = pt.holdingsValue ?? parseFloat((qty * close).toFixed(2));
+          const unrealizedPnl = pt.unrealizedPnl ?? parseFloat((holdingValue - invested).toFixed(2));
+          const realizedPnl = pt.realizedPnl ?? 0;
+          const totalPnl = pt.totalPnl ?? parseFloat((realizedPnl + unrealizedPnl).toFixed(2));
+
+          return {
+            date: pt.date,
+            time: pt.time,
+            open,
+            high,
+            low,
+            close,
+            changePercent: pt.changePercent,
+            indicators: pt.indicators,
+            invested,
+            qty,
+            holdingValue,
+            equity: pt.equity,
+            unrealizedPnl,
+            realizedPnl,
+            totalPnl,
+            action: pt.action,
+            actionReason: pt.actionReason,
+            conditionMatched: Boolean(pt.conditionMatched || pt.action),
+          };
+        });
+    }
+
     return timelineRows.filter((r) => r.date === selectedTab);
-  }, [selectedTab, timelineRows]);
+  }, [selectedTab, timelineRows, selectedStockSymbol, result?.stocksData]);
 
   const conditionMetCount = useMemo(() => {
     return timelineRows.filter((r) => r.action === 'Condition Met').length;
@@ -1166,21 +1244,96 @@ export function BacktestResultsPage() {
                   isDark ? 'bg-zinc-900/40 border-zinc-800' : 'bg-gray-50/80 border-gray-200'
                 }`}
               >
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <h2
-                        className={`text-xs sm:text-sm font-bold tracking-wide uppercase ${
-                          isDark ? 'text-zinc-100' : 'text-gray-900'
+                <div className="flex items-center gap-3 min-w-0 flex-wrap">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h2
+                      className={`text-xs sm:text-sm font-bold tracking-wide uppercase ${
+                        isDark ? 'text-zinc-100' : 'text-gray-900'
+                      }`}
+                    >
+                      Market Data & Actions: {activeDay?.dateStr || selectedTab}
+                    </h2>
+                    <span className={`text-[11px] font-mono font-medium ${isDark ? 'text-zinc-400' : 'text-gray-500'}`}>
+                      {result.symbol}
+                    </span>
+                  </div>
+
+                  {/* Constituent Stock Selector Dropdown */}
+                  {availablePortfolioStocks.length > 0 && (
+                    <div className="relative inline-block" ref={stockDropdownRef}>
+                      <button
+                        type="button"
+                        onClick={() => setIsStockDropdownOpen((prev) => !prev)}
+                        className={`inline-flex items-center gap-2 px-3 py-1 rounded-lg text-xs font-semibold font-mono border transition-all cursor-pointer ${
+                          isDark
+                            ? 'bg-zinc-800/90 hover:bg-zinc-700/90 border-zinc-700 text-zinc-100 shadow-sm'
+                            : 'bg-white hover:bg-gray-50 border-gray-300 text-gray-800 shadow-xs'
                         }`}
                       >
-                        Market Data & Actions: {activeDay?.dateStr || selectedTab}
-                      </h2>
-                      <span className={`text-[11px] font-mono font-medium ${isDark ? 'text-zinc-400' : 'text-gray-500'}`}>
-                        {result.symbol}
-                      </span>
+                        <span className="flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                          <span>{selectedStockSymbol || 'Select Stock'}</span>
+                        </span>
+                        <ChevronDown
+                          className={`w-3.5 h-3.5 text-secondary transition-transform duration-200 ${
+                            isStockDropdownOpen ? 'rotate-180' : ''
+                          }`}
+                        />
+                      </button>
+
+                      {isStockDropdownOpen && (
+                        <div
+                          className={`absolute left-0 top-full mt-1.5 min-w-[190px] rounded-xl border shadow-2xl py-1 z-50 animate-in fade-in zoom-in-95 duration-100 ${
+                            isDark
+                              ? 'bg-zinc-900 border-zinc-800 text-zinc-200'
+                              : 'bg-white border-gray-200 text-gray-800'
+                          }`}
+                        >
+                          <div
+                            className={`px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider border-b ${
+                              isDark ? 'border-zinc-800 text-zinc-400' : 'border-gray-100 text-gray-500'
+                            }`}
+                          >
+                            Stocks in Portfolio ({availablePortfolioStocks.length})
+                          </div>
+                          <div className="max-h-56 overflow-y-auto py-0.5">
+                            {availablePortfolioStocks.map((sym: string) => {
+                              const isSelected = selectedStockSymbol === sym;
+                              return (
+                                <button
+                                  key={sym}
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedStockSymbol(sym);
+                                    setIsStockDropdownOpen(false);
+                                  }}
+                                  className={`w-full text-left px-3.5 py-2 text-xs flex items-center justify-between gap-2 font-mono transition-colors cursor-pointer ${
+                                    isSelected
+                                      ? isDark
+                                        ? 'bg-primary/15 text-primary font-bold'
+                                        : 'bg-primary/10 text-primary font-bold'
+                                      : isDark
+                                      ? 'hover:bg-zinc-800/80 text-zinc-300'
+                                      : 'hover:bg-gray-100 text-gray-700'
+                                  }`}
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <span
+                                      className={`w-1.5 h-1.5 rounded-full ${
+                                        isSelected ? 'bg-primary' : 'bg-transparent'
+                                      }`}
+                                    />
+                                    <span>{sym}</span>
+                                  </div>
+                                  {isSelected && <Check className="w-3.5 h-3.5 text-primary shrink-0" />}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  </div>
+                  )}
                 </div>
 
                 <div className="flex items-center gap-3">
@@ -1188,25 +1341,35 @@ export function BacktestResultsPage() {
                   {activeDay && (
                     <div className="text-right">
                       <div className={`text-[9px] uppercase font-semibold tracking-wider ${isDark ? 'text-zinc-400' : 'text-gray-500'}`}>
-                        PnL
+                        {selectedStockSymbol ? `${selectedStockSymbol} Total P&L` : 'PnL'}
                       </div>
                       <div className="flex items-center justify-end font-mono text-xs font-bold">
-                        <span
-                          className={
-                            activeDay.totalPnl > 0
-                              ? 'text-success'
-                              : activeDay.totalPnl < 0
-                              ? 'text-danger'
-                              : 'text-secondary opacity-70'
-                          }
-                        >
-                          {activeDay.totalPnl > 0 ? '+' : activeDay.totalPnl < 0 ? '-' : ''}
-                          {currencySymbol}
-                          {Math.abs(activeDay.totalPnl).toLocaleString(undefined, {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
-                          })}
-                        </span>
+                        {(() => {
+                          const stockLastRow = dayCandles.length > 0 ? dayCandles[dayCandles.length - 1] : null;
+                          const pnlValue =
+                            selectedStockSymbol && stockLastRow
+                              ? stockLastRow.totalPnl
+                              : activeDay.totalPnl;
+
+                          return (
+                            <span
+                              className={
+                                pnlValue > 0
+                                  ? 'text-success'
+                                  : pnlValue < 0
+                                  ? 'text-danger'
+                                  : 'text-secondary opacity-70'
+                              }
+                            >
+                              {pnlValue > 0 ? '+' : pnlValue < 0 ? '-' : ''}
+                              {currencySymbol}
+                              {Math.abs(pnlValue).toLocaleString(undefined, {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}
+                            </span>
+                          );
+                        })()}
                       </div>
                     </div>
                   )}
@@ -1250,104 +1413,115 @@ export function BacktestResultsPage() {
                     </tr>
                   </thead>
                   <tbody className={`divide-y font-mono text-xs ${isDark ? 'divide-zinc-800/40' : 'divide-gray-100'}`}>
-                    {dayCandles.map((row, idx) => {
-                      const isInitial = row.action === 'Initial Entry';
-                      const isConditionMet = row.action === 'Condition Met';
-
-                      return (
-                        <tr
-                          key={`${row.date}-${row.time || idx}`}
-                          className={`transition-colors border-b ${
-                            isDark ? 'border-zinc-800/40' : 'border-gray-100'
-                          } ${
-                            isConditionMet
-                              ? isDark
-                                ? 'bg-amber-500/[0.07] hover:bg-amber-500/[0.12] text-zinc-100 font-medium'
-                                : 'bg-amber-50/70 hover:bg-amber-100/70 text-gray-900 font-medium'
-                              : isInitial
-                              ? isDark
-                                ? 'bg-success/[0.06] hover:bg-success/[0.12] text-zinc-100'
-                                : 'bg-success/[0.06] hover:bg-success/[0.12] text-gray-900'
-                              : isDark
-                              ? 'hover:bg-zinc-800/25 text-zinc-200'
-                              : 'hover:bg-gray-50/80 text-gray-800'
-                          }`}
+                    {dayCandles.length === 0 ? (
+                      <tr>
+                        <td
+                          colSpan={13 + usedIndicators.length}
+                          className="py-12 text-center text-xs text-secondary"
                         >
-                          <td className="py-2 px-4 font-semibold text-primary whitespace-nowrap">
-                            {row.time || row.date}
-                          </td>
-                          <td className="py-2 px-3 text-right tabular-nums text-secondary">
-                            {row.open.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          </td>
-                          <td className="py-2 px-3 text-right tabular-nums font-medium text-success">
-                            {row.high.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          </td>
-                          <td className="py-2 px-3 text-right tabular-nums font-medium text-danger">
-                            {row.low.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          </td>
-                          <td className="py-2 px-3 text-right tabular-nums font-bold text-primary">
-                            {row.close.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          </td>
-                          {usedIndicators.map((ind) => (
-                            <td key={ind} className="py-2 px-3 text-center whitespace-nowrap">
-                              {renderIndicatorCell(ind, row, currencySymbol)}
+                          No market data or actions found for {selectedStockSymbol || 'this portfolio'} on {activeDay?.dateStr || selectedTab}.
+                        </td>
+                      </tr>
+                    ) : (
+                      dayCandles.map((row, idx) => {
+                        const isInitial = row.action === 'Initial Entry';
+                        const isConditionMet = row.action === 'Condition Met';
+
+                        return (
+                          <tr
+                            key={`${row.date}-${row.time || idx}`}
+                            className={`transition-colors border-b ${
+                              isDark ? 'border-zinc-800/40' : 'border-gray-100'
+                            } ${
+                              isConditionMet
+                                ? isDark
+                                  ? 'bg-amber-500/[0.07] hover:bg-amber-500/[0.12] text-zinc-100 font-medium'
+                                  : 'bg-amber-50/70 hover:bg-amber-100/70 text-gray-900 font-medium'
+                                : isInitial
+                                ? isDark
+                                  ? 'bg-success/[0.06] hover:bg-success/[0.12] text-zinc-100'
+                                  : 'bg-success/[0.06] hover:bg-success/[0.12] text-gray-900'
+                                : isDark
+                                ? 'hover:bg-zinc-800/25 text-zinc-200'
+                                : 'hover:bg-gray-50/80 text-gray-800'
+                            }`}
+                          >
+                            <td className="py-2 px-4 font-semibold text-primary whitespace-nowrap">
+                              {row.time || row.date}
                             </td>
-                          ))}
-                          <td className="py-2 px-3 text-right tabular-nums font-semibold text-success whitespace-nowrap">
-                            {currencySymbol}{row.invested.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          </td>
-                          <td className="py-2 px-3 text-right tabular-nums font-bold text-primary whitespace-nowrap">
-                            {row.qty.toLocaleString()}
-                          </td>
-                          <td className="py-2 px-3 text-right tabular-nums font-bold text-primary whitespace-nowrap">
-                            {currencySymbol}{row.holdingValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          </td>
-                          <td className="py-2 px-3 text-right tabular-nums font-semibold whitespace-nowrap">
-                            <span className={row.unrealizedPnl > 0 ? 'text-success' : row.unrealizedPnl < 0 ? 'text-danger' : 'text-secondary opacity-70'}>
-                              {row.unrealizedPnl > 0 ? '+' : row.unrealizedPnl < 0 ? '-' : ''}
-                              {currencySymbol}
-                              {Math.abs(row.unrealizedPnl).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                            </span>
-                          </td>
-                          <td className="py-2 px-3 text-right tabular-nums font-semibold whitespace-nowrap">
-                            <span className={row.realizedPnl > 0 ? 'text-success' : row.realizedPnl < 0 ? 'text-danger' : 'text-secondary opacity-70'}>
-                              {row.realizedPnl > 0 ? '+' : row.realizedPnl < 0 ? '-' : ''}
-                              {currencySymbol}
-                              {Math.abs(row.realizedPnl).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                            </span>
-                          </td>
-                          <td className="py-2 px-3 text-right tabular-nums font-bold whitespace-nowrap">
-                            <span className={row.totalPnl > 0 ? 'text-success' : row.totalPnl < 0 ? 'text-danger' : 'text-secondary opacity-70'}>
-                              {row.totalPnl > 0 ? '+' : row.totalPnl < 0 ? '-' : ''}
-                              {currencySymbol}
-                              {Math.abs(row.totalPnl).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                            </span>
-                          </td>
-                          <td className="py-2 px-4 text-left whitespace-nowrap">
-                            {isInitial ? (
-                              <span
-                                className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold tracking-wide uppercase border bg-success/10 text-success border-success/25"
-                              >
-                                Initial Entry
+                            <td className="py-2 px-3 text-right tabular-nums text-secondary">
+                              {row.open.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </td>
+                            <td className="py-2 px-3 text-right tabular-nums font-medium text-success">
+                              {row.high.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </td>
+                            <td className="py-2 px-3 text-right tabular-nums font-medium text-danger">
+                              {row.low.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </td>
+                            <td className="py-2 px-3 text-right tabular-nums font-bold text-primary">
+                              {row.close.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </td>
+                            {usedIndicators.map((ind) => (
+                              <td key={ind} className="py-2 px-3 text-center whitespace-nowrap">
+                                {renderIndicatorCell(ind, row, currencySymbol)}
+                              </td>
+                            ))}
+                            <td className="py-2 px-3 text-right tabular-nums font-semibold text-success whitespace-nowrap">
+                              {currencySymbol}{row.invested.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </td>
+                            <td className="py-2 px-3 text-right tabular-nums font-bold text-primary whitespace-nowrap">
+                              {row.qty.toLocaleString()}
+                            </td>
+                            <td className="py-2 px-3 text-right tabular-nums font-bold text-primary whitespace-nowrap">
+                              {currencySymbol}{row.holdingValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </td>
+                            <td className="py-2 px-3 text-right tabular-nums font-semibold whitespace-nowrap">
+                              <span className={row.unrealizedPnl > 0 ? 'text-success' : row.unrealizedPnl < 0 ? 'text-danger' : 'text-secondary opacity-70'}>
+                                {row.unrealizedPnl > 0 ? '+' : row.unrealizedPnl < 0 ? '-' : ''}
+                                {currencySymbol}
+                                {Math.abs(row.unrealizedPnl).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                               </span>
-                            ) : isConditionMet ? (
-                              <span
-                                title={row.actionReason}
-                                className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold tracking-wide uppercase border ${
-                                  isDark
-                                    ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
-                                    : 'bg-amber-100 text-amber-800 border-amber-200'
-                                }`}
-                              >
-                                Condition Met
+                            </td>
+                            <td className="py-2 px-3 text-right tabular-nums font-semibold whitespace-nowrap">
+                              <span className={row.realizedPnl > 0 ? 'text-success' : row.realizedPnl < 0 ? 'text-danger' : 'text-secondary opacity-70'}>
+                                {row.realizedPnl > 0 ? '+' : row.realizedPnl < 0 ? '-' : ''}
+                                {currencySymbol}
+                                {Math.abs(row.realizedPnl).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                               </span>
-                            ) : (
-                              <span className="text-secondary opacity-30">—</span>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
+                            </td>
+                            <td className="py-2 px-3 text-right tabular-nums font-bold whitespace-nowrap">
+                              <span className={row.totalPnl > 0 ? 'text-success' : row.totalPnl < 0 ? 'text-danger' : 'text-secondary opacity-70'}>
+                                {row.totalPnl > 0 ? '+' : row.totalPnl < 0 ? '-' : ''}
+                                {currencySymbol}
+                                {Math.abs(row.totalPnl).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </span>
+                            </td>
+                            <td className="py-2 px-4 text-left whitespace-nowrap">
+                              {isInitial ? (
+                                <span
+                                  className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold tracking-wide uppercase border bg-success/10 text-success border-success/25"
+                                >
+                                  Initial Entry
+                                </span>
+                              ) : isConditionMet ? (
+                                <span
+                                  title={row.actionReason}
+                                  className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold tracking-wide uppercase border ${
+                                    isDark
+                                      ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                                      : 'bg-amber-100 text-amber-800 border-amber-200'
+                                  }`}
+                                >
+                                  Condition Met
+                                </span>
+                              ) : (
+                                <span className="text-secondary opacity-30">—</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -1426,17 +1600,19 @@ export function BacktestResultsPage() {
 
                 {portfolioConfig.constituents && portfolioConfig.constituents.length > 0 && (
                   <div className="space-y-1.5">
-                    <label className="text-secondary block font-medium">Portfolio Allocation Weights</label>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-36 overflow-y-auto">
-                      {portfolioConfig.constituents.map((c: any) => (
-                        <div
-                          key={c.symbol}
-                          className="p-2 rounded-lg bg-background border border-divider flex items-center justify-between"
-                        >
-                          <span className="font-mono font-bold text-primary">{c.symbol}</span>
-                          <span className="text-[11px] font-mono text-secondary">{c.weightPercent}%</span>
-                        </div>
-                      ))}
+                    <label className="text-secondary block font-medium">Portfolio Constituents</label>
+                    <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto">
+                      {portfolioConfig.constituents.map((c: any) => {
+                        const sym = typeof c === 'string' ? c : c.symbol;
+                        return (
+                          <span
+                            key={sym}
+                            className="px-2.5 py-1 rounded-lg bg-background border border-divider font-mono font-bold text-xs text-primary"
+                          >
+                            {sym}
+                          </span>
+                        );
+                      })}
                     </div>
                   </div>
                 )}
