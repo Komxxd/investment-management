@@ -71,15 +71,15 @@ export function PortfolioBacktestModal({
 
   // One-time investment inputs
   const [oneTimeCapital, setOneTimeCapital] = useState<number>(100000);
-  const [oneTimeStartDate, setOneTimeStartDate] = useState<string>(defaultDates.startStr);
-  const [oneTimeEndDate, setOneTimeEndDate] = useState<string>(defaultDates.endStr);
+  const [oneTimeStartDate, setOneTimeStartDate] = useState<string>('');
+  const [oneTimeEndDate, setOneTimeEndDate] = useState<string>('');
 
   // SIP inputs
   const [sipAmount, setSipAmount] = useState<number>(10000);
   const [sipDay, setSipDay] = useState<number>(5);
   const [sipTime, setSipTime] = useState<string>('09:15');
-  const [sipStartDate, setSipStartDate] = useState<string>(defaultDates.startStr);
-  const [sipEndDate, setSipEndDate] = useState<string>(defaultDates.endStr);
+  const [sipStartDate, setSipStartDate] = useState<string>('');
+  const [sipEndDate, setSipEndDate] = useState<string>('');
 
   // Constituent stocks in this portfolio
   const portfolioStocks = useMemo(() => {
@@ -140,13 +140,19 @@ export function PortfolioBacktestModal({
   }, [targetStocksToBacktest, constituentSymbols]);
 
   const handleStartDateChange = (val: string) => {
-    setSipStartDate(val);
-    setOneTimeStartDate(val);
+    if (mode === 'SIP') {
+      setSipStartDate(val);
+    } else {
+      setOneTimeStartDate(val);
+    }
   };
 
   const handleEndDateChange = (val: string) => {
-    setSipEndDate(val);
-    setOneTimeEndDate(val);
+    if (mode === 'SIP') {
+      setSipEndDate(val);
+    } else {
+      setOneTimeEndDate(val);
+    }
   };
 
   if (!isOpen) return null;
@@ -172,7 +178,7 @@ export function PortfolioBacktestModal({
         mode,
         startDate: mode === 'SIP' ? sipStartDate : oneTimeStartDate,
         endDate: mode === 'SIP' ? sipEndDate : oneTimeEndDate,
-        timeframe: 'hour',
+        timeframe: mode === 'ONE_TIME' ? 'day' : 'hour',
         initialCapital: oneTimeCapital,
         sipAmount,
         frequency: 'monthly',
@@ -213,6 +219,7 @@ export function PortfolioBacktestModal({
           sipAmount,
           sipDay,
           sipTime,
+          timeframe: mode === 'ONE_TIME' ? 'day' : 'hour',
           startDate: mode === 'SIP' ? sipStartDate : oneTimeStartDate,
           endDate: mode === 'SIP' ? sipEndDate : oneTimeEndDate,
           portfolioName: portfolio.name,
@@ -555,6 +562,8 @@ export function PortfolioBacktestModal({
                 onChangeFromDate={handleStartDateChange}
                 onChangeToDate={handleEndDateChange}
                 targetSymbol={representativeSymbol}
+                timeframe={mode === 'ONE_TIME' ? 'day' : 'hour'}
+                skipWarmup={mode === 'ONE_TIME'}
                 fromLabel="From Date"
                 toLabel="To Date"
               />

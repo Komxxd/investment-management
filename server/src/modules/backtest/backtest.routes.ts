@@ -27,7 +27,7 @@ router.get('/data-range', optionalAuthMiddleware, async (req: any, res: any) => 
     if (candles.length === 0) {
       candles = await ensureHistoricalCandles(symbol, {
         timeframe,
-        years: timeframe === 'hour' ? 2 : 3,
+        years: timeframe === 'hour' ? 2 : 5,
       });
     }
 
@@ -42,9 +42,10 @@ router.get('/data-range', optionalAuthMiddleware, async (req: any, res: any) => 
     const dataEndDate = toDateOnly(candles[totalCandles - 1].date);
 
     // Buffer: For daily data, standard warmup is 200 bars (for DMA200/RSI14)
-    // For hourly data, warmup is provided by the historical daily candles baseline
+    // For hourly data or One-Time investment mode, no warmup buffer is needed
+    const isOneTime = req.query.mode === 'ONE_TIME' || req.query.skipWarmup === 'true';
     const warmupBars =
-      timeframe === 'hour'
+      timeframe === 'hour' || isOneTime
         ? 0
         : totalCandles >= 200
           ? 200
@@ -385,6 +386,7 @@ router.post('/portfolio/run', optionalAuthMiddleware, async (req: any, res: any)
     }
 
     const finalMode = mode === 'SIP' ? 'SIP' : 'ONE_TIME';
+    const finalTimeframe = finalMode === 'ONE_TIME' ? 'day' : (timeframe === 'day' ? 'day' : 'hour');
     const finalStartDate = start_date || startDate;
     const finalEndDate = end_date || endDate;
     const finalCapital = Number(initial_capital || initialCapital) || 100000;
@@ -399,7 +401,7 @@ router.post('/portfolio/run', optionalAuthMiddleware, async (req: any, res: any)
       mode: finalMode,
       startDate: finalStartDate,
       endDate: finalEndDate,
-      timeframe: timeframe === 'day' ? 'day' : 'hour',
+      timeframe: finalTimeframe,
       initialCapital: finalCapital,
       sipAmount: finalSipAmount,
       frequency,

@@ -34,6 +34,8 @@ export interface BacktestDateRangePickerProps {
   onChangeFromDate: (date: string) => void;
   onChangeToDate: (date: string) => void;
   targetSymbol?: string;
+  timeframe?: 'hour' | 'day';
+  skipWarmup?: boolean;
   fromLabel?: string;
   toLabel?: string;
   className?: string;
@@ -45,6 +47,8 @@ export function BacktestDateRangePicker({
   onChangeFromDate,
   onChangeToDate,
   targetSymbol,
+  timeframe = 'hour',
+  skipWarmup = timeframe === 'day',
   fromLabel = 'From Date',
   toLabel = 'To Date',
   className = '',
@@ -52,6 +56,7 @@ export function BacktestDateRangePicker({
   const [selectingField, setSelectingField] = useState<'from' | 'to'>('from');
   const [pickerView, setPickerView] = useState<'days' | 'month-year'>('days');
   const [calendarMonth, setCalendarMonth] = useState<Date>(() => {
+    if (fromDate) return parseDateString(fromDate);
     if (toDate) return parseDateString(toDate);
     return new Date();
   });
@@ -63,66 +68,75 @@ export function BacktestDateRangePicker({
     if (!targetSymbol) return;
     let isMounted = true;
 
-    getBacktestDataRange(targetSymbol)
+    getBacktestDataRange(targetSymbol, timeframe, skipWarmup)
       .then((range) => {
         if (!isMounted) return;
         setDataRange(range);
         const cleanStart = range.backtestableStartDate ? range.backtestableStartDate.split(' ')[0].split('T')[0] : '';
         const cleanEnd = range.backtestableEndDate ? range.backtestableEndDate.split(' ')[0].split('T')[0] : '';
+        const validDatesSet = new Set((range.availableDates || []).map((d) => d.split(' ')[0].split('T')[0]));
 
         if (cleanStart && cleanEnd) {
-          if (!toDate) {
+          // If toDate is empty or outside available range, clamp to cleanEnd
+          if (!toDate || toDate > cleanEnd || toDate < cleanStart || !validDatesSet.has(toDate)) {
             onChangeToDate(cleanEnd);
           }
-          if (!fromDate) {
+          // If fromDate is empty or outside available range, clamp to cleanStart (or 2 years before cleanEnd)
+          if (!fromDate || fromDate < cleanStart || fromDate > cleanEnd || !validDatesSet.has(fromDate)) {
             const endD = parseDateString(cleanEnd);
             const defStart = new Date(endD);
-            defStart.setFullYear(defStart.getFullYear() - 1);
+            defStart.setFullYear(defStart.getFullYear() - (timeframe === 'day' ? 2 : 1));
             const defStartStr = formatDateString(defStart);
-            const initialFrom = defStartStr >= cleanStart ? defStartStr : cleanStart;
+            const initialFrom = defStartStr >= cleanStart && validDatesSet.has(defStartStr)
+              ? defStartStr
+              : cleanStart;
             onChangeFromDate(initialFrom);
+            setCalendarMonth(parseDateString(initialFrom));
+          } else {
+            setCalendarMonth(parseDateString(fromDate));
           }
-          setCalendarMonth(parseDateString(cleanEnd));
         }
       })
       .catch((err) => {
-        console.warn('[BacktestDateRangePicker] Failed to get data range for', targetSymbol, err);
+        console.warn(`[BacktestDateRangePicker] Failed to get ${timeframe} data range for`, targetSymbol, err);
       });
 
     return () => {
       isMounted = false;
     };
-  }, [targetSymbol]);
+  }, [targetSymbol, timeframe, skipWarmup]);
 
-  // Set of dates where candle data actually exists and buffer is excluded (Date-only)
+  // Set of dates where 60-min candle data actually exists
   const availableDatesSet = useMemo(() => {
     if (!dataRange?.availableDates) return null;
     return new Set(dataRange.availableDates.map((d) => d.split(' ')[0].split('T')[0]));
   }, [dataRange]);
 
   const { minDateStr, maxDateStr, minYear, maxYear } = useMemo(() => {
-    if (!dataRange?.backtestableStartDate || !dataRange?.backtestableEndDate) {
-      const today = new Date();
-      const defMin = new Date(today);
-      defMin.setFullYear(defMin.getFullYear() - 3);
+    if (dataRange?.backtestableStartDate && dataRange?.backtestableEndDate) {
+      const cleanStart = dataRange.backtestableStartDate.split(' ')[0].split('T')[0];
+      const cleanEnd = dataRange.backtestableEndDate.split(' ')[0].split('T')[0];
       return {
-        minDateStr: formatDateString(defMin),
-        maxDateStr: formatDateString(today),
-        minYear: defMin.getFullYear(),
-        maxYear: today.getFullYear(),
+        minDateStr: cleanStart,
+        maxDateStr: cleanEnd,
+        minYear: parseDateString(cleanStart).getFullYear(),
+        maxYear: parseDateString(cleanEnd).getFullYear(),
       };
     }
-    const cleanStart = dataRange.backtestableStartDate.split(' ')[0].split('T')[0];
-    const cleanEnd = dataRange.backtestableEndDate.split(' ')[0].split('T')[0];
+    const today = new Date();
+    const todayStr = formatDateString(today);
+    const defMin = new Date(today);
+    defMin.setFullYear(today.getFullYear() - 2);
+    const defMinStr = formatDateString(defMin);
     return {
-      minDateStr: cleanStart,
-      maxDateStr: cleanEnd,
-      minYear: new Date(cleanStart).getFullYear(),
-      maxYear: new Date(cleanEnd).getFullYear(),
+      minDateStr: defMinStr,
+      maxDateStr: todayStr,
+      minYear: defMin.getFullYear(),
+      maxYear: today.getFullYear(),
     };
   }, [dataRange]);
 
-  // Only years that actually have backtestable data (buffer excluded)
+  // Only years that actually have 60-min backtestable data
   const backtestableYears = useMemo(() => {
     const years: number[] = [];
     for (let y = minYear; y <= maxYear; y++) {
@@ -142,19 +156,19 @@ export function BacktestDateRangePicker({
     return Array.from({ length: Math.min(6, maxYear - start + 1) }, (_, i) => start + i);
   }, [backtestableYears, calendarMonth, minYear, maxYear]);
 
-  // Month selectable check for the currently selected year
+  // Month selectable check for the currently selected year (bounded strictly by 60m data availability)
   const isMonthSelectable = (monthIdx: number) => {
     const curYear = calendarMonth.getFullYear();
-    const startMonth = new Date(minDateStr).getMonth();
-    const endMonth = new Date(maxDateStr).getMonth();
+    const startD = parseDateString(minDateStr);
+    const endD = parseDateString(maxDateStr);
 
-    if (curYear === minYear && monthIdx < startMonth) return false;
-    if (curYear === maxYear && monthIdx > endMonth) return false;
+    if (curYear === minYear && monthIdx < startD.getMonth()) return false;
+    if (curYear === maxYear && monthIdx > endD.getMonth()) return false;
     if (curYear < minYear || curYear > maxYear) return false;
     return true;
   };
 
-  // Day selectable check (buffer excluded, non-trading days/weekends excluded)
+  // Only show and allow selecting dates that actually have 60-minute candle data
   const isDaySelectable = (dateStr: string, isCurrentMonth: boolean) => {
     if (!isCurrentMonth) return false;
     if (dateStr < minDateStr || dateStr > maxDateStr) return false;
@@ -165,14 +179,14 @@ export function BacktestDateRangePicker({
   const canPrevMonth = useMemo(() => {
     const y = calendarMonth.getFullYear();
     const m = calendarMonth.getMonth();
-    const startMonth = new Date(minDateStr).getMonth();
+    const startMonth = parseDateString(minDateStr).getMonth();
     return !(y <= minYear && m <= startMonth);
   }, [calendarMonth, minYear, minDateStr]);
 
   const canNextMonth = useMemo(() => {
     const y = calendarMonth.getFullYear();
     const m = calendarMonth.getMonth();
-    const endMonth = new Date(maxDateStr).getMonth();
+    const endMonth = parseDateString(maxDateStr).getMonth();
     return !(y >= maxYear && m >= endMonth);
   }, [calendarMonth, maxYear, maxDateStr]);
 
@@ -222,20 +236,25 @@ export function BacktestDateRangePicker({
     setPickerView('days');
   };
 
+  const handleSelectField = (field: 'from' | 'to') => {
+    setSelectingField(field);
+    const targetDate = field === 'from' ? fromDate : toDate;
+    if (targetDate) {
+      setCalendarMonth(parseDateString(targetDate));
+    }
+  };
+
   const handleDayClick = (dateStr: string) => {
     if (selectingField === 'from') {
       onChangeFromDate(dateStr);
-      if (dateStr > toDate) {
+      if (toDate && dateStr > toDate) {
         onChangeToDate(dateStr);
       }
-      setSelectingField('to');
     } else {
-      if (dateStr < fromDate) {
+      onChangeToDate(dateStr);
+      if (fromDate && dateStr < fromDate) {
         onChangeFromDate(dateStr);
-      } else {
-        onChangeToDate(dateStr);
       }
-      setSelectingField('from');
     }
   };
 
@@ -293,18 +312,23 @@ export function BacktestDateRangePicker({
             {fromLabel}
           </label>
           <div
-            onClick={() => setSelectingField('from')}
-            className={`flex items-center justify-between px-3 py-2 rounded-xl border text-xs font-mono cursor-pointer transition-all ${
-              selectingField === 'from'
+            onClick={() => handleSelectField('from')}
+            className={`flex items-center justify-between px-3 py-2 rounded-xl border text-xs font-mono cursor-pointer transition-all ${selectingField === 'from'
                 ? 'border-primary ring-1 ring-primary/20 bg-surface-hover text-primary font-bold'
                 : 'border-divider bg-background text-primary hover:border-divider/80'
-            }`}
+              }`}
           >
             <input
               type="text"
               value={fromDate}
-              onChange={(e) => onChangeFromDate(e.target.value)}
-              className="bg-transparent border-none outline-none font-mono text-xs w-full cursor-pointer"
+              onChange={(e) => {
+                const val = e.target.value;
+                onChangeFromDate(val);
+                if (/^\d{4}-\d{2}-\d{2}$/.test(val)) {
+                  setCalendarMonth(parseDateString(val));
+                }
+              }}
+              className="bg-transparent border-none outline-none font-mono text-xs w-full cursor-text"
               placeholder="YYYY-MM-DD"
             />
             <Calendar className="w-3.5 h-3.5 text-secondary shrink-0" />
@@ -316,18 +340,23 @@ export function BacktestDateRangePicker({
             {toLabel}
           </label>
           <div
-            onClick={() => setSelectingField('to')}
-            className={`flex items-center justify-between px-3 py-2 rounded-xl border text-xs font-mono cursor-pointer transition-all ${
-              selectingField === 'to'
+            onClick={() => handleSelectField('to')}
+            className={`flex items-center justify-between px-3 py-2 rounded-xl border text-xs font-mono cursor-pointer transition-all ${selectingField === 'to'
                 ? 'border-primary ring-1 ring-primary/20 bg-surface-hover text-primary font-bold'
                 : 'border-divider bg-background text-primary hover:border-divider/80'
-            }`}
+              }`}
           >
             <input
               type="text"
               value={toDate}
-              onChange={(e) => onChangeToDate(e.target.value)}
-              className="bg-transparent border-none outline-none font-mono text-xs w-full cursor-pointer"
+              onChange={(e) => {
+                const val = e.target.value;
+                onChangeToDate(val);
+                if (/^\d{4}-\d{2}-\d{2}$/.test(val)) {
+                  setCalendarMonth(parseDateString(val));
+                }
+              }}
+              className="bg-transparent border-none outline-none font-mono text-xs w-full cursor-text"
               placeholder="YYYY-MM-DD"
             />
             <Calendar className="w-3.5 h-3.5 text-secondary shrink-0" />
@@ -337,17 +366,68 @@ export function BacktestDateRangePicker({
 
       {/* Visual Month Calendar (Directly Embedded) */}
       <div className="p-3 bg-background border border-divider rounded-xl space-y-2.5 shadow-inner">
+        {/* Data Coverage Info Banner */}
+        <div className="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-surface border border-divider text-[10px]">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+            <span className="font-semibold text-primary shrink-0">
+              {timeframe === 'day' ? 'Daily Data Available:' : '60m Data Available:'}
+            </span>
+            <span className="font-mono text-secondary truncate">
+              {dataRange?.backtestableStartDate && dataRange?.backtestableEndDate
+                ? `${dataRange.backtestableStartDate} to ${dataRange.backtestableEndDate}`
+                : 'Loading available range...'}
+            </span>
+          </div>
+          {dataRange?.availableDates && (
+            <span className="font-mono text-[9px] text-tertiary shrink-0">
+              {dataRange.availableDates.length} trading days
+            </span>
+          )}
+        </div>
+
+        {/* Active field banner */}
+        <div className="flex items-center justify-between px-1 pb-1 border-b border-divider/60 text-[10px]">
+          <span className="text-secondary">
+            Calendar selects:{' '}
+            <strong className="text-primary uppercase font-bold">
+              {selectingField === 'from' ? fromLabel : toLabel}
+            </strong>
+          </span>
+          <div className="flex items-center gap-1 font-semibold">
+            <button
+              type="button"
+              onClick={() => handleSelectField('from')}
+              className={`px-2 py-0.5 rounded cursor-pointer transition-colors ${selectingField === 'from'
+                  ? 'bg-primary text-background shadow-2xs'
+                  : 'text-secondary hover:text-primary hover:bg-surface'
+                }`}
+            >
+              Start
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSelectField('to')}
+              className={`px-2 py-0.5 rounded cursor-pointer transition-colors ${selectingField === 'to'
+                  ? 'bg-primary text-background shadow-2xs'
+                  : 'text-secondary hover:text-primary hover:bg-surface'
+                }`}
+            >
+              End
+            </button>
+          </div>
+        </div>
+
         {/* Calendar Navigation Header */}
         <div className="flex items-center justify-between px-1">
           <button
             type="button"
             disabled={pickerView === 'month-year' ? !canPrevYear : !canPrevMonth}
             onClick={pickerView === 'month-year' ? () => handleStepYear(-1) : handlePrevMonth}
-            className={`p-1 rounded-md text-secondary hover:text-primary hover:bg-surface transition-colors cursor-pointer ${
-              (pickerView === 'month-year' ? !canPrevYear : !canPrevMonth)
+            className={`p-1 rounded-md text-secondary hover:text-primary hover:bg-surface transition-colors cursor-pointer ${(pickerView === 'month-year' ? !canPrevYear : !canPrevMonth)
                 ? 'opacity-20 cursor-not-allowed pointer-events-none'
                 : ''
-            }`}
+              }`}
             title={pickerView === 'month-year' ? 'Previous Year' : 'Previous Month'}
           >
             <ChevronLeft className="w-4 h-4" />
@@ -362,9 +442,8 @@ export function BacktestDateRangePicker({
             <span>{calendarMonth.toLocaleString('en-US', { month: 'long' })}</span>
             <span className="font-mono text-secondary">{calendarMonth.getFullYear()}</span>
             <ChevronDown
-              className={`w-3 h-3 text-secondary transition-transform ${
-                pickerView === 'month-year' ? 'rotate-180' : ''
-              }`}
+              className={`w-3 h-3 text-secondary transition-transform ${pickerView === 'month-year' ? 'rotate-180' : ''
+                }`}
             />
           </button>
 
@@ -372,11 +451,10 @@ export function BacktestDateRangePicker({
             type="button"
             disabled={pickerView === 'month-year' ? !canNextYear : !canNextMonth}
             onClick={pickerView === 'month-year' ? () => handleStepYear(1) : handleNextMonth}
-            className={`p-1 rounded-md text-secondary hover:text-primary hover:bg-surface transition-colors cursor-pointer ${
-              (pickerView === 'month-year' ? !canNextYear : !canNextMonth)
+            className={`p-1 rounded-md text-secondary hover:text-primary hover:bg-surface transition-colors cursor-pointer ${(pickerView === 'month-year' ? !canNextYear : !canNextMonth)
                 ? 'opacity-20 cursor-not-allowed pointer-events-none'
                 : ''
-            }`}
+              }`}
             title={pickerView === 'month-year' ? 'Next Year' : 'Next Month'}
           >
             <ChevronRight className="w-4 h-4" />
@@ -397,9 +475,8 @@ export function BacktestDateRangePicker({
                     type="button"
                     disabled={!canPrevYear}
                     onClick={() => handleStepYear(-1)}
-                    className={`p-1 rounded text-secondary hover:text-primary hover:bg-surface-hover transition-colors cursor-pointer ${
-                      !canPrevYear ? 'opacity-20 cursor-not-allowed pointer-events-none' : ''
-                    }`}
+                    className={`p-1 rounded text-secondary hover:text-primary hover:bg-surface-hover transition-colors cursor-pointer ${!canPrevYear ? 'opacity-20 cursor-not-allowed pointer-events-none' : ''
+                      }`}
                     title="Previous Year"
                   >
                     <ChevronLeft className="w-3.5 h-3.5" />
@@ -419,9 +496,8 @@ export function BacktestDateRangePicker({
                     type="button"
                     disabled={!canNextYear}
                     onClick={() => handleStepYear(1)}
-                    className={`p-1 rounded text-secondary hover:text-primary hover:bg-surface-hover transition-colors cursor-pointer ${
-                      !canNextYear ? 'opacity-20 cursor-not-allowed pointer-events-none' : ''
-                    }`}
+                    className={`p-1 rounded text-secondary hover:text-primary hover:bg-surface-hover transition-colors cursor-pointer ${!canNextYear ? 'opacity-20 cursor-not-allowed pointer-events-none' : ''
+                      }`}
                     title="Next Year"
                   >
                     <ChevronRight className="w-3.5 h-3.5" />
@@ -430,19 +506,18 @@ export function BacktestDateRangePicker({
               </div>
 
               {/* Quick Year Chips */}
-              <div className="grid grid-cols-6 gap-1">
-                {quickYears.map((yr) => {
+              <div className="flex flex-wrap gap-1">
+                {backtestableYears.map((yr) => {
                   const isSelected = yr === calendarMonth.getFullYear();
                   return (
                     <button
                       key={yr}
                       type="button"
                       onClick={() => handleSelectYear(yr)}
-                      className={`py-1 text-[11px] font-mono font-semibold rounded-md text-center transition-all cursor-pointer ${
-                        isSelected
+                      className={`flex-1 min-w-[42px] py-1 text-[11px] font-mono font-semibold rounded-md text-center transition-all cursor-pointer ${isSelected
                           ? 'bg-primary text-background font-bold shadow-xs'
                           : 'bg-background hover:bg-surface-hover text-secondary hover:text-primary border border-divider'
-                      }`}
+                        }`}
                     >
                       {yr}
                     </button>
@@ -475,13 +550,12 @@ export function BacktestDateRangePicker({
                       type="button"
                       disabled={!selectable}
                       onClick={() => selectable && handleSelectMonth(idx)}
-                      className={`py-2 text-xs font-semibold rounded-lg text-center transition-all ${
-                        isSelected
+                      className={`py-2 text-xs font-semibold rounded-lg text-center transition-all ${isSelected
                           ? 'bg-primary text-background font-bold shadow-xs cursor-pointer'
                           : selectable
-                          ? 'bg-surface hover:bg-surface-hover text-secondary hover:text-primary border border-divider cursor-pointer'
-                          : 'bg-surface/30 text-secondary/20 border border-divider/20 cursor-not-allowed pointer-events-none'
-                      }`}
+                            ? 'bg-surface hover:bg-surface-hover text-secondary hover:text-primary border border-divider cursor-pointer'
+                            : 'bg-surface/30 text-secondary/20 border border-divider/20 cursor-not-allowed pointer-events-none'
+                        }`}
                     >
                       {name}
                     </button>
@@ -509,8 +583,9 @@ export function BacktestDateRangePicker({
                 const { day, dateStr, isCurrentMonth } = item;
                 const isFrom = dateStr === fromDate;
                 const isTo = dateStr === toDate;
-                const isInRange = dateStr > fromDate && dateStr < toDate;
+                const isInRange = Boolean(fromDate && toDate && dateStr > fromDate && dateStr < toDate);
                 const selectable = isDaySelectable(dateStr, isCurrentMonth);
+                const isTradingDay = availableDatesSet ? availableDatesSet.has(dateStr) : true;
 
                 let dayClasses = 'h-7 text-xs flex items-center justify-center transition-all select-none ';
 
@@ -519,9 +594,9 @@ export function BacktestDateRangePicker({
                 } else if (isInRange) {
                   dayClasses += 'bg-surface-hover text-primary font-medium rounded-md cursor-pointer';
                 } else if (!selectable) {
-                  dayClasses += 'text-secondary/20 cursor-not-allowed pointer-events-none';
+                  dayClasses += 'text-secondary/20 cursor-not-allowed pointer-events-none opacity-40';
                 } else {
-                  dayClasses += 'text-primary hover:bg-surface rounded-lg cursor-pointer';
+                  dayClasses += 'text-primary hover:bg-surface rounded-lg cursor-pointer font-medium';
                 }
 
                 return (
@@ -531,7 +606,11 @@ export function BacktestDateRangePicker({
                     disabled={!selectable}
                     onClick={() => selectable && handleDayClick(dateStr)}
                     className={dayClasses}
-                    title={selectable ? dateStr : `No backtestable candle data for ${dateStr}`}
+                    title={
+                      selectable
+                        ? `${dateStr} (${timeframe === 'day' ? 'Daily' : '60m'} candle data available)`
+                        : `No ${timeframe === 'day' ? 'daily' : '60m'} data available for ${dateStr}`
+                    }
                   >
                     {day}
                   </button>

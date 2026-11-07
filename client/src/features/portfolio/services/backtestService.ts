@@ -153,7 +153,8 @@ export interface PortfolioBacktestRequest {
  * using either a One-Time lump sum or recurring SIP.
  */
 export async function runPortfolioBacktest(request: PortfolioBacktestRequest): Promise<BacktestResponse> {
-  return api.post('/api/backtest/portfolio/run', { timeframe: 'hour', ...request });
+  const timeframe = request.mode === 'ONE_TIME' ? 'day' : (request.timeframe || 'hour');
+  return api.post('/api/backtest/portfolio/run', { ...request, timeframe });
 }
 
 export interface BacktestDataRange {
@@ -173,7 +174,9 @@ export interface BacktestDataRange {
  */
 export async function getBacktestDataRange(
   symbol: string,
-  timeframe: 'hour' | 'day' = 'hour'
+  timeframe: 'hour' | 'day' = 'hour',
+  skipWarmup: boolean = false
 ): Promise<BacktestDataRange> {
-  return api.get(`/api/backtest/data-range?symbol=${encodeURIComponent(symbol)}&timeframe=${timeframe}`);
+  const qWarmup = skipWarmup ? '&skipWarmup=true' : '';
+  return api.get(`/api/backtest/data-range?symbol=${encodeURIComponent(symbol)}&timeframe=${timeframe}${qWarmup}`);
 }

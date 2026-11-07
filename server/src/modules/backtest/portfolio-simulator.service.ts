@@ -26,7 +26,7 @@ export async function simulatePortfolio(
   config: PortfolioBacktestConfig
 ): Promise<BacktestResponse> {
   const mode = config.mode || 'ONE_TIME';
-  const timeframe = config.timeframe === 'day' ? 'day' : 'hour';
+  const timeframe = mode === 'ONE_TIME' ? 'day' : (config.timeframe === 'day' ? 'day' : 'hour');
   const initialCapital = Number(config.initialCapital) || 100000;
   const sipAmount = Number(config.sipAmount) || 10000;
   const frequency = config.frequency || 'monthly';
@@ -43,18 +43,17 @@ export async function simulatePortfolio(
     const sym = item.symbol.trim().toUpperCase();
     if (!sym) continue;
 
-    let candles = readLocalCandles(sym, timeframe);
-    if (!candles || candles.length === 0) {
-      try {
-        candles = await ensureHistoricalCandles(sym, {
-          timeframe,
-          startDate: config.startDate,
-          endDate: config.endDate,
-          years: timeframe === 'hour' ? 2 : 3,
-        });
-      } catch (err: any) {
-        console.warn(`[Portfolio Backtest] Could not fetch candles for ${sym}:`, err.message);
-      }
+    let candles: any[] = [];
+    try {
+      candles = await ensureHistoricalCandles(sym, {
+        timeframe,
+        startDate: config.startDate,
+        endDate: config.endDate,
+        years: timeframe === 'hour' ? 2 : 5,
+      });
+    } catch (err: any) {
+      console.warn(`[Portfolio Backtest] Could not fetch candles for ${sym}:`, err.message);
+      candles = readLocalCandles(sym, timeframe);
     }
     if (candles && candles.length > 0) {
       candleMap.set(sym, candles);
@@ -76,15 +75,15 @@ export async function simulatePortfolio(
     let dailyCandles: any = undefined;
     if (timeframe === 'hour') {
       try {
-        dailyCandles = readLocalCandles(sym, 'day');
-        if (!dailyCandles || dailyCandles.length === 0) {
-          dailyCandles = await ensureHistoricalCandles(sym, {
-            timeframe: 'day',
-            years: 3,
-          });
-        }
+        dailyCandles = await ensureHistoricalCandles(sym, {
+          timeframe: 'day',
+          startDate: config.startDate,
+          endDate: config.endDate,
+          years: 3,
+        });
       } catch (err: any) {
         console.warn(`[Portfolio Backtest] Could not fetch daily candles for ${sym}:`, err.message);
+        dailyCandles = readLocalCandles(sym, 'day');
       }
     }
 
@@ -148,10 +147,53 @@ export async function simulatePortfolio(
   let benchmarkInitialVal = 0;
   let sipCount = 0;
 
-  // SIP timing trackers
+  // SIP timing trackers & precalculated monthly execution dates
   let lastSipMonth = '';
   let lastSipWeek = '';
   let lastSipDay = '';
+
+  const monthlySipExecDates = new Map<string, string>();
+  if (mode === 'SIP' && frequency === 'monthly') {
+    const timelineDates = Array.from(
+      new Set(timeline.map((t) => (t.includes(' ') ? t.split(' ')[0] : t.split('T')[0])))
+    ).sort();
+    const timelineDateSet = new Set(timelineDates);
+
+    // Group available trading days by month ('YYYY-MM')
+    const datesByMonth = new Map<string, string[]>();
+    for (const d of timelineDates) {
+      const m = d.substring(0, 7);
+      if (!datesByMonth.has(m)) {
+        datesByMonth.set(m, []);
+      }
+      datesByMonth.get(m)!.push(d);
+    }
+
+    const firstMonthKey = timelineDates.length > 0 ? timelineDates[0].substring(0, 7) : '';
+
+    for (const [mKey, mDays] of datesByMonth.entries()) {
+      const targetDateStr = `${mKey}-${String(sipDay).padStart(2, '0')}`;
+
+      if (timelineDateSet.has(targetDateStr)) {
+        // Target sipDay is an active market trading day
+        monthlySipExecDates.set(mKey, targetDateStr);
+      } else {
+        // Target sipDay is NOT a market day (weekend or market holiday).
+        // Execute on the previous market trading day in that month before the target day!
+        const prevDays = mDays.filter((d) => d < targetDateStr);
+        if (prevDays.length > 0) {
+          monthlySipExecDates.set(mKey, prevDays[prevDays.length - 1]);
+        } else if (mKey === firstMonthKey && nominalStart && targetDateStr < nominalStart) {
+          // If simulation started after the SIP day in the first month (e.g. started on Nov 18 while SIP day is 5th),
+          // execute initial installment on the first available trading day of the simulation
+          monthlySipExecDates.set(mKey, mDays[0]);
+        } else {
+          // If no previous market day in this month (e.g. sipDay=1 and 1st is holiday), fallback to first market day
+          monthlySipExecDates.set(mKey, mDays[0]);
+        }
+      }
+    }
+  }
 
   // 6. Run simulation across timeline
   for (let i = 0; i < timeline.length; i++) {
@@ -243,9 +285,9 @@ export async function simulatePortfolio(
 
       if (frequency === 'monthly') {
         const monthKey = datePart.substring(0, 7); // 'YYYY-MM'
-        const dayOfMonth = parseInt(datePart.split('-')[2], 10);
+        const scheduledDate = monthlySipExecDates.get(monthKey);
 
-        if (lastSipMonth !== monthKey && dayOfMonth >= sipDay) {
+        if (lastSipMonth !== monthKey && scheduledDate === datePart) {
           // Check execution time or take first available bar of the day
           const isTimeMatch = !timePart || timePart === sipTime || timePart >= sipTime;
           if (isTimeMatch) {

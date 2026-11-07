@@ -38,6 +38,7 @@ export function AppLayout() {
   const portfolioName = portfolioId ? portfolios.find(p => p.id === portfolioId)?.name : null;
   const isBacktestPage = location.pathname.includes('/backtest');
   const isBacktestResultPage = location.pathname.includes('/backtest/results');
+  const isFixedScreenPage = isPortfolioPage || isBacktestResultPage;
 
   const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
@@ -76,7 +77,7 @@ export function AppLayout() {
   }
 
   return (
-    <div className={`flex flex-col bg-background text-primary font-sans ${isPortfolioPage ? 'h-screen overflow-hidden' : 'min-h-screen'}`}>
+    <div className={`flex flex-col bg-background text-primary font-sans ${isFixedScreenPage ? 'h-screen overflow-hidden' : 'min-h-screen'}`}>
       <MarketTicker />
       {/* Unified Top Header */}
       <header className="h-14 sm:h-16 bg-surface border-b border-divider px-2 sm:px-4 flex items-center justify-between gap-3 sm:gap-4 shrink-0 relative z-30 w-full">
@@ -274,11 +275,11 @@ export function AppLayout() {
         </header>
 
       {/* Full-width scrollable container */}
-      <div className={`flex-1 w-full flex flex-col ${isPortfolioPage ? 'min-h-0' : ''}`}>
+      <div className={`flex-1 w-full flex flex-col ${isFixedScreenPage ? 'min-h-0' : ''}`}>
         {/* Main Content constraints */}
-        <div className={`flex flex-col flex-1 w-full ${isBacktestResultPage ? 'max-w-none' : 'max-w-[1600px] mx-auto'} bg-background ${isPortfolioPage ? 'min-h-0' : ''}`}>
-          <main className={`flex-1 flex flex-col min-w-0 bg-background relative z-0 ${isPortfolioPage ? 'min-h-0' : ''}`}>
-            <div className={`flex-1 ${isBacktestResultPage ? 'p-0' : 'px-2 md:px-4 pt-2 md:pt-3 pb-2 md:pb-4'} flex flex-col ${isPortfolioPage ? 'min-h-0' : ''}`}>
+        <div className={`flex flex-col flex-1 w-full ${isBacktestResultPage ? 'max-w-none' : 'max-w-[1600px] mx-auto'} bg-background ${isFixedScreenPage ? 'min-h-0' : ''}`}>
+          <main className={`flex-1 flex flex-col min-w-0 bg-background relative z-0 ${isFixedScreenPage ? 'min-h-0' : ''}`}>
+            <div className={`flex-1 ${isBacktestResultPage ? 'p-0' : 'px-2 md:px-4 pt-2 md:pt-3 pb-2 md:pb-4'} flex flex-col ${isFixedScreenPage ? 'min-h-0' : ''}`}>
               <Outlet />
             </div>
           </main>

@@ -848,7 +848,7 @@ export function BacktestResultsPage() {
   }
 
   return (
-    <div className="flex-1 flex flex-col bg-background min-h-screen text-primary overflow-x-hidden">
+    <div className="flex-1 flex flex-col bg-background h-full min-h-0 text-primary overflow-hidden">
       {/* Strategy Header Band (Light Grey in Light Mode, Darker Gray in Dark Mode) */}
       <div
         className={`w-full border-b px-3 sm:px-4 py-1.5 sm:py-2 flex items-center justify-between gap-3 shrink-0 transition-colors shadow-xs ${
@@ -953,7 +953,7 @@ export function BacktestResultsPage() {
           </div>
 
           {/* Days List with final daily PnL */}
-          <div className="flex-1 overflow-y-auto px-2 py-2 space-y-3">
+          <div className="flex-1 min-h-0 overflow-y-auto px-2 py-2 space-y-3 pb-24">
             {Object.entries(groupedDays).map(([groupKey, days]) => (
               <div key={groupKey} className="space-y-0.5">
                 <div className="px-2 pt-1 pb-1 text-[9px] sm:text-[10px] font-bold tracking-wider text-secondary uppercase">
@@ -1006,7 +1006,7 @@ export function BacktestResultsPage() {
         </aside>
 
         {/* Right Content Area */}
-        <main className="flex-1 overflow-y-auto">
+        <main className="flex-1 min-h-0 overflow-y-auto pb-16">
           {selectedTab === 'overview' ? (
             /* ANALYTICS OVERVIEW (Default View) */
             <div className="p-4 sm:p-6 space-y-6">

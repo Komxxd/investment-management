@@ -63,8 +63,8 @@ export function BacktestModal({
     };
   }, []);
 
-  const [fromDate, setFromDate] = useState<string>(defaultDates.from);
-  const [toDate, setToDate] = useState<string>(defaultDates.to);
+  const [fromDate, setFromDate] = useState<string>('');
+  const [toDate, setToDate] = useState<string>('');
   const [isRunning, setIsRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
