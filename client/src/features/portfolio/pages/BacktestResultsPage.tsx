@@ -27,6 +27,22 @@ const INDICATOR_CONFIG: Record<string, { label: string; tooltip: string }> = {
   rsi: { label: 'Daily RSI (14)', tooltip: "Live 14-day Wilder's Relative Strength Index updated on each candle" },
   dma50: { label: 'Daily DMA (50)', tooltip: '50-day Simple Moving Average updated on each candle' },
   dma200: { label: 'Daily DMA (200)', tooltip: '200-day Simple Moving Average updated on each candle' },
+  ema20: { label: 'Daily EMA (20)', tooltip: '20-day Exponential Moving Average updated on each candle' },
+  ema50: { label: 'Daily EMA (50)', tooltip: '50-day Exponential Moving Average updated on each candle' },
+  ema200: { label: 'Daily EMA (200)', tooltip: '200-day Exponential Moving Average updated on each candle' },
+  macd: { label: 'MACD Line (12, 26)', tooltip: 'MACD line (EMA 12 - EMA 26)' },
+  macdSignal: { label: 'MACD Signal (9)', tooltip: '9-day EMA of MACD Line' },
+  macdHist: { label: 'MACD Histogram', tooltip: 'MACD Line minus Signal Line' },
+  bbUpper: { label: 'BB Upper (20, 2)', tooltip: 'Bollinger Bands Upper Band (20 SMA + 2 StdDev)' },
+  bbMiddle: { label: 'BB Middle (20)', tooltip: 'Bollinger Bands Middle Band (20 SMA)' },
+  bbLower: { label: 'BB Lower (20, 2)', tooltip: 'Bollinger Bands Lower Band (20 SMA - 2 StdDev)' },
+  bbBandwidth: { label: 'BB Bandwidth %', tooltip: 'Bollinger Bandwidth % ((Upper - Lower) / Middle * 100)' },
+  bbPercentB: { label: 'BB %B', tooltip: 'Bollinger %B ((Price - Lower) / (Upper - Lower))' },
+  vwap: { label: 'VWAP', tooltip: 'Volume Weighted Average Price' },
+  avgVolume: { label: '20d Avg Vol', tooltip: '20-period Average Volume' },
+  volume: { label: 'Volume', tooltip: 'Candle Volume' },
+  obv: { label: 'OBV', tooltip: 'On-Balance Volume (Cumulative volume indicator)' },
+  obvSignal: { label: 'OBV Signal (20)', tooltip: '20-period Simple Moving Average of OBV' },
   changePct: { label: 'Day Change %', tooltip: 'Price Change % from previous day close' },
   price: { label: 'Price', tooltip: 'Stock Close Price' },
 };
@@ -45,14 +61,27 @@ function renderIndicatorCell(
       const num = Number(val);
       const isOversold = num <= 30;
       const isOverbought = num >= 70;
+      const divergence = data.indicators?.rsiDivergence;
       return (
-        <span
-          className={`font-mono font-semibold ${
-            isOversold ? 'text-success' : isOverbought ? 'text-amber-500' : 'text-primary'
-          }`}
-        >
-          {num.toFixed(2)}
-        </span>
+        <div className="inline-flex items-center gap-1.5">
+          <span
+            className={`font-mono font-semibold ${
+              isOversold ? 'text-success' : isOverbought ? 'text-amber-500' : 'text-primary'
+            }`}
+          >
+            {num.toFixed(2)}
+          </span>
+          {divergence === 'BULLISH' && (
+            <span className="px-1 py-0.5 rounded text-[8px] font-sans font-semibold bg-success/20 text-success" title="Bullish Divergence: Price Lower Low while RSI Higher Low">
+              Bull Div ↗
+            </span>
+          )}
+          {divergence === 'BEARISH' && (
+            <span className="px-1 py-0.5 rounded text-[8px] font-sans font-semibold bg-danger/20 text-danger" title="Bearish Divergence: Price Higher High while RSI Lower High">
+              Bear Div ↘
+            </span>
+          )}
+        </div>
       );
     }
     case 'dma50': {
@@ -75,6 +104,91 @@ function renderIndicatorCell(
         </span>
       );
     }
+    case 'ema20':
+    case 'ema50':
+    case 'ema200': {
+      const val = (data.indicators as any)?.[type];
+      if (val === null || val === undefined) return <span className="text-secondary">—</span>;
+      return (
+        <span className="font-mono text-primary font-medium">
+          {currencySymbol}
+          {Number(val).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+        </span>
+      );
+    }
+    case 'macd':
+    case 'macdSignal': {
+      const val = (data.indicators as any)?.[type];
+      if (val === null || val === undefined) return <span className="text-secondary">—</span>;
+      const num = Number(val);
+      return (
+        <span className={`font-mono font-semibold ${num >= 0 ? 'text-success' : 'text-danger'}`}>
+          {num.toFixed(2)}
+        </span>
+      );
+    }
+    case 'macdHist': {
+      const val = data.indicators?.macdHist;
+      if (val === null || val === undefined) return <span className="text-secondary">—</span>;
+      const num = Number(val);
+      const sign = num > 0 ? '+' : '';
+      return (
+        <span className={`font-mono font-semibold ${num >= 0 ? 'text-success' : 'text-danger'}`}>
+          {sign}{num.toFixed(2)}
+        </span>
+      );
+    }
+    case 'bbUpper':
+    case 'bbMiddle':
+    case 'bbLower': {
+      const val = (data.indicators as any)?.[type];
+      if (val === null || val === undefined) return <span className="text-secondary">—</span>;
+      return (
+        <span className="font-mono text-primary font-medium">
+          {currencySymbol}
+          {Number(val).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+        </span>
+      );
+    }
+    case 'bbBandwidth': {
+      const val = data.indicators?.bbBandwidth;
+      if (val === null || val === undefined) return <span className="text-secondary">—</span>;
+      return (
+        <span className="font-mono text-primary font-medium">
+          {Number(val).toFixed(2)}%
+        </span>
+      );
+    }
+    case 'bbPercentB': {
+      const val = data.indicators?.bbPercentB;
+      if (val === null || val === undefined) return <span className="text-secondary">—</span>;
+      const num = Number(val);
+      return (
+        <span className={`font-mono font-semibold ${num <= 0 ? 'text-success' : num >= 1 ? 'text-danger' : 'text-primary'}`}>
+          {num.toFixed(2)}
+        </span>
+      );
+    }
+    case 'vwap': {
+      const val = data.indicators?.vwap;
+      if (val === null || val === undefined) return <span className="text-secondary">—</span>;
+      return (
+        <span className="font-mono text-primary font-medium">
+          {currencySymbol}
+          {Number(val).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+        </span>
+      );
+    }
+    case 'avgVolume':
+    case 'volume': {
+      const val = type === 'volume' ? (data as any)?.volume : data.indicators?.avgVolume;
+      if (val === null || val === undefined) return <span className="text-secondary">—</span>;
+      return (
+        <span className="font-mono text-primary font-medium">
+          {Number(val).toLocaleString()}
+        </span>
+      );
+    }
     case 'changePct': {
       const val = data.changePercent;
       if (val === null || val === undefined) return <span className="text-secondary">—</span>;
@@ -84,6 +198,40 @@ function renderIndicatorCell(
         <span className={`font-mono font-semibold ${num > 0 ? 'text-success' : num < 0 ? 'text-danger' : 'text-primary'}`}>
           {sign}
           {num.toFixed(2)}%
+        </span>
+      );
+    }
+    case 'obv': {
+      const val = (data as any)?.indicators?.obv ?? (data as any)?.obv;
+      if (val === null || val === undefined) return <span className="text-secondary">—</span>;
+      const num = Number(val);
+      const formatted = Math.abs(num) >= 1e9
+        ? (num / 1e9).toFixed(2) + 'B'
+        : Math.abs(num) >= 1e6
+        ? (num / 1e6).toFixed(2) + 'M'
+        : Math.abs(num) >= 1e3
+        ? (num / 1e3).toFixed(1) + 'K'
+        : num.toLocaleString();
+      return (
+        <span className={`font-mono font-medium ${num >= 0 ? 'text-primary' : 'text-danger'}`}>
+          {formatted}
+        </span>
+      );
+    }
+    case 'obvSignal': {
+      const val = (data as any)?.indicators?.obvSignal ?? (data as any)?.obvSignal;
+      if (val === null || val === undefined) return <span className="text-secondary">—</span>;
+      const num = Number(val);
+      const formatted = Math.abs(num) >= 1e9
+        ? (num / 1e9).toFixed(2) + 'B'
+        : Math.abs(num) >= 1e6
+        ? (num / 1e6).toFixed(2) + 'M'
+        : Math.abs(num) >= 1e3
+        ? (num / 1e3).toFixed(1) + 'K'
+        : num.toLocaleString();
+      return (
+        <span className="font-mono text-secondary font-medium">
+          {formatted}
         </span>
       );
     }

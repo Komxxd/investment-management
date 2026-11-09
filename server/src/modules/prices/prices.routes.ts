@@ -54,7 +54,7 @@ router.get('/indicators', async (req: any, res: any) => {
     const indicatorsParam = req.query.indicators;
     const requestedIndicators = indicatorsParam
       ? indicatorsParam.split(',').map((i: string) => i.trim()).filter(Boolean)
-      : ['rsi', 'dma50', 'dma200'];
+      : ['rsi', 'dma50', 'dma200', 'ema20', 'ema50', 'ema200', 'rsiDivergence', 'macd', 'macdSignal', 'macdHist', 'bbUpper', 'bbMiddle', 'bbLower', 'bbBandwidth', 'bbPercentB', 'vwap', 'avgVolume', 'obv', 'obvSignal'];
     const force = req.query.force === 'true';
 
     const indicators = await fetchIndicators(symbols, requestedIndicators, force);
@@ -72,7 +72,11 @@ router.post('/indicators', async (req: any, res: any) => {
     if (!symbols || !Array.isArray(symbols) || symbols.length === 0) {
       return res.json({});
     }
-    const indicators = await fetchIndicators(symbols, requestedIndicators, force === true);
+    const indicators = await fetchIndicators(
+      symbols,
+      requestedIndicators || ['rsi', 'dma50', 'dma200', 'ema20', 'ema50', 'ema200', 'rsiDivergence', 'macd', 'macdSignal', 'macdHist', 'bbUpper', 'bbMiddle', 'bbLower', 'bbBandwidth', 'bbPercentB', 'vwap', 'avgVolume', 'obv', 'obvSignal'],
+      force === true
+    );
     res.json(indicators);
   } catch (error) {
     console.error('Indicators Error:', error);

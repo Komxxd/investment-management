@@ -1,4 +1,13 @@
-import { DailyCandle } from '../prices/data-storage.service';
+import {
+  DailyCandle,
+  computeEMASeries,
+  computeRSISeries,
+  detectRSIDivergenceSeries,
+  computeMACDSeries,
+  computeBollingerBandsSeries,
+  computeVWAPSeries,
+  computeOBVSeries,
+} from '../prices/data-storage.service';
 import { BarMarketData } from './types';
 
 interface DailyBaselineState {
@@ -8,6 +17,26 @@ interface DailyBaselineState {
   avgLoss: number;
   sum49: number | null;
   sum199: number | null;
+  ema12: number | null;
+  ema26: number | null;
+  ema20: number | null;
+  ema50: number | null;
+  ema200: number | null;
+  macd: number | null;
+  macdSignal: number | null;
+  macdHist: number | null;
+  bbUpper: number | null;
+  bbMiddle: number | null;
+  bbLower: number | null;
+  bbBandwidth: number | null;
+  bbPercentB: number | null;
+  vwap: number | null;
+  avgVolume: number | null;
+  obv: number | null;
+  obvSignal: number | null;
+  rsiDivergence: 'BULLISH' | 'BEARISH' | null;
+  rsiBullishDiv: number;
+  rsiBearishDiv: number;
   count: number;
 }
 
@@ -33,11 +62,21 @@ function computeProvisionalDailyIndicators(
   const dailyStateByDate = new Map<string, DailyBaselineState>();
   let avgGain = 0;
   let avgLoss = 0;
-  const dailyCloses: number[] = [];
+  const dailyCloses: number[] = sortedDaily.map((d) => d.close);
+  const dailyEma12 = computeEMASeries(dailyCloses, 12);
+  const dailyEma26 = computeEMASeries(dailyCloses, 26);
+  const dailyEma20 = computeEMASeries(dailyCloses, 20);
+  const dailyEma50 = computeEMASeries(dailyCloses, 50);
+  const dailyEma200 = computeEMASeries(dailyCloses, 200);
+  const dailyRsiSeries = computeRSISeries(dailyCloses, 14);
+  const dailyDivSeries = detectRSIDivergenceSeries(sortedDaily, dailyRsiSeries);
+  const dailyMacdSeries = computeMACDSeries(dailyCloses, 12, 26, 9);
+  const dailyBbSeries = computeBollingerBandsSeries(dailyCloses, 20, 2);
+  const dailyVwapSeries = computeVWAPSeries(sortedDaily, 20);
+  const dailyObvSeries = computeOBVSeries(sortedDaily, 20);
 
   for (let i = 0; i < nDaily; i++) {
     const d = sortedDaily[i];
-    dailyCloses.push(d.close);
 
     if (i > 0) {
       const diff = d.close - sortedDaily[i - 1].close;
@@ -62,12 +101,12 @@ function computeProvisionalDailyIndicators(
 
     if (i >= rsiPeriod) {
       const sum49 =
-        dailyCloses.length >= 49
-          ? dailyCloses.slice(-49).reduce((acc, val) => acc + val, 0)
+        dailyCloses.length >= 49 && i >= 48
+          ? dailyCloses.slice(Math.max(0, i - 48), i + 1).reduce((acc, val) => acc + val, 0)
           : null;
       const sum199 =
-        dailyCloses.length >= 199
-          ? dailyCloses.slice(-199).reduce((acc, val) => acc + val, 0)
+        dailyCloses.length >= 199 && i >= 198
+          ? dailyCloses.slice(Math.max(0, i - 198), i + 1).reduce((acc, val) => acc + val, 0)
           : null;
 
       dailyStateByDate.set(d.date, {
@@ -77,6 +116,26 @@ function computeProvisionalDailyIndicators(
         avgLoss,
         sum49,
         sum199,
+        ema12: dailyEma12[i],
+        ema26: dailyEma26[i],
+        ema20: dailyEma20[i],
+        ema50: dailyEma50[i],
+        ema200: dailyEma200[i],
+        macd: dailyMacdSeries.macd[i],
+        macdSignal: dailyMacdSeries.signal[i],
+        macdHist: dailyMacdSeries.histogram[i],
+        bbUpper: dailyBbSeries.upper[i],
+        bbMiddle: dailyBbSeries.middle[i],
+        bbLower: dailyBbSeries.lower[i],
+        bbBandwidth: dailyBbSeries.bandwidth[i],
+        bbPercentB: dailyBbSeries.percentB[i],
+        vwap: dailyVwapSeries.vwap[i],
+        avgVolume: dailyVwapSeries.avgVolume[i],
+        obv: dailyObvSeries.obv[i],
+        obvSignal: dailyObvSeries.obvSignal[i],
+        rsiDivergence: dailyDivSeries[i] || null,
+        rsiBullishDiv: dailyDivSeries[i] === 'BULLISH' ? 1 : 0,
+        rsiBearishDiv: dailyDivSeries[i] === 'BEARISH' ? 1 : 0,
         count: i + 1,
       });
     }
@@ -105,6 +164,8 @@ function computeProvisionalDailyIndicators(
   }
 
   // 2. For each hourly bar, compute provisional daily indicators
+  const hourlyVwapSeries = computeVWAPSeries(hourlyCandles, 20);
+  const hourlyObvSeries = computeOBVSeries(hourlyCandles, 20);
   const result: BarMarketData[] = new Array(hourlyCandles.length);
 
   for (let i = 0; i < hourlyCandles.length; i++) {
@@ -115,6 +176,12 @@ function computeProvisionalDailyIndicators(
     let rsi: number | null = null;
     let dma50: number | null = null;
     let dma200: number | null = null;
+    let ema20: number | null = null;
+    let ema50: number | null = null;
+    let ema200: number | null = null;
+    let macd: number | null = null;
+    let macdSignal: number | null = null;
+    let macdHist: number | null = null;
     let changePct = 0;
 
     if (baseline) {
@@ -148,6 +215,42 @@ function computeProvisionalDailyIndicators(
       if (baseline.sum199 != null && baseline.count >= 199) {
         dma200 = parseFloat(((baseline.sum199 + p) / 200).toFixed(2));
       }
+
+      // Provisional Daily EMA20
+      if (baseline.ema20 != null) {
+        const k20 = 2 / (20 + 1);
+        ema20 = parseFloat(((p * k20) + (baseline.ema20 * (1 - k20))).toFixed(2));
+      }
+
+      // Provisional Daily EMA50
+      if (baseline.ema50 != null) {
+        const k50 = 2 / (50 + 1);
+        ema50 = parseFloat(((p * k50) + (baseline.ema50 * (1 - k50))).toFixed(2));
+      }
+
+      // Provisional Daily EMA200
+      if (baseline.ema200 != null) {
+        const k200 = 2 / (200 + 1);
+        ema200 = parseFloat(((p * k200) + (baseline.ema200 * (1 - k200))).toFixed(2));
+      }
+
+      // Provisional Daily MACD (12, 26, 9)
+      if (baseline.ema12 != null && baseline.ema26 != null) {
+        const k12 = 2 / (12 + 1);
+        const k26 = 2 / (26 + 1);
+        const provEma12 = p * k12 + baseline.ema12 * (1 - k12);
+        const provEma26 = p * k26 + baseline.ema26 * (1 - k26);
+        macd = parseFloat((provEma12 - provEma26).toFixed(2));
+        if (baseline.macdSignal != null) {
+          const kSig = 2 / (9 + 1);
+          macdSignal = parseFloat((macd * kSig + baseline.macdSignal * (1 - kSig)).toFixed(2));
+          macdHist = parseFloat((macd - macdSignal).toFixed(2));
+        }
+      } else {
+        macd = baseline.macd;
+        macdSignal = baseline.macdSignal;
+        macdHist = baseline.macdHist;
+      }
     } else {
       // Fallback for bars before daily warmup is reached
       const prevClose = i > 0 ? hourlyCandles[i - 1].close : c.open;
@@ -170,6 +273,24 @@ function computeProvisionalDailyIndicators(
         rsi,
         dma50,
         dma200,
+        ema20,
+        ema50,
+        ema200,
+        macd,
+        macdSignal,
+        macdHist,
+        bbUpper: baseline ? baseline.bbUpper : null,
+        bbMiddle: baseline ? baseline.bbMiddle : null,
+        bbLower: baseline ? baseline.bbLower : null,
+        bbBandwidth: baseline ? baseline.bbBandwidth : null,
+        bbPercentB: baseline ? baseline.bbPercentB : null,
+        vwap: hourlyVwapSeries.vwap[i] ?? (baseline ? baseline.vwap : null),
+        avgVolume: hourlyVwapSeries.avgVolume[i] ?? (baseline ? baseline.avgVolume : null),
+        obv: hourlyObvSeries.obv[i] ?? (baseline ? baseline.obv : null),
+        obvSignal: hourlyObvSeries.obvSignal[i] ?? (baseline ? baseline.obvSignal : null),
+        rsiDivergence: baseline ? baseline.rsiDivergence : null,
+        rsiBullishDiv: baseline ? baseline.rsiBullishDiv : 0,
+        rsiBearishDiv: baseline ? baseline.rsiBearishDiv : 0,
       },
     };
   }
@@ -199,6 +320,17 @@ export function computeRollingIndicators(
   // Standard single-timeframe rolling computation
   const n = candles.length;
   const result: BarMarketData[] = new Array(n);
+
+  const closes = candles.map((c) => c.close);
+  const ema20Series = computeEMASeries(closes, 20);
+  const ema50Series = computeEMASeries(closes, 50);
+  const ema200Series = computeEMASeries(closes, 200);
+  const rsiSeries = computeRSISeries(closes, 14);
+  const divSeries = detectRSIDivergenceSeries(candles, rsiSeries);
+  const macdSeries = computeMACDSeries(closes, 12, 26, 9);
+  const bbSeries = computeBollingerBandsSeries(closes, 20, 2);
+  const vwapSeries = computeVWAPSeries(candles, 20);
+  const obvSeries = computeOBVSeries(candles, 20);
 
   let sum50 = 0;
   let sum200 = 0;
@@ -278,6 +410,24 @@ export function computeRollingIndicators(
         rsi,
         dma50,
         dma200,
+        ema20: ema20Series[i],
+        ema50: ema50Series[i],
+        ema200: ema200Series[i],
+        macd: macdSeries.macd[i],
+        macdSignal: macdSeries.signal[i],
+        macdHist: macdSeries.histogram[i],
+        bbUpper: bbSeries.upper[i],
+        bbMiddle: bbSeries.middle[i],
+        bbLower: bbSeries.lower[i],
+        bbBandwidth: bbSeries.bandwidth[i],
+        bbPercentB: bbSeries.percentB[i],
+        vwap: vwapSeries.vwap[i],
+        avgVolume: vwapSeries.avgVolume[i],
+        obv: obvSeries.obv[i],
+        obvSignal: obvSeries.obvSignal[i],
+        rsiDivergence: divSeries[i] || null,
+        rsiBullishDiv: divSeries[i] === 'BULLISH' ? 1 : 0,
+        rsiBearishDiv: divSeries[i] === 'BEARISH' ? 1 : 0,
       },
     };
   }

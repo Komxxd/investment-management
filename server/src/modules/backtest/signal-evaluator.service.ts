@@ -25,6 +25,10 @@ export function getIndicatorValue(
       return typeof bar.indicators?.rsi === 'number' && !isNaN(bar.indicators.rsi)
         ? bar.indicators.rsi
         : null;
+    case 'rsiBullishDiv':
+      return bar.indicators?.rsiBullishDiv ?? (bar.indicators?.rsiDivergence === 'BULLISH' ? 1 : 0);
+    case 'rsiBearishDiv':
+      return bar.indicators?.rsiBearishDiv ?? (bar.indicators?.rsiDivergence === 'BEARISH' ? 1 : 0);
     case 'dma50':
       return typeof bar.indicators?.dma50 === 'number' && !isNaN(bar.indicators.dma50)
         ? bar.indicators.dma50
@@ -32,6 +36,70 @@ export function getIndicatorValue(
     case 'dma200':
       return typeof bar.indicators?.dma200 === 'number' && !isNaN(bar.indicators.dma200)
         ? bar.indicators.dma200
+        : null;
+    case 'ema20':
+      return typeof bar.indicators?.ema20 === 'number' && !isNaN(bar.indicators.ema20)
+        ? bar.indicators.ema20
+        : null;
+    case 'ema50':
+      return typeof bar.indicators?.ema50 === 'number' && !isNaN(bar.indicators.ema50)
+        ? bar.indicators.ema50
+        : null;
+    case 'ema200':
+      return typeof bar.indicators?.ema200 === 'number' && !isNaN(bar.indicators.ema200)
+        ? bar.indicators.ema200
+        : null;
+    case 'macd':
+      return typeof bar.indicators?.macd === 'number' && !isNaN(bar.indicators.macd)
+        ? bar.indicators.macd
+        : null;
+    case 'macdSignal':
+      return typeof bar.indicators?.macdSignal === 'number' && !isNaN(bar.indicators.macdSignal)
+        ? bar.indicators.macdSignal
+        : null;
+    case 'macdHist':
+      return typeof bar.indicators?.macdHist === 'number' && !isNaN(bar.indicators.macdHist)
+        ? bar.indicators.macdHist
+        : null;
+    case 'bbUpper':
+      return typeof bar.indicators?.bbUpper === 'number' && !isNaN(bar.indicators.bbUpper)
+        ? bar.indicators.bbUpper
+        : null;
+    case 'bbMiddle':
+      return typeof bar.indicators?.bbMiddle === 'number' && !isNaN(bar.indicators.bbMiddle)
+        ? bar.indicators.bbMiddle
+        : null;
+    case 'bbLower':
+      return typeof bar.indicators?.bbLower === 'number' && !isNaN(bar.indicators.bbLower)
+        ? bar.indicators.bbLower
+        : null;
+    case 'bbBandwidth':
+      return typeof bar.indicators?.bbBandwidth === 'number' && !isNaN(bar.indicators.bbBandwidth)
+        ? bar.indicators.bbBandwidth
+        : null;
+    case 'bbPercentB':
+      return typeof bar.indicators?.bbPercentB === 'number' && !isNaN(bar.indicators.bbPercentB)
+        ? bar.indicators.bbPercentB
+        : null;
+    case 'vwap':
+      return typeof bar.indicators?.vwap === 'number' && !isNaN(bar.indicators.vwap)
+        ? bar.indicators.vwap
+        : null;
+    case 'avgVolume':
+      return typeof bar.indicators?.avgVolume === 'number' && !isNaN(bar.indicators.avgVolume)
+        ? bar.indicators.avgVolume
+        : null;
+    case 'volume':
+      return typeof bar.volume === 'number' && !isNaN(bar.volume)
+        ? bar.volume
+        : null;
+    case 'obv':
+      return typeof bar.indicators?.obv === 'number' && !isNaN(bar.indicators.obv)
+        ? bar.indicators.obv
+        : null;
+    case 'obvSignal':
+      return typeof bar.indicators?.obvSignal === 'number' && !isNaN(bar.indicators.obvSignal)
+        ? bar.indicators.obvSignal
         : null;
     default:
       return null;
@@ -48,6 +116,14 @@ export function evaluateConditionOnBar(
   prevBar?: BarMarketData
 ): boolean {
   if (!cond.leftIndicator || !cond.operator) return false;
+
+  // Direct divergence checks without needing a right operand
+  if (cond.operator === 'BULLISH_DIVERGENCE') {
+    return currentBar.indicators?.rsiDivergence === 'BULLISH' || currentBar.indicators?.rsiBullishDiv === 1;
+  }
+  if (cond.operator === 'BEARISH_DIVERGENCE') {
+    return currentBar.indicators?.rsiDivergence === 'BEARISH' || currentBar.indicators?.rsiBearishDiv === 1;
+  }
 
   const currentLeft = getIndicatorValue(cond.leftIndicator, currentBar);
   if (currentLeft === null) return false;

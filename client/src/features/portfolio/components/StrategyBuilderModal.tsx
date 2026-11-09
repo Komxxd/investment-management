@@ -19,8 +19,40 @@ import { BacktestModal } from './BacktestModal';
 
 export type SizingType = 'QTY' | 'VALUE' | 'INCREASE_PCT' | 'DECREASE_PCT';
 export type ActionType = 'BUY' | 'SELL' | 'ALERT';
-export type IndicatorType = 'rsi' | 'dma50' | 'dma200' | 'price' | 'changePct';
-export type ComparisonOperator = '<' | '>' | '<=' | '>=' | 'CROSSINGOVER' | 'CROSSINGUNDER' | '==';
+export type IndicatorType =
+  | 'rsi'
+  | 'rsiBullishDiv'
+  | 'rsiBearishDiv'
+  | 'dma50'
+  | 'dma200'
+  | 'ema20'
+  | 'ema50'
+  | 'ema200'
+  | 'macd'
+  | 'macdSignal'
+  | 'macdHist'
+  | 'bbUpper'
+  | 'bbMiddle'
+  | 'bbLower'
+  | 'bbBandwidth'
+  | 'bbPercentB'
+  | 'vwap'
+  | 'volume'
+  | 'avgVolume'
+  | 'obv'
+  | 'obvSignal'
+  | 'price'
+  | 'changePct';
+export type ComparisonOperator =
+  | '<'
+  | '>'
+  | '<='
+  | '>='
+  | 'CROSSINGOVER'
+  | 'CROSSINGUNDER'
+  | 'BULLISH_DIVERGENCE'
+  | 'BEARISH_DIVERGENCE'
+  | '==';
 export type LogicalConnector = 'AND' | 'OR';
 
 export interface StrategyCondition {
@@ -63,7 +95,29 @@ interface StrategyBuilderModalProps {
   portfolioId: string;
   portfolioName?: string;
   stocks: Array<{ id: string; symbol: string; quantity: number; entry_price: number }>;
-  indicators: Record<string, { rsi?: number | null; dma50?: number | null; dma200?: number | null }>;
+  indicators: Record<
+    string,
+    {
+      rsi?: number | null;
+      dma50?: number | null;
+      dma200?: number | null;
+      ema20?: number | null;
+      ema50?: number | null;
+      ema200?: number | null;
+      macd?: number | null;
+      macdSignal?: number | null;
+      macdHist?: number | null;
+      bbUpper?: number | null;
+      bbMiddle?: number | null;
+      bbLower?: number | null;
+      bbBandwidth?: number | null;
+      bbPercentB?: number | null;
+      vwap?: number | null;
+      avgVolume?: number | null;
+      obv?: number | null;
+      obvSignal?: number | null;
+    }
+  >;
   livePrices?: Record<string, { currentPrice?: number; changePercent?: number; name?: string }>;
   currencySymbol?: string;
 }
@@ -153,17 +207,57 @@ export function formatRuleFormula(rule: StrategyRule): string {
 
       let left = cond.leftIndicator ? cond.leftIndicator : '[INDICATOR]';
       if (cond.leftIndicator === 'rsi') left = 'RSI(day)';
+      else if (cond.leftIndicator === 'rsiBullishDiv') left = 'RSI Bullish Div';
+      else if (cond.leftIndicator === 'rsiBearishDiv') left = 'RSI Bearish Div';
       else if (cond.leftIndicator === 'dma50') left = 'DMA(50)';
       else if (cond.leftIndicator === 'dma200') left = 'DMA(200)';
+      else if (cond.leftIndicator === 'ema20') left = 'EMA(20)';
+      else if (cond.leftIndicator === 'ema50') left = 'EMA(50)';
+      else if (cond.leftIndicator === 'ema200') left = 'EMA(200)';
+      else if (cond.leftIndicator === 'macd') left = 'MACD(12,26)';
+      else if (cond.leftIndicator === 'macdSignal') left = 'MACD Signal(9)';
+      else if (cond.leftIndicator === 'macdHist') left = 'MACD Hist';
+      else if (cond.leftIndicator === 'bbUpper') left = 'BB Upper(20,2)';
+      else if (cond.leftIndicator === 'bbMiddle') left = 'BB Middle(20)';
+      else if (cond.leftIndicator === 'bbLower') left = 'BB Lower(20,2)';
+      else if (cond.leftIndicator === 'bbBandwidth') left = 'BB Bandwidth%';
+      else if (cond.leftIndicator === 'bbPercentB') left = 'BB %B';
+      else if (cond.leftIndicator === 'vwap') left = 'VWAP';
+      else if (cond.leftIndicator === 'volume') left = 'VOLUME';
+      else if (cond.leftIndicator === 'avgVolume') left = 'AVG VOL(20)';
+      else if (cond.leftIndicator === 'obv') left = 'OBV';
+      else if (cond.leftIndicator === 'obvSignal') left = 'OBV Signal(20)';
       else if (cond.leftIndicator === 'price') left = 'PRICE';
       else if (cond.leftIndicator === 'changePct') left = 'CHANGE%';
 
       const op = cond.operator || '[OP]';
+      if (op === 'BULLISH_DIVERGENCE') {
+        return `${conn}${left} HAS BULLISH DIVERGENCE`;
+      }
+      if (op === 'BEARISH_DIVERGENCE') {
+        return `${conn}${left} HAS BEARISH DIVERGENCE`;
+      }
 
       let right = '';
       if (cond.rightType === 'indicator') {
         if (cond.rightIndicator === 'dma200') right = 'DMA(200)';
         else if (cond.rightIndicator === 'dma50') right = 'DMA(50)';
+        else if (cond.rightIndicator === 'ema200') right = 'EMA(200)';
+        else if (cond.rightIndicator === 'ema50') right = 'EMA(50)';
+        else if (cond.rightIndicator === 'ema20') right = 'EMA(20)';
+        else if (cond.rightIndicator === 'macd') right = 'MACD(12,26)';
+        else if (cond.rightIndicator === 'macdSignal') right = 'MACD Signal(9)';
+        else if (cond.rightIndicator === 'macdHist') right = 'MACD Hist';
+        else if (cond.rightIndicator === 'bbUpper') right = 'BB Upper(20,2)';
+        else if (cond.rightIndicator === 'bbMiddle') right = 'BB Middle(20)';
+        else if (cond.rightIndicator === 'bbLower') right = 'BB Lower(20,2)';
+        else if (cond.rightIndicator === 'bbBandwidth') right = 'BB Bandwidth%';
+        else if (cond.rightIndicator === 'bbPercentB') right = 'BB %B';
+        else if (cond.rightIndicator === 'vwap') right = 'VWAP';
+        else if (cond.rightIndicator === 'volume') right = 'VOLUME';
+        else if (cond.rightIndicator === 'avgVolume') right = 'AVG VOL(20)';
+        else if (cond.rightIndicator === 'obv') right = 'OBV';
+        else if (cond.rightIndicator === 'obvSignal') right = 'OBV Signal(20)';
         else if (cond.rightIndicator === 'rsi') right = 'RSI(day)';
         else if (cond.rightIndicator === 'price') right = 'PRICE';
         else right = cond.rightIndicator ? cond.rightIndicator : '[INDICATOR]';
@@ -808,8 +902,26 @@ export function StrategyBuilderModal({
                                 >
                                   <option value="" disabled>Indicator</option>
                                   <option value="rsi">RSI(14, day)</option>
+                                  <option value="rsiBullishDiv">RSI Bullish Divergence</option>
+                                  <option value="rsiBearishDiv">RSI Bearish Divergence</option>
                                   <option value="dma50">DMA(50)</option>
                                   <option value="dma200">DMA(200)</option>
+                                  <option value="ema20">EMA(20)</option>
+                                  <option value="ema50">EMA(50)</option>
+                                  <option value="ema200">EMA(200)</option>
+                                  <option value="macd">MACD Line (12, 26)</option>
+                                  <option value="macdSignal">MACD Signal (9)</option>
+                                  <option value="macdHist">MACD Histogram</option>
+                                  <option value="bbUpper">BB Upper (20, 2)</option>
+                                  <option value="bbMiddle">BB Middle (20 SMA)</option>
+                                  <option value="bbLower">BB Lower (20, 2)</option>
+                                  <option value="bbBandwidth">BB Bandwidth %</option>
+                                  <option value="bbPercentB">BB %B</option>
+                                  <option value="vwap">VWAP</option>
+                                  <option value="volume">Candle Volume</option>
+                                  <option value="avgVolume">20-Period Avg Volume</option>
+                                  <option value="obv">OBV (On-Balance Volume)</option>
+                                  <option value="obvSignal">OBV Signal (20 SMA)</option>
                                   <option value="price">Current Price</option>
                                   <option value="changePct">Day Change %</option>
                                 </select>
@@ -827,56 +939,78 @@ export function StrategyBuilderModal({
                                   <option value=">=">&gt;=</option>
                                   <option value="CROSSINGOVER">CROSSINGOVER</option>
                                   <option value="CROSSINGUNDER">CROSSINGUNDER</option>
+                                  <option value="BULLISH_DIVERGENCE">BULLISH DIVERGENCE</option>
+                                  <option value="BEARISH_DIVERGENCE">BEARISH DIVERGENCE</option>
                                   <option value="==">==</option>
                                 </select>
 
-                                {/* Right Type Toggle */}
-                                <div className="inline-flex items-center p-0.5 bg-surface border border-divider rounded">
-                                  <button
-                                    type="button"
-                                    onClick={() => handleUpdateCondition(cond.id, { rightType: 'value' })}
-                                    className={`px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors ${
-                                      cond.rightType === 'value'
-                                        ? 'bg-primary text-surface font-semibold'
-                                        : 'text-secondary hover:text-primary'
-                                    }`}
-                                  >
-                                    Val
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleUpdateCondition(cond.id, { rightType: 'indicator' })}
-                                    className={`px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors ${
-                                      cond.rightType === 'indicator'
-                                        ? 'bg-primary text-surface font-semibold'
-                                        : 'text-secondary hover:text-primary'
-                                    }`}
-                                  >
-                                    Ind
-                                  </button>
-                                </div>
+                                {cond.operator !== 'BULLISH_DIVERGENCE' && cond.operator !== 'BEARISH_DIVERGENCE' && (
+                                  <>
+                                    {/* Right Type Toggle */}
+                                    <div className="inline-flex items-center p-0.5 bg-surface border border-divider rounded">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleUpdateCondition(cond.id, { rightType: 'value' })}
+                                        className={`px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                                          cond.rightType === 'value'
+                                            ? 'bg-primary text-surface font-semibold'
+                                            : 'text-secondary hover:text-primary'
+                                        }`}
+                                      >
+                                        Val
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleUpdateCondition(cond.id, { rightType: 'indicator' })}
+                                        className={`px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                                          cond.rightType === 'indicator'
+                                            ? 'bg-primary text-surface font-semibold'
+                                            : 'text-secondary hover:text-primary'
+                                        }`}
+                                      >
+                                        Ind
+                                      </button>
+                                    </div>
 
-                                {/* Right Value or Select */}
-                                {cond.rightType === 'value' ? (
-                                  <input
-                                    type="number"
-                                    value={cond.rightValue !== undefined && cond.rightValue !== null ? cond.rightValue : ''}
-                                    onChange={e => handleUpdateCondition(cond.id, { rightValue: e.target.value === '' ? '' : Number(e.target.value) })}
-                                    placeholder="Value"
-                                    className="w-20 bg-surface border border-divider rounded-lg px-2 py-1 text-xs text-primary font-mono focus:outline-none focus:border-primary"
-                                  />
-                                ) : (
-                                  <select
-                                    value={cond.rightIndicator || ''}
-                                    onChange={e => handleUpdateCondition(cond.id, { rightIndicator: e.target.value as any })}
-                                    className="bg-surface border border-divider rounded-lg px-2 py-1 text-xs text-primary focus:outline-none focus:border-primary"
-                                  >
-                                    <option value="" disabled>Indicator</option>
-                                    <option value="dma200">DMA(200)</option>
-                                    <option value="dma50">DMA(50)</option>
-                                    <option value="rsi">RSI(14)</option>
-                                    <option value="price">Current Price</option>
-                                  </select>
+                                    {/* Right Value or Select */}
+                                    {cond.rightType === 'value' ? (
+                                      <input
+                                        type="number"
+                                        value={cond.rightValue !== undefined && cond.rightValue !== null ? cond.rightValue : ''}
+                                        onChange={e => handleUpdateCondition(cond.id, { rightValue: e.target.value === '' ? '' : Number(e.target.value) })}
+                                        placeholder="Value"
+                                        className="w-20 bg-surface border border-divider rounded-lg px-2 py-1 text-xs text-primary font-mono focus:outline-none focus:border-primary"
+                                      />
+                                    ) : (
+                                      <select
+                                        value={cond.rightIndicator || ''}
+                                        onChange={e => handleUpdateCondition(cond.id, { rightIndicator: e.target.value as any })}
+                                        className="bg-surface border border-divider rounded-lg px-2 py-1 text-xs text-primary focus:outline-none focus:border-primary"
+                                      >
+                                        <option value="" disabled>Indicator</option>
+                                        <option value="dma200">DMA(200)</option>
+                                        <option value="dma50">DMA(50)</option>
+                                        <option value="ema200">EMA(200)</option>
+                                        <option value="ema50">EMA(50)</option>
+                                        <option value="ema20">EMA(20)</option>
+                                        <option value="macd">MACD Line (12, 26)</option>
+                                        <option value="macdSignal">MACD Signal (9)</option>
+                                        <option value="macdHist">MACD Histogram</option>
+                                        <option value="bbUpper">BB Upper (20, 2)</option>
+                                        <option value="bbMiddle">BB Middle (20 SMA)</option>
+                                        <option value="bbLower">BB Lower (20, 2)</option>
+                                        <option value="bbBandwidth">BB Bandwidth %</option>
+                                        <option value="bbPercentB">BB %B</option>
+                                        <option value="vwap">VWAP</option>
+                                        <option value="volume">Candle Volume</option>
+                                        <option value="avgVolume">20-Period Avg Volume</option>
+                                        <option value="obv">OBV (On-Balance Volume)</option>
+                                        <option value="obvSignal">OBV Signal (20 SMA)</option>
+                                        <option value="rsi">RSI(14)</option>
+                                        <option value="price">Current Price</option>
+                                      </select>
+                                    )}
+                                  </>
                                 )}
 
                                 <button
@@ -1027,8 +1161,26 @@ export function StrategyBuilderModal({
                                 >
                                   <option value="" disabled>Indicator</option>
                                   <option value="rsi">RSI(14, day)</option>
+                                  <option value="rsiBullishDiv">RSI Bullish Divergence</option>
+                                  <option value="rsiBearishDiv">RSI Bearish Divergence</option>
                                   <option value="dma50">DMA(50)</option>
                                   <option value="dma200">DMA(200)</option>
+                                  <option value="ema20">EMA(20)</option>
+                                  <option value="ema50">EMA(50)</option>
+                                  <option value="ema200">EMA(200)</option>
+                                  <option value="macd">MACD Line (12, 26)</option>
+                                  <option value="macdSignal">MACD Signal (9)</option>
+                                  <option value="macdHist">MACD Histogram</option>
+                                  <option value="bbUpper">BB Upper (20, 2)</option>
+                                  <option value="bbMiddle">BB Middle (20 SMA)</option>
+                                  <option value="bbLower">BB Lower (20, 2)</option>
+                                  <option value="bbBandwidth">BB Bandwidth %</option>
+                                  <option value="bbPercentB">BB %B</option>
+                                  <option value="vwap">VWAP</option>
+                                  <option value="volume">Candle Volume</option>
+                                  <option value="avgVolume">20-Period Avg Volume</option>
+                                  <option value="obv">OBV (On-Balance Volume)</option>
+                                  <option value="obvSignal">OBV Signal (20 SMA)</option>
                                   <option value="price">Current Price</option>
                                   <option value="changePct">Day Change %</option>
                                 </select>
@@ -1046,56 +1198,78 @@ export function StrategyBuilderModal({
                                   <option value=">=">&gt;=</option>
                                   <option value="CROSSINGOVER">CROSSINGOVER</option>
                                   <option value="CROSSINGUNDER">CROSSINGUNDER</option>
+                                  <option value="BULLISH_DIVERGENCE">BULLISH DIVERGENCE</option>
+                                  <option value="BEARISH_DIVERGENCE">BEARISH DIVERGENCE</option>
                                   <option value="==">==</option>
                                 </select>
 
-                                {/* Right Type Toggle */}
-                                <div className="inline-flex items-center p-0.5 bg-surface border border-divider rounded">
-                                  <button
-                                    type="button"
-                                    onClick={() => handleUpdateCondition(cond.id, { rightType: 'value' })}
-                                    className={`px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors ${
-                                      cond.rightType === 'value'
-                                        ? 'bg-primary text-surface font-semibold'
-                                        : 'text-secondary hover:text-primary'
-                                    }`}
-                                  >
-                                    Val
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleUpdateCondition(cond.id, { rightType: 'indicator' })}
-                                    className={`px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors ${
-                                      cond.rightType === 'indicator'
-                                        ? 'bg-primary text-surface font-semibold'
-                                        : 'text-secondary hover:text-primary'
-                                    }`}
-                                  >
-                                    Ind
-                                  </button>
-                                </div>
+                                {cond.operator !== 'BULLISH_DIVERGENCE' && cond.operator !== 'BEARISH_DIVERGENCE' && (
+                                  <>
+                                    {/* Right Type Toggle */}
+                                    <div className="inline-flex items-center p-0.5 bg-surface border border-divider rounded">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleUpdateCondition(cond.id, { rightType: 'value' })}
+                                        className={`px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                                          cond.rightType === 'value'
+                                            ? 'bg-primary text-surface font-semibold'
+                                            : 'text-secondary hover:text-primary'
+                                        }`}
+                                      >
+                                        Val
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleUpdateCondition(cond.id, { rightType: 'indicator' })}
+                                        className={`px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                                          cond.rightType === 'indicator'
+                                            ? 'bg-primary text-surface font-semibold'
+                                            : 'text-secondary hover:text-primary'
+                                        }`}
+                                      >
+                                        Ind
+                                      </button>
+                                    </div>
 
-                                {/* Right Value or Select */}
-                                {cond.rightType === 'value' ? (
-                                  <input
-                                    type="number"
-                                    value={cond.rightValue !== undefined && cond.rightValue !== null ? cond.rightValue : ''}
-                                    onChange={e => handleUpdateCondition(cond.id, { rightValue: e.target.value === '' ? '' : Number(e.target.value) })}
-                                    placeholder="Value"
-                                    className="w-20 bg-surface border border-divider rounded-lg px-2 py-1 text-xs text-primary font-mono focus:outline-none focus:border-primary"
-                                  />
-                                ) : (
-                                  <select
-                                    value={cond.rightIndicator || ''}
-                                    onChange={e => handleUpdateCondition(cond.id, { rightIndicator: e.target.value as any })}
-                                    className="bg-surface border border-divider rounded-lg px-2 py-1 text-xs text-primary focus:outline-none focus:border-primary"
-                                  >
-                                    <option value="" disabled>Indicator</option>
-                                    <option value="dma200">DMA(200)</option>
-                                    <option value="dma50">DMA(50)</option>
-                                    <option value="rsi">RSI(14)</option>
-                                    <option value="price">Current Price</option>
-                                  </select>
+                                    {/* Right Value or Select */}
+                                    {cond.rightType === 'value' ? (
+                                      <input
+                                        type="number"
+                                        value={cond.rightValue !== undefined && cond.rightValue !== null ? cond.rightValue : ''}
+                                        onChange={e => handleUpdateCondition(cond.id, { rightValue: e.target.value === '' ? '' : Number(e.target.value) })}
+                                        placeholder="Value"
+                                        className="w-20 bg-surface border border-divider rounded-lg px-2 py-1 text-xs text-primary font-mono focus:outline-none focus:border-primary"
+                                      />
+                                    ) : (
+                                      <select
+                                        value={cond.rightIndicator || ''}
+                                        onChange={e => handleUpdateCondition(cond.id, { rightIndicator: e.target.value as any })}
+                                        className="bg-surface border border-divider rounded-lg px-2 py-1 text-xs text-primary focus:outline-none focus:border-primary"
+                                      >
+                                        <option value="" disabled>Indicator</option>
+                                        <option value="dma200">DMA(200)</option>
+                                        <option value="dma50">DMA(50)</option>
+                                        <option value="ema200">EMA(200)</option>
+                                        <option value="ema50">EMA(50)</option>
+                                        <option value="ema20">EMA(20)</option>
+                                        <option value="macd">MACD Line (12, 26)</option>
+                                        <option value="macdSignal">MACD Signal (9)</option>
+                                        <option value="macdHist">MACD Histogram</option>
+                                        <option value="bbUpper">BB Upper (20, 2)</option>
+                                        <option value="bbMiddle">BB Middle (20 SMA)</option>
+                                        <option value="bbLower">BB Lower (20, 2)</option>
+                                        <option value="bbBandwidth">BB Bandwidth %</option>
+                                        <option value="bbPercentB">BB %B</option>
+                                        <option value="vwap">VWAP</option>
+                                        <option value="volume">Candle Volume</option>
+                                        <option value="avgVolume">20-Period Avg Volume</option>
+                                        <option value="obv">OBV (On-Balance Volume)</option>
+                                        <option value="obvSignal">OBV Signal (20 SMA)</option>
+                                        <option value="rsi">RSI(14)</option>
+                                        <option value="price">Current Price</option>
+                                      </select>
+                                    )}
+                                  </>
                                 )}
 
                                 <button

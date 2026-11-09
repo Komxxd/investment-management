@@ -7,6 +7,24 @@ export interface StockMarketData {
     rsi?: number | null;
     dma50?: number | null;
     dma200?: number | null;
+    ema20?: number | null;
+    ema50?: number | null;
+    ema200?: number | null;
+    rsiDivergence?: 'BULLISH' | 'BEARISH' | null;
+    rsiBullishDiv?: number | null;
+    rsiBearishDiv?: number | null;
+    macd?: number | null;
+    macdSignal?: number | null;
+    macdHist?: number | null;
+    bbUpper?: number | null;
+    bbMiddle?: number | null;
+    bbLower?: number | null;
+    bbBandwidth?: number | null;
+    bbPercentB?: number | null;
+    vwap?: number | null;
+    avgVolume?: number | null;
+    obv?: number | null;
+    obvSignal?: number | null;
   };
 }
 
@@ -30,6 +48,42 @@ function getIndicatorValue(type: IndicatorType | '', data: StockMarketData): num
       return typeof data.indicators?.dma50 === 'number' && !isNaN(data.indicators.dma50) ? data.indicators.dma50 : null;
     case 'dma200':
       return typeof data.indicators?.dma200 === 'number' && !isNaN(data.indicators.dma200) ? data.indicators.dma200 : null;
+    case 'ema20':
+      return typeof data.indicators?.ema20 === 'number' && !isNaN(data.indicators.ema20) ? data.indicators.ema20 : null;
+    case 'ema50':
+      return typeof data.indicators?.ema50 === 'number' && !isNaN(data.indicators.ema50) ? data.indicators.ema50 : null;
+    case 'ema200':
+      return typeof data.indicators?.ema200 === 'number' && !isNaN(data.indicators.ema200) ? data.indicators.ema200 : null;
+    case 'macd':
+      return typeof data.indicators?.macd === 'number' && !isNaN(data.indicators.macd) ? data.indicators.macd : null;
+    case 'macdSignal':
+      return typeof data.indicators?.macdSignal === 'number' && !isNaN(data.indicators.macdSignal) ? data.indicators.macdSignal : null;
+    case 'macdHist':
+      return typeof data.indicators?.macdHist === 'number' && !isNaN(data.indicators.macdHist) ? data.indicators.macdHist : null;
+    case 'bbUpper':
+      return typeof data.indicators?.bbUpper === 'number' && !isNaN(data.indicators.bbUpper) ? data.indicators.bbUpper : null;
+    case 'bbMiddle':
+      return typeof data.indicators?.bbMiddle === 'number' && !isNaN(data.indicators.bbMiddle) ? data.indicators.bbMiddle : null;
+    case 'bbLower':
+      return typeof data.indicators?.bbLower === 'number' && !isNaN(data.indicators.bbLower) ? data.indicators.bbLower : null;
+    case 'bbBandwidth':
+      return typeof data.indicators?.bbBandwidth === 'number' && !isNaN(data.indicators.bbBandwidth) ? data.indicators.bbBandwidth : null;
+    case 'bbPercentB':
+      return typeof data.indicators?.bbPercentB === 'number' && !isNaN(data.indicators.bbPercentB) ? data.indicators.bbPercentB : null;
+    case 'vwap':
+      return typeof data.indicators?.vwap === 'number' && !isNaN(data.indicators.vwap) ? data.indicators.vwap : null;
+    case 'avgVolume':
+      return typeof data.indicators?.avgVolume === 'number' && !isNaN(data.indicators.avgVolume) ? data.indicators.avgVolume : null;
+    case 'obv':
+      return typeof data.indicators?.obv === 'number' && !isNaN(data.indicators.obv) ? data.indicators.obv : null;
+    case 'obvSignal':
+      return typeof data.indicators?.obvSignal === 'number' && !isNaN(data.indicators.obvSignal) ? data.indicators.obvSignal : null;
+    case 'volume':
+      return typeof (data as any)?.volume === 'number' && !isNaN((data as any).volume) ? (data as any).volume : null;
+    case 'rsiBullishDiv':
+      return data.indicators?.rsiBullishDiv ?? (data.indicators?.rsiDivergence === 'BULLISH' ? 1 : 0);
+    case 'rsiBearishDiv':
+      return data.indicators?.rsiBearishDiv ?? (data.indicators?.rsiDivergence === 'BEARISH' ? 1 : 0);
     default:
       return null;
   }
@@ -37,6 +91,13 @@ function getIndicatorValue(type: IndicatorType | '', data: StockMarketData): num
 
 export function evaluateCondition(cond: StrategyCondition, data: StockMarketData): boolean {
   if (!cond.leftIndicator || !cond.operator) return false;
+
+  if (cond.operator === 'BULLISH_DIVERGENCE') {
+    return data.indicators?.rsiDivergence === 'BULLISH' || data.indicators?.rsiBullishDiv === 1;
+  }
+  if (cond.operator === 'BEARISH_DIVERGENCE') {
+    return data.indicators?.rsiDivergence === 'BEARISH' || data.indicators?.rsiBearishDiv === 1;
+  }
 
   const leftVal = getIndicatorValue(cond.leftIndicator, data);
   if (leftVal === null) return false;

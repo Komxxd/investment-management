@@ -5,7 +5,7 @@ import { X, Check, Activity, Sliders, Loader2 } from 'lucide-react';
 export interface IndicatorDefinition {
   id: string;
   name: string;
-  category: 'Momentum' | 'Trend';
+  category: 'Momentum' | 'Trend' | 'Volatility' | 'Institutional' | 'Confirmation';
   badge: string;
   description: string;
   status: 'available' | 'requires-sync' | 'coming-soon';
@@ -30,9 +30,18 @@ export const AVAILABLE_INDICATORS: IndicatorDefinition[] = [
     name: 'RSI',
     category: 'Momentum',
     badge: 'Momentum Oscillator',
-    description: 'Relative Strength Index. Identifies momentum conditions and potential price reversal zones from historical candles.',
+    description: 'Relative Strength Index. Identifies momentum conditions, bullish/bearish divergences, and potential reversal zones.',
     status: 'requires-sync',
     columnId: 'rsi'
+  },
+  {
+    id: 'macd',
+    name: 'MACD (12, 26, 9)',
+    category: 'Momentum',
+    badge: 'Momentum & Trend',
+    description: 'Moving Average Convergence Divergence. MACD line crossovers above signal below 0 and histogram expansions highlight powerful momentum.',
+    status: 'available',
+    columnId: 'macd'
   },
   {
     id: 'dma50',
@@ -51,10 +60,64 @@ export const AVAILABLE_INDICATORS: IndicatorDefinition[] = [
     description: '200-Day Moving Average. The gold standard for institutional long-term bull vs. bear market regime.',
     status: 'available',
     columnId: 'dma200'
+  },
+  {
+    id: 'ema20',
+    name: '20 EMA',
+    category: 'Trend',
+    badge: '20-Day EMA',
+    description: '20-Period Exponential Moving Average. Fast trend filter and dynamic pullback bounce level.',
+    status: 'available',
+    columnId: 'ema20'
+  },
+  {
+    id: 'ema50',
+    name: '50 EMA',
+    category: 'Trend',
+    badge: '50-Day EMA',
+    description: '50-Period Exponential Moving Average. Medium-term trend gauge used in Golden and Death crosses.',
+    status: 'available',
+    columnId: 'ema50'
+  },
+  {
+    id: 'ema200',
+    name: '200 EMA',
+    category: 'Trend',
+    badge: '200-Day EMA',
+    description: '200-Period Exponential Moving Average. Institutional benchmark for primary long-term market trends.',
+    status: 'available',
+    columnId: 'ema200'
+  },
+  {
+    id: 'bollinger',
+    name: 'Bollinger Bands (20, 2)',
+    category: 'Volatility',
+    badge: 'Volatility & Reversion',
+    description: '20 SMA with ±2 standard deviation bands. Catches lower band reversal bounces and upper band resistance squeezes.',
+    status: 'available',
+    columnId: 'bollinger'
+  },
+  {
+    id: 'vwap',
+    name: 'VWAP',
+    category: 'Institutional',
+    badge: 'Institutional Benchmark',
+    description: 'Volume Weighted Average Price. Primary benchmark used by institutional desks to determine market value and intraday support/resistance.',
+    status: 'available',
+    columnId: 'vwap'
+  },
+  {
+    id: 'obv',
+    name: 'OBV / Volume',
+    category: 'Confirmation',
+    badge: 'Volume Confirmation',
+    description: 'On-Balance Volume. Confirms breakout momentum with volume accumulation and identifies reversals when price advances on declining volume.',
+    status: 'available',
+    columnId: 'obv'
   }
 ];
 
-const CATEGORIES = ['Momentum', 'Trend'] as const;
+const CATEGORIES = ['Momentum', 'Trend', 'Volatility', 'Institutional', 'Confirmation'] as const;
 
 export interface AddIndicatorsModalProps {
   isOpen: boolean;

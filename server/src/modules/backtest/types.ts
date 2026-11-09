@@ -1,11 +1,43 @@
 import { DailyCandle } from '../prices/data-storage.service';
 
-export type IndicatorType = 'price' | 'changePct' | 'rsi' | 'dma50' | 'dma200';
+export type IndicatorType =
+  | 'price'
+  | 'changePct'
+  | 'rsi'
+  | 'rsiBullishDiv'
+  | 'rsiBearishDiv'
+  | 'dma50'
+  | 'dma200'
+  | 'ema20'
+  | 'ema50'
+  | 'ema200'
+  | 'macd'
+  | 'macdSignal'
+  | 'macdHist'
+  | 'bbUpper'
+  | 'bbMiddle'
+  | 'bbLower'
+  | 'bbBandwidth'
+  | 'bbPercentB'
+  | 'vwap'
+  | 'volume'
+  | 'avgVolume'
+  | 'obv'
+  | 'obvSignal';
 
 export interface StrategyCondition {
   id: string;
   leftIndicator: IndicatorType;
-  operator: '<' | '<=' | '>' | '>=' | '==' | 'CROSSINGOVER' | 'CROSSINGUNDER';
+  operator:
+    | '<'
+    | '<='
+    | '>'
+    | '>='
+    | '=='
+    | 'CROSSINGOVER'
+    | 'CROSSINGUNDER'
+    | 'BULLISH_DIVERGENCE'
+    | 'BEARISH_DIVERGENCE';
   rightType: 'value' | 'indicator';
   rightValue?: number | string;
   rightIndicator?: IndicatorType;
@@ -37,6 +69,24 @@ export interface BarIndicators {
   rsi: number | null;
   dma50: number | null;
   dma200: number | null;
+  ema20?: number | null;
+  ema50?: number | null;
+  ema200?: number | null;
+  rsiDivergence?: 'BULLISH' | 'BEARISH' | null;
+  rsiBullishDiv?: number | null;
+  rsiBearishDiv?: number | null;
+  macd?: number | null;
+  macdSignal?: number | null;
+  macdHist?: number | null;
+  bbUpper?: number | null;
+  bbMiddle?: number | null;
+  bbLower?: number | null;
+  bbBandwidth?: number | null;
+  bbPercentB?: number | null;
+  vwap?: number | null;
+  avgVolume?: number | null;
+  obv?: number | null;
+  obvSignal?: number | null;
 }
 
 export interface BarMarketData {

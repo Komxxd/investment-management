@@ -24,6 +24,24 @@ export interface BarIndicators {
   rsi: number | null;
   dma50: number | null;
   dma200: number | null;
+  ema20?: number | null;
+  ema50?: number | null;
+  ema200?: number | null;
+  rsiDivergence?: 'BULLISH' | 'BEARISH' | null;
+  rsiBullishDiv?: number | null;
+  rsiBearishDiv?: number | null;
+  macd?: number | null;
+  macdSignal?: number | null;
+  macdHist?: number | null;
+  bbUpper?: number | null;
+  bbMiddle?: number | null;
+  bbLower?: number | null;
+  bbBandwidth?: number | null;
+  bbPercentB?: number | null;
+  vwap?: number | null;
+  avgVolume?: number | null;
+  obv?: number | null;
+  obvSignal?: number | null;
 }
 
 export interface InitialInvestmentInfo {

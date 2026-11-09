@@ -267,7 +267,14 @@ const ALL_COLUMNS = [
   { id: 'livePrice', label: 'Live Price' },
   { id: 'dma50', label: '50 DMA' },
   { id: 'dma200', label: '200 DMA' },
+  { id: 'ema20', label: '20 EMA' },
+  { id: 'ema50', label: '50 EMA' },
+  { id: 'ema200', label: '200 EMA' },
   { id: 'rsi', label: 'RSI (14)' },
+  { id: 'macd', label: 'MACD (12, 26, 9)' },
+  { id: 'bollinger', label: 'Bollinger (20, 2)' },
+  { id: 'vwap', label: 'VWAP' },
+  { id: 'obv', label: 'OBV' },
   { id: 'strategy', label: 'Strategy' },
   { id: 'currentValue', label: 'Current Value' },
   { id: 'unrealizedPnL', label: 'Unrealized PnL' },
@@ -297,7 +304,7 @@ const ALL_COLUMNS = [
 ];
 
 const DEFAULT_VISIBLE_COLUMNS = new Set(
-  ALL_COLUMNS.map(c => c.id).filter(id => !['dma50', 'dma200', 'rsi'].includes(id))
+  ALL_COLUMNS.map(c => c.id).filter(id => !['dma50', 'dma200', 'ema20', 'ema50', 'ema200', 'rsi', 'macd', 'bollinger', 'vwap', 'obv'].includes(id))
 );
 
 
@@ -671,12 +678,63 @@ export function PortfolioDashboard() {
             const pIdx = order.indexOf('livePrice');
             if (pIdx !== -1) { order.splice(pIdx + 1, 0, missingCol); inserted = true; }
           }
+        } else if (missingCol === 'ema20' || missingCol === 'ema50' || missingCol === 'ema200') {
+          const idx = order.indexOf('dma200');
+          if (idx !== -1) { order.splice(idx + 1, 0, missingCol); inserted = true; }
+          else {
+            const pIdx = order.indexOf('livePrice');
+            if (pIdx !== -1) { order.splice(pIdx + 1, 0, missingCol); inserted = true; }
+          }
         } else if (missingCol === 'rsi') {
           const idx = order.indexOf('dma200');
           if (idx !== -1) { order.splice(idx + 1, 0, missingCol); inserted = true; }
           else {
             const pIdx = order.indexOf('livePrice');
             if (pIdx !== -1) { order.splice(pIdx + 1, 0, missingCol); inserted = true; }
+          }
+        } else if (missingCol === 'macd') {
+          const idx = order.indexOf('rsi');
+          if (idx !== -1) { order.splice(idx + 1, 0, missingCol); inserted = true; }
+          else {
+            const dIdx = order.indexOf('dma200');
+            if (dIdx !== -1) { order.splice(dIdx + 1, 0, missingCol); inserted = true; }
+            else {
+              const pIdx = order.indexOf('livePrice');
+              if (pIdx !== -1) { order.splice(pIdx + 1, 0, missingCol); inserted = true; }
+            }
+          }
+        } else if (missingCol === 'bollinger') {
+          const idx = order.indexOf('macd');
+          if (idx !== -1) { order.splice(idx + 1, 0, missingCol); inserted = true; }
+          else {
+            const rIdx = order.indexOf('rsi');
+            if (rIdx !== -1) { order.splice(rIdx + 1, 0, missingCol); inserted = true; }
+            else {
+              const pIdx = order.indexOf('livePrice');
+              if (pIdx !== -1) { order.splice(pIdx + 1, 0, missingCol); inserted = true; }
+            }
+          }
+        } else if (missingCol === 'vwap') {
+          const idx = order.indexOf('bollinger');
+          if (idx !== -1) { order.splice(idx + 1, 0, missingCol); inserted = true; }
+          else {
+            const mIdx = order.indexOf('macd');
+            if (mIdx !== -1) { order.splice(mIdx + 1, 0, missingCol); inserted = true; }
+            else {
+              const pIdx = order.indexOf('livePrice');
+              if (pIdx !== -1) { order.splice(pIdx + 1, 0, missingCol); inserted = true; }
+            }
+          }
+        } else if (missingCol === 'obv') {
+          const idx = order.indexOf('vwap');
+          if (idx !== -1) { order.splice(idx + 1, 0, missingCol); inserted = true; }
+          else {
+            const bIdx = order.indexOf('bollinger');
+            if (bIdx !== -1) { order.splice(bIdx + 1, 0, missingCol); inserted = true; }
+            else {
+              const pIdx = order.indexOf('livePrice');
+              if (pIdx !== -1) { order.splice(pIdx + 1, 0, missingCol); inserted = true; }
+            }
           }
         } else if (missingCol === 'strategy') {
           const idx = order.indexOf('rsi');
@@ -955,8 +1013,31 @@ export function PortfolioDashboard() {
     return () => evtSource.close();
   }, [allStockSymbols]);
 
-  // ── Technical indicators (RSI, 50 DMA, 200 DMA via Python & Parquet) ──
-  type IndicatorData = { rsi: number | null; dma50: number | null; dma200: number | null; source?: string };
+  // ── Technical indicators (RSI, 50 DMA, 200 DMA, 20/50/200 EMA) ──
+  type IndicatorData = {
+    rsi: number | null;
+    dma50: number | null;
+    dma200: number | null;
+    ema20?: number | null;
+    ema50?: number | null;
+    ema200?: number | null;
+    rsiDivergence?: 'BULLISH' | 'BEARISH' | null;
+    rsiBullishDiv?: number | null;
+    rsiBearishDiv?: number | null;
+    macd?: number | null;
+    macdSignal?: number | null;
+    macdHist?: number | null;
+    bbUpper?: number | null;
+    bbMiddle?: number | null;
+    bbLower?: number | null;
+    bbBandwidth?: number | null;
+    bbPercentB?: number | null;
+    vwap?: number | null;
+    avgVolume?: number | null;
+    obv?: number | null;
+    obvSignal?: number | null;
+    source?: string;
+  };
   const [indicators, setIndicators] = useState<Record<string, IndicatorData>>({});
   const [indicatorsLoading, setIndicatorsLoading] = useState(false);
   const [isAddIndicatorsModalOpen, setIsAddIndicatorsModalOpen] = useState(false);
@@ -1138,13 +1219,29 @@ export function PortfolioDashboard() {
   };
 
   const indicatorColumnsVisible = (
-    visibleColumns.has('rsi') || visibleColumns.has('dma50') || visibleColumns.has('dma200')
+    visibleColumns.has('rsi') ||
+    visibleColumns.has('macd') ||
+    visibleColumns.has('bollinger') ||
+    visibleColumns.has('vwap') ||
+    visibleColumns.has('obv') ||
+    visibleColumns.has('dma50') ||
+    visibleColumns.has('dma200') ||
+    visibleColumns.has('ema20') ||
+    visibleColumns.has('ema50') ||
+    visibleColumns.has('ema200')
   );
 
   const selectedIndicatorsCount = (
     (visibleColumns.has('dma50') ? 1 : 0) +
     (visibleColumns.has('dma200') ? 1 : 0) +
-    (visibleColumns.has('rsi') ? 1 : 0)
+    (visibleColumns.has('ema20') ? 1 : 0) +
+    (visibleColumns.has('ema50') ? 1 : 0) +
+    (visibleColumns.has('ema200') ? 1 : 0) +
+    (visibleColumns.has('rsi') ? 1 : 0) +
+    (visibleColumns.has('macd') ? 1 : 0) +
+    (visibleColumns.has('bollinger') ? 1 : 0) +
+    (visibleColumns.has('vwap') ? 1 : 0) +
+    (visibleColumns.has('obv') ? 1 : 0)
   );
 
   const fetchPortfolioIndicators = (force: boolean = false) => {
@@ -1341,6 +1438,9 @@ export function PortfolioDashboard() {
       } else if (sortField === 'rsi') {
         valA = indicators[a.symbol]?.rsi ?? -1;
         valB = indicators[b.symbol]?.rsi ?? -1;
+      } else if (sortField === 'obv') {
+        valA = indicators[a.symbol]?.obv ?? -Infinity;
+        valB = indicators[b.symbol]?.obv ?? -Infinity;
       } else if (sortField === 'dma50') {
         valA = a.liveData?.dma50 ?? indicators[a.symbol]?.dma50 ?? -1;
         valB = b.liveData?.dma50 ?? indicators[b.symbol]?.dma50 ?? -1;
@@ -2477,6 +2577,16 @@ export function PortfolioDashboard() {
                                           ) : rsiVal != null ? (
                                             <div className="flex items-center justify-end gap-1">
                                               <span>{rsiVal.toFixed(2)}</span>
+                                              {indicators[group.symbol]?.rsiDivergence === 'BULLISH' && (
+                                                <span className="text-[8px] font-sans px-1 rounded bg-success/20 text-success font-semibold" title="Bullish Divergence: Price Lower Low while RSI Higher Low">
+                                                  Bull Div ↗
+                                                </span>
+                                              )}
+                                              {indicators[group.symbol]?.rsiDivergence === 'BEARISH' && (
+                                                <span className="text-[8px] font-sans px-1 rounded bg-danger/20 text-danger font-semibold" title="Bearish Divergence: Price Higher High while RSI Lower High">
+                                                  Bear Div ↘
+                                                </span>
+                                              )}
                                               {rsiVal >= 70 && (
                                                 <span className="text-[8px] font-sans px-1 rounded bg-danger/20 text-danger font-semibold" title="Overbought (>= 70)">
                                                   OB
@@ -2494,6 +2604,190 @@ export function PortfolioDashboard() {
                                         </td>
                                       );
                                     }
+
+                                    case 'macd': {
+                                      const m = indicators[group.symbol]?.macd;
+                                      const s = indicators[group.symbol]?.macdSignal;
+                                      const h = indicators[group.symbol]?.macdHist;
+                                      const tooltip = m != null && s != null
+                                        ? `MACD (12, 26): ${m.toFixed(2)} | Signal (9): ${s.toFixed(2)} | Hist: ${h != null ? (h >= 0 ? '+' : '') + h.toFixed(2) : '—'}`
+                                        : undefined;
+
+                                      return (
+                                        <td
+                                          key="macd"
+                                          className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right font-medium truncate"
+                                          title={tooltip}
+                                        >
+                                          {indicatorsLoading && m == null ? (
+                                            <span className="text-tertiary animate-pulse">…</span>
+                                          ) : m != null && s != null ? (
+                                            <div className="flex items-center justify-end gap-1.5">
+                                              <span className={m >= s ? 'text-success' : 'text-danger'}>
+                                                {m.toFixed(2)}
+                                              </span>
+                                              <span className="text-[8px] text-tertiary">
+                                                / {s.toFixed(2)}
+                                              </span>
+                                              {h != null && (
+                                                <span
+                                                  className={`text-[8px] font-sans px-1 rounded font-semibold ${
+                                                    h >= 0 ? 'bg-success/15 text-success' : 'bg-danger/15 text-danger'
+                                                  }`}
+                                                >
+                                                  {h >= 0 ? '+' : ''}{h.toFixed(1)}
+                                                </span>
+                                              )}
+                                            </div>
+                                          ) : (
+                                            '—'
+                                          )}
+                                        </td>
+                                      );
+                                    }
+
+                                    case 'bollinger': {
+                                      const u = indicators[group.symbol]?.bbUpper;
+                                      const m = indicators[group.symbol]?.bbMiddle;
+                                      const l = indicators[group.symbol]?.bbLower;
+                                      const bw = indicators[group.symbol]?.bbBandwidth;
+                                      const liveP = group.livePrice || 0;
+                                      const pctB = (u != null && l != null && u > l && liveP > 0)
+                                        ? ((liveP - l) / (u - l))
+                                        : indicators[group.symbol]?.bbPercentB;
+                                      const tooltip = u != null && l != null && m != null
+                                        ? `Bollinger (20, 2): Upper=${u.toFixed(2)} | Mid(20)=${m.toFixed(2)} | Lower=${l.toFixed(2)} | BW=${bw != null ? bw.toFixed(1) + '%' : '—'} | %B=${pctB != null ? pctB.toFixed(2) : '—'}`
+                                        : undefined;
+
+                                      return (
+                                        <td
+                                          key="bollinger"
+                                          className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right font-medium truncate"
+                                          title={tooltip}
+                                        >
+                                          {indicatorsLoading && u == null ? (
+                                            <span className="text-tertiary animate-pulse">…</span>
+                                          ) : u != null && l != null && m != null ? (
+                                            <div className="flex flex-col items-end leading-tight">
+                                              <div className="flex items-center gap-1">
+                                                <span className={`text-[9px] ${liveP > 0 && liveP <= l ? 'text-success font-bold' : 'text-primary'}`}>
+                                                  {l.toFixed(0)}
+                                                </span>
+                                                <span className="text-[8px] text-tertiary">-</span>
+                                                <span className={`text-[9px] ${liveP > 0 && liveP >= u ? 'text-danger font-bold' : 'text-primary'}`}>
+                                                  {u.toFixed(0)}
+                                                </span>
+                                              </div>
+                                              <div className="flex items-center gap-1 text-[8px]">
+                                                <span className="text-tertiary">m:{m.toFixed(0)}</span>
+                                                {pctB != null && (
+                                                  <span
+                                                    className={`px-1 rounded font-semibold ${
+                                                      pctB <= 0
+                                                        ? 'bg-success/20 text-success'
+                                                        : pctB >= 1
+                                                          ? 'bg-danger/20 text-danger'
+                                                          : 'text-secondary'
+                                                    }`}
+                                                  >
+                                                    {pctB <= 0 ? 'Dip ⤵' : pctB >= 1 ? 'Peak ⤴' : `%B:${pctB.toFixed(2)}`}
+                                                  </span>
+                                                )}
+                                              </div>
+                                            </div>
+                                          ) : (
+                                            '—'
+                                          )}
+                                        </td>
+                                      );
+                                    }
+                                    case 'vwap': {
+                                      const vwapVal = indicators[group.symbol]?.vwap;
+                                      const avgVol = indicators[group.symbol]?.avgVolume;
+                                      const liveP = group.livePrice || 0;
+                                      const vwapColor = vwapVal == null
+                                        ? 'text-tertiary'
+                                        : liveP >= vwapVal
+                                          ? 'text-success'
+                                          : 'text-danger';
+                                      const diffPct = vwapVal && liveP ? ((liveP - vwapVal) / vwapVal) * 100 : 0;
+                                      const tooltip = vwapVal != null
+                                        ? `VWAP: ${fmtCurrency(vwapVal, group.liveData?.currency)} (${diffPct >= 0 ? '+' : ''}${diffPct.toFixed(2)}% ${liveP >= vwapVal ? 'above' : 'below'} VWAP)${avgVol ? ` | 20d Avg Vol: ${avgVol.toLocaleString()}` : ''}`
+                                        : undefined;
+
+                                      return (
+                                        <td
+                                          key="vwap"
+                                          className={`px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right font-medium truncate ${vwapColor}`}
+                                          title={tooltip}
+                                        >
+                                          {indicatorsLoading && vwapVal == null ? (
+                                            <span className="text-tertiary animate-pulse">…</span>
+                                          ) : vwapVal != null ? (
+                                            <div className="flex items-center justify-end gap-1">
+                                              <span>{fmtCurrency(vwapVal, group.liveData?.currency)}</span>
+                                              {liveP > 0 && (
+                                                <span
+                                                  className={`text-[8px] font-sans px-1 rounded font-semibold ${
+                                                    liveP >= vwapVal ? 'bg-success/15 text-success' : 'bg-danger/15 text-danger'
+                                                  }`}
+                                                >
+                                                  {diffPct >= 0 ? '+' : ''}{diffPct.toFixed(1)}%
+                                                </span>
+                                              )}
+                                            </div>
+                                          ) : (
+                                            '—'
+                                          )}
+                                        </td>
+                                      );
+                                    }
+
+                                    case 'obv': {
+                                      const obvVal = indicators[group.symbol]?.obv;
+                                      const obvSig = indicators[group.symbol]?.obvSignal;
+                                      const isBullish = obvVal != null && obvSig != null ? obvVal >= obvSig : null;
+                                      const fmtCompact = (num: number) => {
+                                        const abs = Math.abs(num);
+                                        if (abs >= 1e9) return (num / 1e9).toFixed(2) + 'B';
+                                        if (abs >= 1e6) return (num / 1e6).toFixed(2) + 'M';
+                                        if (abs >= 1e3) return (num / 1e3).toFixed(1) + 'K';
+                                        return num.toLocaleString();
+                                      };
+                                      const tooltip = obvVal != null
+                                        ? `OBV: ${obvVal.toLocaleString()}${obvSig != null ? ` | Signal (20): ${obvSig.toLocaleString()} (${isBullish ? 'Bullish Accumulation' : 'Bearish Distribution'})` : ''}`
+                                        : undefined;
+
+                                      return (
+                                        <td
+                                          key="obv"
+                                          className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right font-medium truncate"
+                                          title={tooltip}
+                                        >
+                                          {indicatorsLoading && obvVal == null ? (
+                                            <span className="text-tertiary animate-pulse">…</span>
+                                          ) : obvVal != null ? (
+                                            <div className="flex items-center justify-end gap-1">
+                                              <span className={isBullish === true ? 'text-success' : isBullish === false ? 'text-danger' : 'text-primary'}>
+                                                {fmtCompact(obvVal)}
+                                              </span>
+                                              {isBullish != null && (
+                                                <span
+                                                  className={`text-[8px] font-sans px-1 rounded font-semibold ${
+                                                    isBullish ? 'bg-success/15 text-success' : 'bg-danger/15 text-danger'
+                                                  }`}
+                                                >
+                                                  {isBullish ? 'Bull ↗' : 'Bear ↘'}
+                                                </span>
+                                              )}
+                                            </div>
+                                          ) : (
+                                            '—'
+                                          )}
+                                        </td>
+                                      );
+                                    }
+
                                     case 'dma50': {
                                       const dma50Val = group.liveData?.dma50 ?? indicators[group.symbol]?.dma50;
                                       const liveP = group.livePrice || 0;
@@ -2534,6 +2828,7 @@ export function PortfolioDashboard() {
                                         </td>
                                       );
                                     }
+
                                     case 'dma200': {
                                       const dma200Val = group.liveData?.dma200 ?? indicators[group.symbol]?.dma200;
                                       const liveP2 = group.livePrice || 0;
@@ -2574,6 +2869,51 @@ export function PortfolioDashboard() {
                                         </td>
                                       );
                                     }
+
+                                    case 'ema20':
+                                    case 'ema50':
+                                    case 'ema200': {
+                                      const periodLabel = colId === 'ema20' ? '20 EMA' : colId === 'ema50' ? '50 EMA' : '200 EMA';
+                                      const emaVal = (indicators[group.symbol] as any)?.[colId];
+                                      const liveP = group.livePrice || 0;
+                                      const emaColor = emaVal == null
+                                        ? 'text-tertiary'
+                                        : liveP >= emaVal
+                                          ? 'text-success'
+                                          : 'text-danger';
+                                      const diffPct = emaVal && liveP ? ((liveP - emaVal) / emaVal) * 100 : 0;
+                                      const tooltip = emaVal && liveP
+                                        ? `${diffPct >= 0 ? '+' : ''}${diffPct.toFixed(2)}% ${liveP >= emaVal ? 'above' : 'below'} ${periodLabel} (Live: ${fmtCurrency(liveP, group.liveData?.currency)})`
+                                        : undefined;
+
+                                      return (
+                                        <td
+                                          key={colId}
+                                          className={`px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right font-medium truncate ${emaColor}`}
+                                          title={tooltip}
+                                        >
+                                          {indicatorsLoading && emaVal == null ? (
+                                            <span className="text-tertiary animate-pulse">…</span>
+                                          ) : emaVal != null ? (
+                                            <div className="flex items-center justify-end gap-1">
+                                              <span>{fmtCurrency(emaVal, group.liveData?.currency)}</span>
+                                              {liveP > 0 && (
+                                                <span
+                                                  className={`text-[8px] font-sans px-1 rounded font-semibold ${
+                                                    liveP >= emaVal ? 'bg-success/15 text-success' : 'bg-danger/15 text-danger'
+                                                  }`}
+                                                >
+                                                  {diffPct >= 0 ? '+' : ''}{diffPct.toFixed(1)}%
+                                                </span>
+                                              )}
+                                            </div>
+                                          ) : (
+                                            '—'
+                                          )}
+                                        </td>
+                                      );
+                                    }
+
                                     case 'strategy': {
                                       const stratStatus = getStockStrategyEvaluation(group.symbol);
                                       const executedToday = todayExecutions[group.symbol];
@@ -3054,7 +3394,7 @@ export function PortfolioDashboard() {
             const current = prev[activePortfolioId] 
               ? new Set(prev[activePortfolioId]) 
               : new Set(DEFAULT_VISIBLE_COLUMNS);
-            ['dma50', 'dma200', 'rsi'].forEach(ind => {
+            ['dma50', 'dma200', 'ema20', 'ema50', 'ema200', 'rsi', 'macd', 'bollinger', 'vwap', 'obv'].forEach(ind => {
               if (selectedIds.includes(ind)) current.add(ind);
               else current.delete(ind);
             });
