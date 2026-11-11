@@ -38,6 +38,90 @@ function formatExecution(row: any) {
   };
 }
 
+type StrategyLogEventType = 'STRATEGY_STARTED' | 'SIGNAL_TRIGGERED' | 'ACTION_EXECUTED';
+
+interface StrategyLogInput {
+  userId: string;
+  portfolioId: string;
+  strategyId?: string | null;
+  strategyName?: string | null;
+  symbol: string;
+  eventType: StrategyLogEventType;
+  actionText: string;
+  signal?: string | null;
+  eventDate?: string;
+  metadata?: Record<string, any>;
+}
+
+function formatStrategyLog(row: any) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    portfolioId: row.portfolio_id,
+    strategyId: row.strategy_id || null,
+    strategyName: row.strategy_name || null,
+    symbol: row.symbol,
+    eventType: row.event_type as StrategyLogEventType,
+    actionText: row.action_text,
+    signal: row.signal || null,
+    eventDate: row.event_date || null,
+    loggedAt: row.logged_at,
+    metadata: row.metadata && typeof row.metadata === 'object' ? row.metadata : {},
+    source: 'db',
+  };
+}
+
+async function writeStrategyLog(
+  supabase: any,
+  input: StrategyLogInput
+): Promise<{ row: any; missingTable: boolean; alreadyRecorded?: boolean }> {
+  const validStrategyId =
+    input.strategyId && UUID_REGEX.test(String(input.strategyId))
+      ? String(input.strategyId)
+      : null;
+
+  const payload = {
+    user_id: input.userId,
+    portfolio_id: input.portfolioId,
+    strategy_id: validStrategyId,
+    strategy_name: input.strategyName || null,
+    symbol: input.symbol,
+    event_type: input.eventType,
+    action_text: input.actionText,
+    signal: input.signal || null,
+    event_date: input.eventDate || getTodayUtcDate(),
+    metadata: input.metadata || {},
+  };
+
+  let { data, error } = await supabase
+    .from('strategy_logs')
+    .insert([payload])
+    .select()
+    .single();
+
+  if (error?.code === '23503' && payload.strategy_id) {
+    const retry = await supabase
+      .from('strategy_logs')
+      .insert([{ ...payload, strategy_id: null }])
+      .select()
+      .single();
+    data = retry.data;
+    error = retry.error;
+  }
+
+  if (error) {
+    if (error.code === '23505') {
+      return { row: null, missingTable: false, alreadyRecorded: true };
+    }
+    if (isMissingTableError(error)) {
+      return { row: null, missingTable: true };
+    }
+    throw error;
+  }
+
+  return { row: data, missingTable: false };
+}
+
 // Helper to normalize DB row into client-friendly model
 function formatStrategy(row: any) {
   if (!row) return null;
@@ -214,6 +298,29 @@ router.post('/', authMiddleware, async (req: any, res: any) => {
       return res.status(500).json({ error: error.message });
     }
 
+    if (
+      finalPortfolioId &&
+      UUID_REGEX.test(String(finalPortfolioId)) &&
+      data?.id &&
+      insertPayload.enabled &&
+      finalTargetSymbol !== 'ALL'
+    ) {
+      try {
+        await writeStrategyLog(req.supabase, {
+          userId: req.user.id,
+          portfolioId: String(finalPortfolioId),
+          strategyId: data.id,
+          strategyName: data.name,
+          symbol: finalTargetSymbol,
+          eventType: 'STRATEGY_STARTED',
+          actionText: `Strategy "${data.name}" started`,
+          metadata: { scope: data.scope || 'specific' },
+        });
+      } catch (logErr) {
+        console.warn('Non-fatal strategy_logs start write error:', logErr);
+      }
+    }
+
     res.status(201).json(formatStrategy(data));
   } catch (err: any) {
     res.status(500).json({ error: err.message || 'Failed to save strategy' });
@@ -376,6 +483,24 @@ router.post('/executions', authMiddleware, async (req: any, res: any) => {
       return res.status(500).json({ error: tradeErr.message || 'Failed to record trade.' });
     }
 
+    // Best-effort log entry for "when the action happened and what action happened"
+    try {
+      await writeStrategyLog(req.supabase, {
+        userId: req.user.id,
+        portfolioId: String(portfolioId),
+        strategyId,
+        strategyName,
+        symbol: rawSymbol,
+        eventType: 'ACTION_EXECUTED',
+        actionText: `Executed ${action} ${quantity} ${quantity === 1 ? 'share' : 'shares'}${strategyName ? ` (${strategyName})` : ''}`,
+        signal: action,
+        eventDate: executionDate,
+        metadata: { action, quantity, price },
+      });
+    } catch (logErr) {
+      console.warn('Non-fatal strategy_logs execution write error:', logErr);
+    }
+
     if (!tableExists) {
       return res.status(201).json({
         persisted: false,
@@ -399,6 +524,233 @@ router.post('/executions', authMiddleware, async (req: any, res: any) => {
     });
   } catch (err: any) {
     return res.status(500).json({ error: err.message || 'Failed to execute strategy signal' });
+  }
+});
+
+// GET /api/strategies/logs - Fetch chronological strategy execution logs for a stock
+router.get('/logs', authMiddleware, async (req: any, res: any) => {
+  try {
+    const portfolioId = typeof req.query?.portfolio_id === 'string' ? req.query.portfolio_id.trim() : '';
+    const symbol = typeof req.query?.symbol === 'string' ? req.query.symbol.trim() : '';
+
+    if (!portfolioId || !UUID_REGEX.test(portfolioId)) {
+      return res.status(400).json({ error: 'Valid portfolio_id is required.' });
+    }
+    if (!symbol) {
+      return res.status(400).json({ error: 'Stock symbol is required.' });
+    }
+
+    const [logsRes, strategiesRes, executionsRes] = await Promise.all([
+      req.supabase
+        .from('strategy_logs')
+        .select('*')
+        .eq('portfolio_id', portfolioId)
+        .eq('symbol', symbol)
+        .order('logged_at', { ascending: true }),
+      req.supabase
+        .from('portfolio_strategies')
+        .select('id, name, scope, target_symbol, enabled, created_at')
+        .or(`portfolio_id.eq.${portfolioId},portfolio_id.is.null`)
+        .order('created_at', { ascending: true }),
+      req.supabase
+        .from('strategy_executions')
+        .select('*')
+        .eq('portfolio_id', portfolioId)
+        .eq('symbol', symbol)
+        .order('executed_at', { ascending: true }),
+    ]);
+
+    let missingTable = false;
+    const logs: any[] = [];
+
+    if (logsRes.error) {
+      if (isMissingTableError(logsRes.error)) {
+        missingTable = true;
+      } else {
+        return res.status(500).json({ error: logsRes.error.message });
+      }
+    } else {
+      for (const row of logsRes.data || []) {
+        const formatted = formatStrategyLog(row);
+        if (formatted) logs.push(formatted);
+      }
+    }
+
+    const recordedStartedStrategyIds = new Set(
+      logs
+        .filter((l) => l.eventType === 'STRATEGY_STARTED' && l.strategyId)
+        .map((l) => String(l.strategyId))
+    );
+
+    const recordedExecutionKeys = new Set(
+      logs
+        .filter((l) => l.eventType === 'ACTION_EXECUTED' && l.eventDate)
+        .map((l) => `${l.eventDate}:${l.signal || ''}`)
+    );
+
+    if (!strategiesRes.error) {
+      for (const strat of strategiesRes.data || []) {
+        if (!strat || strat.id === 'rule-default') continue;
+        const appliesToStock =
+          strat.scope === 'global' ||
+          strat.target_symbol === 'ALL' ||
+          strat.target_symbol === symbol;
+
+        if (!appliesToStock || recordedStartedStrategyIds.has(String(strat.id))) {
+          continue;
+        }
+
+        logs.push({
+          id: `start-${strat.id}`,
+          portfolioId,
+          strategyId: strat.id,
+          strategyName: strat.name || 'Strategy',
+          symbol,
+          eventType: 'STRATEGY_STARTED',
+          actionText: `Strategy "${strat.name || 'Untitled Strategy'}" started`,
+          signal: null,
+          eventDate: strat.created_at ? String(strat.created_at).split('T')[0] : null,
+          loggedAt: strat.created_at,
+          metadata: {
+            scope: strat.scope || 'global',
+            enabled: strat.enabled !== false,
+          },
+          source: 'strategy',
+        });
+      }
+    } else if (!isMissingTableError(strategiesRes.error)) {
+      console.warn('Non-fatal strategy_logs portfolio_strategies lookup error:', strategiesRes.error);
+    }
+
+    if (!executionsRes.error) {
+      for (const exec of executionsRes.data || []) {
+        const execKey = `${exec.execution_date}:${exec.action || ''}`;
+        if (recordedExecutionKeys.has(execKey)) continue;
+
+        const qty = Number(exec.quantity) || 0;
+        const price = Number(exec.price) || 0;
+        logs.push({
+          id: `exec-${exec.id}`,
+          portfolioId,
+          strategyId: exec.strategy_id || null,
+          strategyName: exec.strategy_name || null,
+          symbol,
+          eventType: 'ACTION_EXECUTED',
+          actionText: `Executed ${exec.action} ${qty} ${qty === 1 ? 'share' : 'shares'}${exec.strategy_name ? ` (${exec.strategy_name})` : ''}`,
+          signal: exec.action || null,
+          eventDate: exec.execution_date || null,
+          loggedAt: exec.executed_at,
+          metadata: { action: exec.action, quantity: qty, price },
+          source: 'execution',
+        });
+      }
+    } else if (!isMissingTableError(executionsRes.error)) {
+      console.warn('Non-fatal strategy_logs strategy_executions lookup error:', executionsRes.error);
+    }
+
+    const eventRank: Record<string, number> = {
+      STRATEGY_STARTED: 0,
+      SIGNAL_TRIGGERED: 1,
+      ACTION_EXECUTED: 2,
+    };
+
+    logs.sort((a, b) => {
+      const timeA = a.loggedAt ? new Date(a.loggedAt).getTime() : 0;
+      const timeB = b.loggedAt ? new Date(b.loggedAt).getTime() : 0;
+      if (timeA !== timeB) return timeA - timeB;
+      return (eventRank[a.eventType] ?? 9) - (eventRank[b.eventType] ?? 9);
+    });
+
+    return res.json({ logs, missingTable });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message || 'Failed to fetch strategy logs' });
+  }
+});
+
+// POST /api/strategies/logs/signal - Record first signal occurrence per stock per day
+router.post('/logs/signal', authMiddleware, async (req: any, res: any) => {
+  try {
+    const portfolioId = req.body?.portfolio_id || req.body?.portfolioId;
+    const symbol = typeof req.body?.symbol === 'string' ? req.body.symbol.trim() : '';
+    const signal = req.body?.signal;
+    const rawStrategyId = req.body?.strategy_id || req.body?.strategyId;
+    const strategyId =
+      typeof rawStrategyId === 'string' && UUID_REGEX.test(rawStrategyId) ? rawStrategyId : null;
+    const strategyName =
+      typeof (req.body?.strategy_name || req.body?.strategyName) === 'string'
+        ? String(req.body?.strategy_name || req.body?.strategyName).trim() || null
+        : null;
+    const rawPrice = req.body?.price;
+    const price = rawPrice !== undefined && rawPrice !== null ? Number(rawPrice) : NaN;
+    const rawDate = req.body?.event_date || req.body?.eventDate;
+    const eventDate =
+      typeof rawDate === 'string' && DATE_REGEX.test(rawDate) ? rawDate : getTodayUtcDate();
+
+    if (!portfolioId || !UUID_REGEX.test(String(portfolioId))) {
+      return res.status(400).json({ error: 'Valid portfolio_id is required.' });
+    }
+    if (!symbol) {
+      return res.status(400).json({ error: 'Stock symbol is required.' });
+    }
+    if (signal !== 'BUY' && signal !== 'SELL') {
+      return res.status(400).json({ error: 'Signal must be BUY or SELL.' });
+    }
+
+    const metadata: Record<string, any> = { signal };
+    if (Number.isFinite(price) && price > 0) {
+      metadata.price = price;
+    }
+
+    const actionText = `${signal} signal came${strategyName ? ` (${strategyName})` : ''}`;
+
+    const result = await writeStrategyLog(req.supabase, {
+      userId: req.user.id,
+      portfolioId: String(portfolioId),
+      strategyId,
+      strategyName,
+      symbol,
+      eventType: 'SIGNAL_TRIGGERED',
+      actionText,
+      signal,
+      eventDate,
+      metadata,
+    });
+
+    if (result.missingTable) {
+      return res.status(200).json({
+        persisted: false,
+        missingTable: true,
+        log: {
+          id: `local-${symbol}-${signal}-${eventDate}`,
+          portfolioId: String(portfolioId),
+          strategyId,
+          strategyName,
+          symbol,
+          eventType: 'SIGNAL_TRIGGERED',
+          actionText,
+          signal,
+          eventDate,
+          loggedAt: new Date().toISOString(),
+          metadata,
+          source: 'local',
+        },
+      });
+    }
+
+    if (result.alreadyRecorded) {
+      return res.status(200).json({
+        persisted: true,
+        alreadyRecorded: true,
+      });
+    }
+
+    return res.status(201).json({
+      persisted: true,
+      alreadyRecorded: false,
+      log: formatStrategyLog(result.row),
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message || 'Failed to record strategy signal log' });
   }
 });
 

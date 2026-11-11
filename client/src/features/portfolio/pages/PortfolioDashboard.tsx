@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react'
 import * as XLSX from 'xlsx'
 import { calculateXIRR } from '../../../utils/xirr'
-import { Plus, Briefcase, Trash2, Pencil, ChevronDown, ChevronRight, ChevronUp, ArrowUpCircle, ArrowDownCircle, PanelLeftClose, PanelLeftOpen, Copy, FilterX, ArrowUpDown, Columns, Check, Info, User, LogOut, Folder, Download, Upload, Home, LayoutDashboard, RefreshCw, Sun, Moon, GripVertical, MoreVertical, Activity, Sliders, Loader2, TrendingUp } from 'lucide-react'
+import { Plus, Briefcase, Trash2, Pencil, ChevronDown, ChevronRight, ChevronUp, ArrowUpCircle, ArrowDownCircle, PanelLeftClose, PanelLeftOpen, Copy, FilterX, ArrowUpDown, Columns, Check, Info, User, LogOut, Folder, Download, Upload, Home, LayoutDashboard, RefreshCw, Sun, Moon, GripVertical, MoreVertical, Activity, Sliders, Loader2, TrendingUp, History } from 'lucide-react'
 import {
   DndContext,
   closestCenter,
@@ -41,6 +41,7 @@ import { AddIndicatorsModal, DEFAULT_INDICATOR_CONFIG, type IndicatorConfig } fr
 import { StrategyBuilderModal } from '../components/StrategyBuilderModal'
 import type { StrategyRule } from '../components/StrategyBuilderModal'
 import { evaluateStockStrategies } from '../utils/strategyEvaluator'
+import { StrategyLogsModal, type StrategyLogEntry } from '../components/StrategyLogsModal'
 
 const ALL_SUMMARY_STATS = [
   { id: 'totalStocks', label: 'Total Stocks' },
@@ -226,9 +227,10 @@ function SortableHeaderCell({
               <ArrowUpDown className="w-2.5 h-2.5 text-tertiary group-hover:text-secondary transition-colors shrink-0" />
             )}
           </div>
-          <div className="grid grid-cols-2 text-[8px] sm:text-[9px] text-tertiary divide-x divide-divider/60 pt-0.5 font-medium normal-case tracking-normal text-center">
+          <div className="grid grid-cols-3 text-[8px] sm:text-[9px] text-tertiary divide-x divide-divider/60 pt-0.5 font-medium normal-case tracking-normal text-center">
             <span className="truncate px-0.5">Status</span>
             <span className="truncate px-0.5">Signal</span>
+            <span className="truncate px-0.5">Logs</span>
           </div>
         </div>
       ) : (
@@ -1187,10 +1189,54 @@ export function PortfolioDashboard() {
     setTodayExecutions(getLocalExecutions(pid, today));
   };
 
+  const [logsModalSymbol, setLogsModalSymbol] = useState<string | null>(null);
+
+  const getLocalLogStorageKey = (pid: string | null, dateKey: string) =>
+    `portfolio_strategy_logs_${pid || 'global'}_${dateKey}`;
+
+  const getLocalStrategyLogs = (pid: string | null, dateKey: string): StrategyLogEntry[] => {
+    try {
+      const saved = localStorage.getItem(getLocalLogStorageKey(pid, dateKey));
+      const parsed = saved ? JSON.parse(saved) : [];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  };
+
+  const [localStrategyLogs, setLocalStrategyLogs] = useState<StrategyLogEntry[]>(() =>
+    getLocalStrategyLogs(portfolioId || null, getTodayDateKey())
+  );
+
+  const appendLocalStrategyLog = (
+    pid: string | null,
+    dateKey: string,
+    entry: StrategyLogEntry
+  ) => {
+    setLocalStrategyLogs((prev) => {
+      const exists = prev.some(
+        (item) =>
+          item.symbol === entry.symbol &&
+          item.eventType === entry.eventType &&
+          (item.signal || null) === (entry.signal || null) &&
+          (item.eventDate || null) === (entry.eventDate || null)
+      );
+      if (exists) return prev;
+      const next = [...prev, entry];
+      try {
+        localStorage.setItem(getLocalLogStorageKey(pid, dateKey), JSON.stringify(next));
+      } catch { }
+      return next;
+    });
+  };
+
+  const recordedSignalsRef = useRef<Set<string>>(new Set());
+
   useEffect(() => {
     let isMounted = true;
     const loadExecutions = async () => {
       if (!isMounted) return;
+      setLocalStrategyLogs(getLocalStrategyLogs(activePortfolioId, getTodayDateKey()));
       await syncTodayExecutions(activePortfolioId);
     };
     loadExecutions();
@@ -1198,6 +1244,83 @@ export function PortfolioDashboard() {
       isMounted = false;
     };
   }, [activePortfolioId]);
+
+  // Capture first BUY/SELL signal timestamp per stock per day when live price & indicators are ready
+  const activeSymbolsKey = activeSymbols.join('|');
+  useEffect(() => {
+    if (!activePortfolioId || indicatorsLoading || activeSymbols.length === 0 || portfolioStrategies.length === 0) {
+      return;
+    }
+
+    const today = getTodayDateKey();
+    const existingLocal = getLocalStrategyLogs(activePortfolioId, today);
+
+    for (const sym of activeSymbols) {
+      const livePrice = livePrices[sym]?.price || 0;
+      if (livePrice <= 0) continue;
+
+      const stratStatus = evaluateStockStrategies(portfolioStrategies, sym, {
+        livePrice,
+        changePercent: livePrices[sym]?.changePercent || 0,
+        indicators: indicators[sym] || {},
+      });
+
+      if (stratStatus.signal !== 'BUY' && stratStatus.signal !== 'SELL') continue;
+
+      const dedupeKey = `${activePortfolioId}:${today}:${sym}:${stratStatus.signal}`;
+      if (recordedSignalsRef.current.has(dedupeKey)) continue;
+
+      const alreadySavedLocally = existingLocal.some(
+        (item) =>
+          item.symbol === sym &&
+          item.eventType === 'SIGNAL_TRIGGERED' &&
+          item.signal === stratStatus.signal &&
+          item.eventDate === today
+      );
+      if (alreadySavedLocally) {
+        recordedSignalsRef.current.add(dedupeKey);
+        continue;
+      }
+
+      recordedSignalsRef.current.add(dedupeKey);
+
+      const signal = stratStatus.signal;
+      const strategyName = stratStatus.strategyName || null;
+      const fallbackEntry: StrategyLogEntry = {
+        id: `local-${sym}-${signal}-${today}`,
+        portfolioId: activePortfolioId,
+        strategyId: stratStatus.matchedRule?.id || null,
+        strategyName,
+        symbol: sym,
+        eventType: 'SIGNAL_TRIGGERED',
+        actionText: `${signal} signal came${strategyName ? ` (${strategyName})` : ''}`,
+        signal,
+        eventDate: today,
+        loggedAt: new Date().toISOString(),
+        metadata: { signal, price: livePrice },
+        source: 'local',
+      };
+
+      api
+        .post('/api/strategies/logs/signal', {
+          portfolio_id: activePortfolioId,
+          strategy_id: stratStatus.matchedRule?.id || null,
+          strategy_name: strategyName,
+          symbol: sym,
+          signal,
+          price: livePrice,
+          event_date: today,
+        })
+        .then((res) => {
+          if (res?.log) {
+            appendLocalStrategyLog(activePortfolioId, today, res.log);
+          }
+        })
+        .catch(() => {
+          appendLocalStrategyLog(activePortfolioId, today, fallbackEntry);
+        });
+    }
+  }, [activePortfolioId, activeSymbolsKey, portfolioStrategies, livePrices, indicators, indicatorsLoading]);
 
   const [executingSignalSymbol, setExecutingSignalSymbol] = useState<string | null>(null);
 
@@ -1270,6 +1393,21 @@ export function PortfolioDashboard() {
         const next = { ...prev, [symbol]: executionRecord };
         setLocalExecutions(activePortfolioId, today, next);
         return next;
+      });
+
+      appendLocalStrategyLog(activePortfolioId, today, {
+        id: `local-exec-${symbol}-${action}-${today}`,
+        portfolioId: activePortfolioId,
+        strategyId: matchedRule?.id || null,
+        strategyName: matchedRule?.name || null,
+        symbol,
+        eventType: 'ACTION_EXECUTED',
+        actionText: `Executed ${action} ${qty} ${qty === 1 ? 'share' : 'shares'}${matchedRule?.name ? ` (${matchedRule.name})` : ''}`,
+        signal: action,
+        eventDate: today,
+        loggedAt: new Date(executionRecord.timestamp).toISOString(),
+        metadata: { action, quantity: qty, price: currentPrice },
+        source: response?.persisted ? 'db' : 'local',
       });
 
       await fetchData();
@@ -2267,7 +2405,7 @@ export function PortfolioDashboard() {
                             }
                             width={
                               col.id === 'strategy'
-                                ? Math.max(activeColumnWidths[col.id] || 0, 165)
+                                ? Math.max(activeColumnWidths[col.id] || 0, 215)
                                 : col.id === 'bollinger'
                                   ? Math.max(activeColumnWidths[col.id] || 0, 175)
                                   : col.id === 'macd'
@@ -3025,7 +3163,7 @@ export function PortfolioDashboard() {
                                       key="strategy"
                                       className="px-2 py-1 text-[9px] sm:text-[10px] border-r border-divider text-center align-middle"
                                     >
-                                      <div className="grid grid-cols-2 divide-x divide-divider/70 items-center justify-center text-center h-full min-h-[24px]">
+                                      <div className="grid grid-cols-3 divide-x divide-divider/70 items-center justify-center text-center h-full min-h-[24px]">
                                         <div className="px-1.5 flex items-center justify-center">
                                           {stratStatus.hasActiveStrategy ? (
                                             <span
@@ -3093,6 +3231,20 @@ export function PortfolioDashboard() {
                                           ) : (
                                             <span className="text-tertiary font-mono text-xs">—</span>
                                           )}
+                                        </div>
+                                        <div className="px-1.5 flex items-center justify-center">
+                                          <button
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setLogsModalSymbol(group.symbol);
+                                            }}
+                                            className="inline-flex items-center justify-center gap-1 px-2 py-0.5 rounded text-[8px] sm:text-[9px] font-medium bg-surface-hover/70 hover:bg-primary/15 text-secondary hover:text-primary border border-divider hover:border-primary/40 transition-colors cursor-pointer whitespace-nowrap"
+                                            title={`View strategy execution logs for ${group.symbol}`}
+                                          >
+                                            <History className="w-2.5 h-2.5 shrink-0" />
+                                            Logs
+                                          </button>
                                         </div>
                                       </div>
                                     </td>
@@ -3520,6 +3672,16 @@ export function PortfolioDashboard() {
         indicators={indicators}
         livePrices={livePrices}
         currencySymbol={currencySymbol}
+      />
+
+      <StrategyLogsModal
+        isOpen={Boolean(logsModalSymbol)}
+        onClose={() => setLogsModalSymbol(null)}
+        portfolioId={activePortfolioId || ''}
+        symbol={logsModalSymbol}
+        currencySymbol={currencySymbol}
+        strategies={portfolioStrategies}
+        fallbackLocalLogs={localStrategyLogs}
       />
     </>
   )
