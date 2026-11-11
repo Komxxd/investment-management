@@ -29,7 +29,11 @@ async function fetchWithAuth(endpoint: string, options: RequestInit = {}) {
   }
 
   if (!response.ok) {
-    throw new Error((data && data.error) || response.statusText || 'Request failed');
+    const err = new Error((data && data.error) || response.statusText || 'Request failed') as Error & {
+      status?: number;
+    };
+    err.status = response.status;
+    throw err;
   }
 
   return data;

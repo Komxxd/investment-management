@@ -1109,26 +1109,94 @@ export function PortfolioDashboard() {
   };
 
   // Track daily strategy action executions per portfolio (YYYY-MM-DD): only 1 action per stock per day
-  const getTodayDateKey = () => new Date().toISOString().split('T')[0];
+  const getTodayDateKey = () => {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const d = String(now.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  };
 
-  const [todayExecutions, setTodayExecutions] = useState<Record<string, { action: string; quantity: number; price: number; timestamp: number }>>(() => {
+  type DailyExecutionEntry = {
+    action: string;
+    quantity: number;
+    price: number;
+    timestamp: number;
+    strategyName?: string | null;
+  };
+
+  const getLocalExecutions = (pid: string | null, dateKey: string): Record<string, DailyExecutionEntry> => {
     try {
-      const storageKey = `portfolio_strategy_executions_${portfolioId || 'global'}_${getTodayDateKey()}`;
+      const storageKey = `portfolio_strategy_executions_${pid || 'global'}_${dateKey}`;
       const saved = localStorage.getItem(storageKey);
       return saved ? JSON.parse(saved) : {};
     } catch {
       return {};
     }
-  });
+  };
+
+  const setLocalExecutions = (
+    pid: string | null,
+    dateKey: string,
+    map: Record<string, DailyExecutionEntry>
+  ) => {
+    try {
+      const storageKey = `portfolio_strategy_executions_${pid || 'global'}_${dateKey}`;
+      localStorage.setItem(storageKey, JSON.stringify(map));
+    } catch (e) {
+      console.error('Failed to cache strategy executions locally', e);
+    }
+  };
+
+  const [todayExecutions, setTodayExecutions] = useState<Record<string, DailyExecutionEntry>>(() =>
+    getLocalExecutions(portfolioId || null, getTodayDateKey())
+  );
+
+  const syncTodayExecutions = async (pid: string | null) => {
+    const today = getTodayDateKey();
+    if (!pid) {
+      setTodayExecutions(getLocalExecutions(null, today));
+      return;
+    }
+
+    try {
+      const res = await api.get(
+        `/api/strategies/executions?portfolio_id=${encodeURIComponent(pid)}&date=${today}`
+      );
+      if (Array.isArray(res)) {
+        const dbMap: Record<string, DailyExecutionEntry> = {};
+        for (const item of res) {
+          if (item?.symbol) {
+            dbMap[item.symbol] = {
+              action: item.action,
+              quantity: Number(item.quantity),
+              price: Number(item.price),
+              timestamp: item.timestamp || Date.now(),
+              strategyName: item.strategyName ?? null,
+            };
+          }
+        }
+        setTodayExecutions(dbMap);
+        setLocalExecutions(pid, today, dbMap);
+        return;
+      }
+    } catch {
+      // Fallback to localStorage if endpoint unreachable
+    }
+
+    setTodayExecutions(getLocalExecutions(pid, today));
+  };
 
   useEffect(() => {
-    try {
-      const storageKey = `portfolio_strategy_executions_${activePortfolioId || 'global'}_${getTodayDateKey()}`;
-      const saved = localStorage.getItem(storageKey);
-      setTodayExecutions(saved ? JSON.parse(saved) : {});
-    } catch {
-      setTodayExecutions({});
-    }
+    let isMounted = true;
+    const loadExecutions = async () => {
+      if (!isMounted) return;
+      await syncTodayExecutions(activePortfolioId);
+    };
+    loadExecutions();
+    return () => {
+      isMounted = false;
+    };
   }, [activePortfolioId]);
 
   const [executingSignalSymbol, setExecutingSignalSymbol] = useState<string | null>(null);
@@ -1178,51 +1246,38 @@ export function PortfolioDashboard() {
 
     try {
       const today = getTodayDateKey();
-
-      if (action === 'BUY') {
-        await api.post('/api/stocks', {
-          portfolio_id: activePortfolioId,
-          symbol,
-          quantity: qty,
-          entry_price: currentPrice,
-          brokerage: 0,
-          govt_tax: 0,
-          entry_date: today
-        });
-      } else if (action === 'SELL') {
-        await api.post('/api/sold-stocks', {
-          portfolio_id: activePortfolioId,
-          symbol,
-          quantity: qty,
-          exit_price: currentPrice,
-          brokerage: 0,
-          govt_tax: 0,
-          exit_date: today
-        });
-      }
-
-      // Record execution for today to transition signal to 'Executed'
-      const executionRecord = {
+      const response = await api.post('/api/strategies/executions', {
+        portfolio_id: activePortfolioId,
+        strategy_id: matchedRule?.id || null,
+        strategy_name: matchedRule?.name || null,
+        symbol,
         action,
         quantity: qty,
         price: currentPrice,
-        timestamp: Date.now()
+        execution_date: today,
+      });
+
+      // Record execution for today to transition signal to 'Executed'
+      const executionRecord: DailyExecutionEntry = {
+        action,
+        quantity: qty,
+        price: currentPrice,
+        timestamp: response?.execution?.timestamp || Date.now(),
+        strategyName: matchedRule?.name || null,
       };
 
       setTodayExecutions(prev => {
         const next = { ...prev, [symbol]: executionRecord };
-        try {
-          const storageKey = `portfolio_strategy_executions_${activePortfolioId || 'global'}_${today}`;
-          localStorage.setItem(storageKey, JSON.stringify(next));
-        } catch (e) {
-          console.error('Failed to save strategy execution locally', e);
-        }
+        setLocalExecutions(activePortfolioId, today, next);
         return next;
       });
 
       await fetchData();
     } catch (err: any) {
       console.error('Failed to execute strategy action:', err);
+      if (err?.status === 409) {
+        await syncTodayExecutions(activePortfolioId);
+      }
       alert(`Failed to execute strategy ${action} for ${symbol}: ${err?.message || 'Unknown error'}`);
     } finally {
       setExecutingSignalSymbol(null);
