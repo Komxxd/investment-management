@@ -1,5 +1,6 @@
-import { createBrowserRouter, Navigate } from 'react-router-dom';
+import { createBrowserRouter } from 'react-router-dom';
 import { AppLayout } from '../components/layout/AppLayout';
+import { LandingPage } from '../features/landing/pages/LandingPage';
 import { HomeDashboard } from '../features/portfolio/pages/HomeDashboard';
 import { PortfolioDashboard } from '../features/portfolio/pages/PortfolioDashboard';
 import { AuthForm } from '../features/auth/components/AuthForm';
@@ -10,7 +11,7 @@ import { BacktestPage } from '../features/portfolio/pages/BacktestPage';
 export const router = createBrowserRouter([
   {
     path: '/',
-    element: <Navigate to="/portfolios" replace />
+    element: <LandingPage />
   },
   {
     path: '/login',
