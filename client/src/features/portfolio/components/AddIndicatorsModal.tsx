@@ -16,12 +16,22 @@ export interface IndicatorConfig {
   rsiPeriod: number;
   rsiOverbought: number;
   rsiOversold: number;
+  macdFastPeriod: number;
+  macdSlowPeriod: number;
+  macdSignalPeriod: number;
+  bbPeriod: number;
+  bbStdDev: number;
 }
 
 export const DEFAULT_INDICATOR_CONFIG: IndicatorConfig = {
   rsiPeriod: 14,
   rsiOverbought: 70,
-  rsiOversold: 30
+  rsiOversold: 30,
+  macdFastPeriod: 12,
+  macdSlowPeriod: 26,
+  macdSignalPeriod: 9,
+  bbPeriod: 20,
+  bbStdDev: 2,
 };
 
 export const AVAILABLE_INDICATORS: IndicatorDefinition[] = [
@@ -165,15 +175,31 @@ export function AddIndicatorsModal({
   }, [isOpen, visibleColumns]);
 
   // Configurable RSI state
-  const [rsiPeriod, setRsiPeriod] = useState<number>(config?.rsiPeriod || 14);
-  const [rsiOverbought, setRsiOverbought] = useState<number>(config?.rsiOverbought || 70);
-  const [rsiOversold, setRsiOversold] = useState<number>(config?.rsiOversold || 30);
+  const [rsiPeriod, setRsiPeriod] = useState<number>(config?.rsiPeriod || DEFAULT_INDICATOR_CONFIG.rsiPeriod);
+  const [rsiOverbought, setRsiOverbought] = useState<number>(config?.rsiOverbought || DEFAULT_INDICATOR_CONFIG.rsiOverbought);
+  const [rsiOversold, setRsiOversold] = useState<number>(config?.rsiOversold || DEFAULT_INDICATOR_CONFIG.rsiOversold);
+
+  // Configurable MACD state
+  const [macdFastPeriod, setMacdFastPeriod] = useState<number>(config?.macdFastPeriod || DEFAULT_INDICATOR_CONFIG.macdFastPeriod);
+  const [macdSlowPeriod, setMacdSlowPeriod] = useState<number>(config?.macdSlowPeriod || DEFAULT_INDICATOR_CONFIG.macdSlowPeriod);
+  const [macdSignalPeriod, setMacdSignalPeriod] = useState<number>(config?.macdSignalPeriod || DEFAULT_INDICATOR_CONFIG.macdSignalPeriod);
+
+  // Configurable Bollinger Bands state
+  const [bbPeriod, setBbPeriod] = useState<number>(config?.bbPeriod || DEFAULT_INDICATOR_CONFIG.bbPeriod);
+  const [bbStdDev, setBbStdDev] = useState<number>(config?.bbStdDev || DEFAULT_INDICATOR_CONFIG.bbStdDev);
 
   useEffect(() => {
-    if (config?.rsiPeriod) setRsiPeriod(config.rsiPeriod);
-    if (config?.rsiOverbought) setRsiOverbought(config.rsiOverbought);
-    if (config?.rsiOversold) setRsiOversold(config.rsiOversold);
-  }, [config]);
+    if (config) {
+      if (config.rsiPeriod != null) setRsiPeriod(config.rsiPeriod);
+      if (config.rsiOverbought != null) setRsiOverbought(config.rsiOverbought);
+      if (config.rsiOversold != null) setRsiOversold(config.rsiOversold);
+      if (config.macdFastPeriod != null) setMacdFastPeriod(config.macdFastPeriod);
+      if (config.macdSlowPeriod != null) setMacdSlowPeriod(config.macdSlowPeriod);
+      if (config.macdSignalPeriod != null) setMacdSignalPeriod(config.macdSignalPeriod);
+      if (config.bbPeriod != null) setBbPeriod(config.bbPeriod);
+      if (config.bbStdDev != null) setBbStdDev(config.bbStdDev);
+    }
+  }, [config, isOpen]);
 
   // Sync / progress states
   const [isSyncing, setIsSyncing] = useState(false);
@@ -196,30 +222,43 @@ export function AddIndicatorsModal({
     const activeConfig: IndicatorConfig = {
       rsiPeriod: Math.max(2, Math.min(100, Number(rsiPeriod) || 14)),
       rsiOverbought: Math.max(50, Math.min(95, Number(rsiOverbought) || 70)),
-      rsiOversold: Math.max(5, Math.min(50, Number(rsiOversold) || 30))
+      rsiOversold: Math.max(5, Math.min(50, Number(rsiOversold) || 30)),
+      macdFastPeriod: Math.max(2, Math.min(100, Number(macdFastPeriod) || 12)),
+      macdSlowPeriod: Math.max(5, Math.min(200, Number(macdSlowPeriod) || 26)),
+      macdSignalPeriod: Math.max(2, Math.min(50, Number(macdSignalPeriod) || 9)),
+      bbPeriod: Math.max(5, Math.min(100, Number(bbPeriod) || 20)),
+      bbStdDev: Math.max(0.5, Math.min(5.0, Number(bbStdDev) || 2))
     };
 
     const selectedColumns = AVAILABLE_INDICATORS
       .filter(ind => selectedIds.has(ind.id) && ind.status !== 'coming-soon')
       .map(ind => ind.columnId);
 
-    // Check if RSI is selected and we have symbols to sync
-    const needsRsiSync = selectedIds.has('rsi') && symbols.length > 0;
+    // Check if any indicators are selected and we have symbols to sync
+    const needsSync = selectedColumns.length > 0 && symbols.length > 0;
 
-    if (!needsRsiSync) {
+    if (!needsSync) {
       onApplyIndicators(selectedColumns, activeConfig);
       onClose();
       return;
     }
 
-    // Start SSE progress stream for historical candle & RSI sync
+    // Start SSE progress stream for historical candle & indicator calculation
     setIsSyncing(true);
     setSyncProgress(5);
-    setSyncStatusText(`Preparing local cache for ${symbols.length} assets (RSI ${activeConfig.rsiPeriod})...`);
+    setSyncStatusText(`Computing indicators for ${symbols.length} assets...`);
 
     const apiBase = import.meta.env.VITE_API_URL || 'http://localhost:5001';
-    const querySymbols = encodeURIComponent(symbols.join(','));
-    const url = `${apiBase}/api/prices/indicators/sync-stream?symbols=${querySymbols}&rsiPeriod=${activeConfig.rsiPeriod}`;
+    const queryParams = new URLSearchParams({
+      symbols: symbols.join(','),
+      rsiPeriod: String(activeConfig.rsiPeriod),
+      macdFast: String(activeConfig.macdFastPeriod),
+      macdSlow: String(activeConfig.macdSlowPeriod),
+      macdSignal: String(activeConfig.macdSignalPeriod),
+      bbPeriod: String(activeConfig.bbPeriod),
+      bbStdDev: String(activeConfig.bbStdDev)
+    });
+    const url = `${apiBase}/api/prices/indicators/sync-stream?${queryParams.toString()}`;
 
     try {
       const evtSource = new EventSource(url, { withCredentials: true });
@@ -262,7 +301,7 @@ export function AddIndicatorsModal({
         evtSource.close();
 
         // Fallback fetch
-        fetch(`${apiBase}/api/prices/indicators?symbols=${querySymbols}`)
+        fetch(`${apiBase}/api/prices/indicators?${queryParams.toString()}`, { credentials: 'include' })
           .then(r => r.json())
           .then(data => {
             if (onIndicatorsUpdated) onIndicatorsUpdated(data);
@@ -327,8 +366,8 @@ export function AddIndicatorsModal({
                       onClick={() => setActiveCategory(cat)}
                       disabled={isSyncing}
                       className={`text-left px-2.5 py-2 rounded-lg text-xs sm:text-sm transition-colors flex items-center justify-between ${activeCategory === cat
-                          ? 'bg-primary/10 text-primary font-medium'
-                          : 'text-secondary hover:bg-surface-hover hover:text-primary'
+                        ? 'bg-primary/10 text-primary font-medium'
+                        : 'text-secondary hover:bg-surface-hover hover:text-primary'
                         }`}
                     >
                       <span>{cat}</span>
@@ -361,10 +400,10 @@ export function AddIndicatorsModal({
                     <div
                       key={ind.id}
                       className={`p-3 rounded-lg border transition-all ${isComingSoon
-                          ? 'border-divider/50 bg-background/50 opacity-60'
-                          : isSelected
-                            ? 'border-primary/60 bg-primary/5 shadow-xs'
-                            : 'border-divider bg-surface hover:border-primary/40'
+                        ? 'border-divider/50 bg-background/50 opacity-60'
+                        : isSelected
+                          ? 'border-primary/60 bg-primary/5 shadow-xs'
+                          : 'border-divider bg-surface hover:border-primary/40'
                         }`}
                     >
                       <div
@@ -373,10 +412,10 @@ export function AddIndicatorsModal({
                       >
                         <div
                           className={`mt-0.5 w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-colors ${isSelected
-                              ? 'bg-primary border-primary text-surface'
-                              : isComingSoon
-                                ? 'border-divider bg-background'
-                                : 'border-secondary bg-surface'
+                            ? 'bg-primary border-primary text-surface'
+                            : isComingSoon
+                              ? 'border-divider bg-background'
+                              : 'border-secondary bg-surface'
                             }`}
                         >
                           {isSelected && <Check className="w-3 h-3" />}
@@ -385,10 +424,22 @@ export function AddIndicatorsModal({
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1">
                             <span className="text-xs sm:text-sm font-semibold text-primary truncate">
-                              {ind.id === 'rsi' ? `RSI (${rsiPeriod})` : ind.name}
+                              {ind.id === 'rsi'
+                                ? `RSI (${rsiPeriod})`
+                                : ind.id === 'macd'
+                                  ? `MACD (${macdFastPeriod}, ${macdSlowPeriod}, ${macdSignalPeriod})`
+                                  : ind.id === 'bollinger'
+                                    ? `Bollinger Bands (${bbPeriod}, ${bbStdDev})`
+                                    : ind.name}
                             </span>
                             <span className="px-1.5 py-0.5 rounded text-[9px] font-mono uppercase tracking-wider bg-surface-hover border border-divider text-secondary">
-                              {ind.id === 'rsi' ? `Wilder's ${rsiPeriod}D` : ind.badge}
+                              {ind.id === 'rsi'
+                                ? `Wilder's ${rsiPeriod}D`
+                                : ind.id === 'macd'
+                                  ? `${macdFastPeriod}/${macdSlowPeriod}/${macdSignalPeriod}`
+                                  : ind.id === 'bollinger'
+                                    ? `±${bbStdDev}σ (${bbPeriod}D)`
+                                    : ind.badge}
                             </span>
                             {isComingSoon && (
                               <span className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-500 font-semibold border border-amber-500/20">
@@ -432,8 +483,8 @@ export function AddIndicatorsModal({
                                     type="button"
                                     onClick={() => setRsiPeriod(p)}
                                     className={`px-1.5 py-0.5 rounded text-[9px] font-mono transition-colors ${rsiPeriod === p
-                                        ? 'bg-primary text-surface font-semibold'
-                                        : 'bg-surface hover:bg-surface-hover text-secondary border border-divider'
+                                      ? 'bg-primary text-surface font-semibold'
+                                      : 'bg-surface hover:bg-surface-hover text-secondary border border-divider'
                                       }`}
                                   >
                                     {p}D
@@ -508,6 +559,278 @@ export function AddIndicatorsModal({
                               />
                             </div>
                           </div>
+                        </div>
+                      )}
+
+                      {/* Configurable MACD Settings Drawer */}
+                      {isSelected && ind.id === 'macd' && (
+                        <div
+                          className="mt-3 pt-3 border-t border-divider/60 space-y-2.5 animate-fadeIn"
+                          onClick={e => e.stopPropagation()}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] sm:text-xs font-semibold text-primary flex items-center gap-1">
+                              <Sliders className="w-3 h-3 text-primary" />
+                              MACD Configuration
+                            </span>
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setMacdFastPeriod(12);
+                                  setMacdSlowPeriod(26);
+                                  setMacdSignalPeriod(9);
+                                }}
+                                className={`px-1.5 py-0.5 rounded text-[8.5px] font-mono transition-colors ${macdFastPeriod === 12 && macdSlowPeriod === 26 && macdSignalPeriod === 9
+                                    ? 'bg-primary text-surface font-semibold'
+                                    : 'bg-surface hover:bg-surface-hover text-secondary border border-divider'
+                                  }`}
+                              >
+                                Standard (12, 26, 9)
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setMacdFastPeriod(8);
+                                  setMacdSlowPeriod(21);
+                                  setMacdSignalPeriod(5);
+                                }}
+                                className={`px-1.5 py-0.5 rounded text-[8.5px] font-mono transition-colors ${macdFastPeriod === 8 && macdSlowPeriod === 21 && macdSignalPeriod === 5
+                                    ? 'bg-primary text-surface font-semibold'
+                                    : 'bg-surface hover:bg-surface-hover text-secondary border border-divider'
+                                  }`}
+                              >
+                                Fast (8, 21, 5)
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setMacdFastPeriod(16);
+                                  setMacdSlowPeriod(34);
+                                  setMacdSignalPeriod(9);
+                                }}
+                                className={`px-1.5 py-0.5 rounded text-[8.5px] font-mono transition-colors ${macdFastPeriod === 16 && macdSlowPeriod === 34 && macdSignalPeriod === 9
+                                    ? 'bg-primary text-surface font-semibold'
+                                    : 'bg-surface hover:bg-surface-hover text-secondary border border-divider'
+                                  }`}
+                              >
+                                Smooth (16, 34, 9)
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Inputs Grid */}
+                          <div className="grid grid-cols-3 gap-2">
+                            {/* Fast Period */}
+                            <div className="bg-background/80 p-2 rounded-md border border-divider/60 space-y-1">
+                              <div className="flex items-center justify-between">
+                                <label className="text-[10px] text-secondary font-medium">Fast EMA</label>
+                                <div className="flex gap-0.5">
+                                  {[8, 12, 16].map(v => (
+                                    <button
+                                      key={v}
+                                      type="button"
+                                      onClick={() => setMacdFastPeriod(v)}
+                                      className={`px-1 py-0.2 rounded text-[8px] font-mono ${macdFastPeriod === v ? 'bg-primary text-surface font-semibold' : 'text-secondary hover:text-primary'
+                                        }`}
+                                    >
+                                      {v}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                              <input
+                                type="number"
+                                min={2}
+                                max={100}
+                                value={macdFastPeriod}
+                                onChange={e => setMacdFastPeriod(Math.max(2, Math.min(100, parseInt(e.target.value) || 12)))}
+                                className="w-full bg-surface border border-divider rounded px-2 py-1 text-xs text-primary font-mono focus:outline-none focus:border-primary"
+                              />
+                            </div>
+
+                            {/* Slow Period */}
+                            <div className="bg-background/80 p-2 rounded-md border border-divider/60 space-y-1">
+                              <div className="flex items-center justify-between">
+                                <label className="text-[10px] text-secondary font-medium">Slow EMA</label>
+                                <div className="flex gap-0.5">
+                                  {[21, 26, 34].map(v => (
+                                    <button
+                                      key={v}
+                                      type="button"
+                                      onClick={() => setMacdSlowPeriod(v)}
+                                      className={`px-1 py-0.2 rounded text-[8px] font-mono ${macdSlowPeriod === v ? 'bg-primary text-surface font-semibold' : 'text-secondary hover:text-primary'
+                                        }`}
+                                    >
+                                      {v}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                              <input
+                                type="number"
+                                min={5}
+                                max={200}
+                                value={macdSlowPeriod}
+                                onChange={e => setMacdSlowPeriod(Math.max(5, Math.min(200, parseInt(e.target.value) || 26)))}
+                                className="w-full bg-surface border border-divider rounded px-2 py-1 text-xs text-primary font-mono focus:outline-none focus:border-primary"
+                              />
+                            </div>
+
+                            {/* Signal Period */}
+                            <div className="bg-background/80 p-2 rounded-md border border-divider/60 space-y-1">
+                              <div className="flex items-center justify-between">
+                                <label className="text-[10px] text-secondary font-medium">Signal EMA</label>
+                                <div className="flex gap-0.5">
+                                  {[5, 9, 14].map(v => (
+                                    <button
+                                      key={v}
+                                      type="button"
+                                      onClick={() => setMacdSignalPeriod(v)}
+                                      className={`px-1 py-0.2 rounded text-[8px] font-mono ${macdSignalPeriod === v ? 'bg-primary text-surface font-semibold' : 'text-secondary hover:text-primary'
+                                        }`}
+                                    >
+                                      {v}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                              <input
+                                type="number"
+                                min={2}
+                                max={50}
+                                value={macdSignalPeriod}
+                                onChange={e => setMacdSignalPeriod(Math.max(2, Math.min(50, parseInt(e.target.value) || 9)))}
+                                className="w-full bg-surface border border-divider rounded px-2 py-1 text-xs text-primary font-mono focus:outline-none focus:border-primary"
+                              />
+                            </div>
+                          </div>
+                          <p className="text-[9px] text-tertiary">
+                            Standard MACD line is Fast EMA ({macdFastPeriod}) minus Slow EMA ({macdSlowPeriod}). Signal is {macdSignalPeriod}-period EMA of MACD line.
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Configurable Bollinger Bands Settings Drawer */}
+                      {isSelected && ind.id === 'bollinger' && (
+                        <div
+                          className="mt-3 pt-3 border-t border-divider/60 space-y-2.5 animate-fadeIn"
+                          onClick={e => e.stopPropagation()}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] sm:text-xs font-semibold text-primary flex items-center gap-1">
+                              <Sliders className="w-3 h-3 text-primary" />
+                              Bollinger Bands Configuration
+                            </span>
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setBbPeriod(20);
+                                  setBbStdDev(2);
+                                }}
+                                className={`px-1.5 py-0.5 rounded text-[8.5px] font-mono transition-colors ${bbPeriod === 20 && bbStdDev === 2
+                                    ? 'bg-primary text-surface font-semibold'
+                                    : 'bg-surface hover:bg-surface-hover text-secondary border border-divider'
+                                  }`}
+                              >
+                                Standard (20, 2σ)
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setBbPeriod(10);
+                                  setBbStdDev(1.5);
+                                }}
+                                className={`px-1.5 py-0.5 rounded text-[8.5px] font-mono transition-colors ${bbPeriod === 10 && bbStdDev === 1.5
+                                    ? 'bg-primary text-surface font-semibold'
+                                    : 'bg-surface hover:bg-surface-hover text-secondary border border-divider'
+                                  }`}
+                              >
+                                Tight (10, 1.5σ)
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setBbPeriod(50);
+                                  setBbStdDev(2.5);
+                                }}
+                                className={`px-1.5 py-0.5 rounded text-[8.5px] font-mono transition-colors ${bbPeriod === 50 && bbStdDev === 2.5
+                                    ? 'bg-primary text-surface font-semibold'
+                                    : 'bg-surface hover:bg-surface-hover text-secondary border border-divider'
+                                  }`}
+                              >
+                                Wide (50, 2.5σ)
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Inputs Grid */}
+                          <div className="grid grid-cols-2 gap-2">
+                            {/* SMA Period */}
+                            <div className="bg-background/80 p-2 rounded-md border border-divider/60 space-y-1">
+                              <div className="flex items-center justify-between">
+                                <label className="text-[10px] text-secondary font-medium">Lookback Period (SMA)</label>
+                                <div className="flex gap-1">
+                                  {[10, 20, 50].map(p => (
+                                    <button
+                                      key={p}
+                                      type="button"
+                                      onClick={() => setBbPeriod(p)}
+                                      className={`px-1.5 py-0.2 rounded text-[8px] font-mono transition-colors ${bbPeriod === p
+                                          ? 'bg-primary text-surface font-semibold'
+                                          : 'text-secondary hover:text-primary'
+                                        }`}
+                                    >
+                                      {p}D
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                              <input
+                                type="number"
+                                min={5}
+                                max={100}
+                                value={bbPeriod}
+                                onChange={e => setBbPeriod(Math.max(5, Math.min(100, parseInt(e.target.value) || 20)))}
+                                className="w-full bg-surface border border-divider rounded px-2 py-1 text-xs text-primary font-mono focus:outline-none focus:border-primary"
+                              />
+                            </div>
+
+                            {/* StdDev Multiplier */}
+                            <div className="bg-background/80 p-2 rounded-md border border-divider/60 space-y-1">
+                              <div className="flex items-center justify-between">
+                                <label className="text-[10px] text-secondary font-medium">Std Dev Multiplier (±σ)</label>
+                                <div className="flex gap-1">
+                                  {[1.5, 2.0, 2.5].map(v => (
+                                    <button
+                                      key={v}
+                                      type="button"
+                                      onClick={() => setBbStdDev(v)}
+                                      className={`px-1.5 py-0.2 rounded text-[8px] font-mono transition-colors ${bbStdDev === v
+                                          ? 'bg-primary text-surface font-semibold'
+                                          : 'text-secondary hover:text-primary'
+                                        }`}
+                                    >
+                                      {v}σ
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                              <input
+                                type="number"
+                                step={0.1}
+                                min={0.5}
+                                max={5.0}
+                                value={bbStdDev}
+                                onChange={e => setBbStdDev(Math.max(0.5, Math.min(5.0, parseFloat(e.target.value) || 2)))}
+                                className="w-full bg-surface border border-divider rounded px-2 py-1 text-xs text-primary font-mono focus:outline-none focus:border-primary"
+                              />
+                            </div>
+                          </div>
+                          <p className="text-[9px] text-tertiary">
+                            Computes Upper, Middle (SMA), Lower bands, Volatility Bandwidth %, and %B position.
+                          </p>
                         </div>
                       )}
                     </div>

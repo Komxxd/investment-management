@@ -57,7 +57,16 @@ router.get('/indicators', async (req: any, res: any) => {
       : ['rsi', 'dma50', 'dma200', 'ema20', 'ema50', 'ema200', 'rsiDivergence', 'macd', 'macdSignal', 'macdHist', 'bbUpper', 'bbMiddle', 'bbLower', 'bbBandwidth', 'bbPercentB', 'vwap', 'avgVolume', 'obv', 'obvSignal'];
     const force = req.query.force === 'true';
 
-    const indicators = await fetchIndicators(symbols, requestedIndicators, force);
+    const options = {
+      rsiPeriod: req.query.rsiPeriod ? parseInt(req.query.rsiPeriod, 10) : undefined,
+      macdFastPeriod: req.query.macdFast ? parseInt(req.query.macdFast, 10) : (req.query.macdFastPeriod ? parseInt(req.query.macdFastPeriod, 10) : undefined),
+      macdSlowPeriod: req.query.macdSlow ? parseInt(req.query.macdSlow, 10) : (req.query.macdSlowPeriod ? parseInt(req.query.macdSlowPeriod, 10) : undefined),
+      macdSignalPeriod: req.query.macdSignal ? parseInt(req.query.macdSignal, 10) : (req.query.macdSignalPeriod ? parseInt(req.query.macdSignalPeriod, 10) : undefined),
+      bbPeriod: req.query.bbPeriod ? parseInt(req.query.bbPeriod, 10) : undefined,
+      bbStdDev: req.query.bbStdDev ? parseFloat(req.query.bbStdDev) : undefined,
+    };
+
+    const indicators = await fetchIndicators(symbols, requestedIndicators, force, options);
     res.json(indicators);
   } catch (error) {
     console.error('Indicators Error:', error);
@@ -68,14 +77,15 @@ router.get('/indicators', async (req: any, res: any) => {
 // POST /api/prices/indicators (for batch calculation)
 router.post('/indicators', async (req: any, res: any) => {
   try {
-    const { symbols, indicators: requestedIndicators, force } = req.body || {};
+    const { symbols, indicators: requestedIndicators, force, options } = req.body || {};
     if (!symbols || !Array.isArray(symbols) || symbols.length === 0) {
       return res.json({});
     }
     const indicators = await fetchIndicators(
       symbols,
       requestedIndicators || ['rsi', 'dma50', 'dma200', 'ema20', 'ema50', 'ema200', 'rsiDivergence', 'macd', 'macdSignal', 'macdHist', 'bbUpper', 'bbMiddle', 'bbLower', 'bbBandwidth', 'bbPercentB', 'vwap', 'avgVolume', 'obv', 'obvSignal'],
-      force === true
+      force === true,
+      options || {}
     );
     res.json(indicators);
   } catch (error) {
@@ -99,11 +109,20 @@ router.get('/indicators/sync-stream', async (req: any, res: any) => {
   const symbols = symbolsParam.split(',').map((s: string) => s.trim()).filter(Boolean);
   const force = req.query.force === 'true';
 
+  const options = {
+    rsiPeriod: req.query.rsiPeriod ? parseInt(req.query.rsiPeriod, 10) : undefined,
+    macdFastPeriod: req.query.macdFast ? parseInt(req.query.macdFast, 10) : (req.query.macdFastPeriod ? parseInt(req.query.macdFastPeriod, 10) : undefined),
+    macdSlowPeriod: req.query.macdSlow ? parseInt(req.query.macdSlow, 10) : (req.query.macdSlowPeriod ? parseInt(req.query.macdSlowPeriod, 10) : undefined),
+    macdSignalPeriod: req.query.macdSignal ? parseInt(req.query.macdSignal, 10) : (req.query.macdSignalPeriod ? parseInt(req.query.macdSignalPeriod, 10) : undefined),
+    bbPeriod: req.query.bbPeriod ? parseInt(req.query.bbPeriod, 10) : undefined,
+    bbStdDev: req.query.bbStdDev ? parseFloat(req.query.bbStdDev) : undefined,
+  };
+
   try {
     const { syncMultipleStocks } = await import('./data-storage.service');
     const results = await syncMultipleStocks(symbols, force, (info) => {
       res.write(`data: ${JSON.stringify({ type: 'progress', ...info })}\n\n`);
-    });
+    }, 'day', options);
     res.write(`data: ${JSON.stringify({ type: 'complete', indicators: results })}\n\n`);
     res.end();
   } catch (err) {

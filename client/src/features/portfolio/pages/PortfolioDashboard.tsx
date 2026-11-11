@@ -37,7 +37,7 @@ import { AssetSearch } from '../../stocks/components/AssetSearch'
 import { PortfolioInfoModal } from '../components/PortfolioInfoModal'
 import { RebalanceModal } from '../../stocks/components/RebalanceModal'
 import { ConfirmationModal } from '../../../components/ui/ConfirmationModal'
-import { AddIndicatorsModal } from '../components/AddIndicatorsModal'
+import { AddIndicatorsModal, DEFAULT_INDICATOR_CONFIG, type IndicatorConfig } from '../components/AddIndicatorsModal'
 import { StrategyBuilderModal } from '../components/StrategyBuilderModal'
 import type { StrategyRule } from '../components/StrategyBuilderModal'
 import { evaluateStockStrategies } from '../utils/strategyEvaluator'
@@ -79,9 +79,9 @@ function SortableMenuItem({ stat, isVisible, onToggle }: { stat: any, isVisible:
       style={style}
       className={`w-full flex items-center px-2 py-1 text-[9px] text-left hover:bg-background text-primary transition-colors ${isDragging ? 'bg-surface shadow-md border border-divider rounded-md' : ''}`}
     >
-      <div 
-        {...attributes} 
-        {...listeners} 
+      <div
+        {...attributes}
+        {...listeners}
         className="w-4 flex justify-center mr-1 shrink-0 cursor-grab active:cursor-grabbing text-secondary/50 hover:text-secondary"
       >
         <GripVertical className="w-3 h-3" />
@@ -147,9 +147,9 @@ function SortableColumnMenuItem({ col, isVisible, onToggle }: { col: any, isVisi
       style={style}
       className={`w-full flex items-center px-2 py-1 text-[9px] text-left hover:bg-background text-primary transition-colors ${isDragging ? 'bg-surface shadow-md border border-divider rounded-md' : ''}`}
     >
-      <div 
-        {...attributes} 
-        {...listeners} 
+      <div
+        {...attributes}
+        {...listeners}
         className="w-4 flex justify-center mr-1 shrink-0 cursor-grab active:cursor-grabbing text-secondary/50 hover:text-secondary"
       >
         <GripVertical className="w-3 h-3" />
@@ -162,26 +162,26 @@ function SortableColumnMenuItem({ col, isVisible, onToggle }: { col: any, isVisi
   );
 }
 
-function SortableHeaderCell({ 
-  field, 
-  label, 
-  width, 
-  isNumber, 
-  sortField, 
-  sortDirection, 
+function SortableHeaderCell({
+  field,
+  label,
+  width,
+  isNumber,
+  sortField,
+  sortDirection,
   resizingColId,
-  onSort, 
+  onSort,
   onResizeStart,
   className
-}: { 
-  field: string, 
-  label: string, 
-  width: number, 
-  isNumber: boolean, 
-  sortField: string | null, 
-  sortDirection: 'asc' | 'desc', 
+}: {
+  field: string,
+  label: string,
+  width: number,
+  isNumber: boolean,
+  sortField: string | null,
+  sortDirection: 'asc' | 'desc',
   resizingColId: string | undefined,
-  onSort: (field: string) => void, 
+  onSort: (field: string) => void,
   onResizeStart: (e: React.MouseEvent, id: string, w: number) => void,
   className?: string
 }) {
@@ -199,13 +199,13 @@ function SortableHeaderCell({
     transition,
     opacity: isDragging ? 0.9 : 1,
   };
-  
+
   if (isDragging) {
     style.zIndex = 100;
   }
 
   return (
-    <th 
+    <th
       ref={setNodeRef}
       style={{ ...style, width, minWidth: width, maxWidth: width }}
       {...listeners}
@@ -241,12 +241,12 @@ function SortableHeaderCell({
           )}
         </div>
       )}
-      
+
       <div className="absolute left-1/2 -translate-x-1/2 top-full mt-1 hidden group-hover:block z-50 whitespace-nowrap bg-surface text-primary text-[8px] sm:text-[10px] font-medium px-2 py-1 rounded border border-divider pointer-events-none normal-case tracking-normal">
         {label}
       </div>
 
-      <div 
+      <div
         className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize hover:bg-blue-400 opacity-0 group-hover:opacity-100 transition-opacity z-10"
         onMouseDown={(e) => {
           e.stopPropagation();
@@ -334,12 +334,12 @@ interface SoldStock {
 
 
 export function PortfolioDashboard() {
-  const { 
-    portfolios, setPortfolios, 
-    stocks, setStocks, 
-    soldStocks, setSoldStocks, 
+  const {
+    portfolios, setPortfolios,
+    stocks, setStocks,
+    soldStocks, setSoldStocks,
     loading, setLoading,
-    livePrices, setLivePrices, 
+    livePrices, setLivePrices,
     pricesLoading, setPricesLoading,
     fetchData
   } = usePortfolioContext();
@@ -376,8 +376,8 @@ export function PortfolioDashboard() {
   const [viewCorporateActionsSymbol, setViewCorporateActionsSymbol] = useState<string | null>(null);
   const [portfolioFilters, setPortfolioFilters] = useState<Record<string, { filterType: 'open' | 'closed' | 'all'; searchSelectedSymbols: string[]; sortField: string | null; sortDirection: 'asc' | 'desc' }>>({});
 
-  const currentFilters = activePortfolioId && portfolioFilters[activePortfolioId] 
-    ? portfolioFilters[activePortfolioId] 
+  const currentFilters = activePortfolioId && portfolioFilters[activePortfolioId]
+    ? portfolioFilters[activePortfolioId]
     : { filterType: 'open' as const, searchSelectedSymbols: [] as string[], sortField: null as string | null, sortDirection: 'desc' as const };
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -536,11 +536,11 @@ export function PortfolioDashboard() {
   useEffect(() => {
     if (!settingsLoading && !isSettingsInitialized) {
       if (settings?.portfolioFilters) setPortfolioFilters(settings.portfolioFilters);
-      
+
       if (settings?.expandedSymbols) {
         setExpandedSymbols(new Set(settings.expandedSymbols));
       }
-      
+
       if (settings?.portfolioVisibleSummaryStats) {
         const result: Record<string, Set<string>> = {};
         for (const key in settings.portfolioVisibleSummaryStats) {
@@ -548,11 +548,11 @@ export function PortfolioDashboard() {
         }
         setPortfolioVisibleSummaryStats(result);
       }
-      
+
       if (settings?.portfolioSummaryStatsOrder) {
         setPortfolioSummaryStatsOrder(settings.portfolioSummaryStatsOrder);
       }
-      
+
       if (settings?.portfolioVisibleColumns) {
         const result: Record<string, Set<string>> = {};
         for (const key in settings.portfolioVisibleColumns) {
@@ -564,10 +564,10 @@ export function PortfolioDashboard() {
         }
         setPortfolioVisibleColumns(result);
       }
-      
+
       if (settings?.portfolioColumnOrder) setPortfolioColumnOrder(settings.portfolioColumnOrder);
       if (settings?.portfolioColumnWidths) setPortfolioColumnWidths(settings.portfolioColumnWidths);
-      
+
       setIsSettingsInitialized(true);
     }
   }, [settings, settingsLoading, isSettingsInitialized]);
@@ -579,7 +579,7 @@ export function PortfolioDashboard() {
       for (const key in portfolioVisibleSummaryStats) {
         serializedVisibleSummaryStats[key] = Array.from(portfolioVisibleSummaryStats[key]);
       }
-      
+
       const serializedVisibleColumns: Record<string, string[]> = {};
       for (const key in portfolioVisibleColumns) {
         serializedVisibleColumns[key] = Array.from(portfolioVisibleColumns[key]);
@@ -596,13 +596,13 @@ export function PortfolioDashboard() {
       });
     }
   }, [
-    portfolioFilters, 
-    expandedSymbols, 
-    portfolioVisibleSummaryStats, 
-    portfolioSummaryStatsOrder, 
-    portfolioVisibleColumns, 
-    portfolioColumnOrder, 
-    portfolioColumnWidths, 
+    portfolioFilters,
+    expandedSymbols,
+    portfolioVisibleSummaryStats,
+    portfolioSummaryStatsOrder,
+    portfolioVisibleColumns,
+    portfolioColumnOrder,
+    portfolioColumnWidths,
     isSettingsInitialized,
     updateSettings
   ]);
@@ -654,7 +654,7 @@ export function PortfolioDashboard() {
     let order = (activePortfolioId && portfolioColumnOrder[activePortfolioId])
       ? [...portfolioColumnOrder[activePortfolioId]]
       : ALL_COLUMNS.map(c => c.id);
-    
+
     const missingCols = ALL_COLUMNS.map(c => c.id).filter(id => !order.includes(id));
     if (missingCols.length > 0) {
       missingCols.forEach(missingCol => {
@@ -744,7 +744,7 @@ export function PortfolioDashboard() {
             if (pIdx !== -1) { order.splice(pIdx + 1, 0, missingCol); inserted = true; }
           }
         }
-        
+
         if (!inserted) {
           order.push(missingCol);
         }
@@ -785,7 +785,7 @@ export function PortfolioDashboard() {
 
   const applyColumnLayoutToAll = () => {
     if (!activePortfolioId) return;
-    
+
     const currentOrder = activeColumnOrder;
     const currentVisible = portfolioVisibleColumns[activePortfolioId] || new Set(DEFAULT_VISIBLE_COLUMNS);
     const currentWidths = portfolioColumnWidths[activePortfolioId] || {};
@@ -851,18 +851,18 @@ export function PortfolioDashboard() {
     if (stockToDelete && stockToDelete.entry_price > 0) {
       const otherBuys = stocks.filter(s => s.symbol === stockToDelete.symbol && s.id !== stockId && s.entry_price > 0);
       if (otherBuys.length === 0) {
-        const hasOtherEntries = stocks.some(s => s.symbol === stockToDelete.symbol && s.id !== stockId) || 
-                                soldStocks.some(s => s.symbol === stockToDelete.symbol);
+        const hasOtherEntries = stocks.some(s => s.symbol === stockToDelete.symbol && s.id !== stockId) ||
+          soldStocks.some(s => s.symbol === stockToDelete.symbol);
         if (hasOtherEntries) {
-           setConfirmationConfig({
-             isOpen: true,
-             title: 'Delete Asset entirely?',
-             message: `Deleting the last Buy entry for ${stockToDelete.symbol} will also delete all associated Sells and Corporate Actions. Continue?`,
-             confirmText: 'Delete All',
-             isDestructive: true,
-             onConfirm: () => executeDeleteAsset(stockToDelete.symbol)
-           });
-           return;
+          setConfirmationConfig({
+            isOpen: true,
+            title: 'Delete Asset entirely?',
+            message: `Deleting the last Buy entry for ${stockToDelete.symbol} will also delete all associated Sells and Corporate Actions. Continue?`,
+            confirmText: 'Delete All',
+            isDestructive: true,
+            onConfirm: () => executeDeleteAsset(stockToDelete.symbol)
+          });
+          return;
         }
         executeDeleteAsset(stockToDelete.symbol);
         return;
@@ -949,7 +949,7 @@ export function PortfolioDashboard() {
       setLoading(true);
       const newName = `${originalName} (Copy)`;
       const newPortfolio = await api.post('/api/portfolios', { name: newName });
-      
+
       const originalStocks = stocks.filter(s => s.portfolio_id === id);
       const originalSoldStocks = soldStocks.filter(s => s.portfolio_id === id);
 
@@ -1041,6 +1041,17 @@ export function PortfolioDashboard() {
   const [indicators, setIndicators] = useState<Record<string, IndicatorData>>({});
   const [indicatorsLoading, setIndicatorsLoading] = useState(false);
   const [isAddIndicatorsModalOpen, setIsAddIndicatorsModalOpen] = useState(false);
+  const [indicatorConfig, setIndicatorConfig] = useState<IndicatorConfig>(() => {
+    try {
+      const saved = localStorage.getItem('portfolio_indicator_config');
+      if (saved) {
+        return { ...DEFAULT_INDICATOR_CONFIG, ...JSON.parse(saved) };
+      }
+    } catch {
+      // fallback
+    }
+    return DEFAULT_INDICATOR_CONFIG;
+  });
   const [isStrategyBuilderModalOpen, setIsStrategyBuilderModalOpen] = useState(false);
   const [activeStrategiesCount, setActiveStrategiesCount] = useState(0);
   const [portfolioStrategies, setPortfolioStrategies] = useState<StrategyRule[]>([]);
@@ -1248,7 +1259,17 @@ export function PortfolioDashboard() {
     if (!allStockSymbols) return;
     setIndicatorsLoading(true);
     const apiBase = import.meta.env.VITE_API_URL || 'http://localhost:5001';
-    fetch(`${apiBase}/api/prices/indicators?symbols=${encodeURIComponent(allStockSymbols)}&force=${force}`, { credentials: 'include' })
+    const params = new URLSearchParams({
+      symbols: allStockSymbols,
+      force: String(force),
+      rsiPeriod: String(indicatorConfig.rsiPeriod),
+      macdFast: String(indicatorConfig.macdFastPeriod),
+      macdSlow: String(indicatorConfig.macdSlowPeriod),
+      macdSignal: String(indicatorConfig.macdSignalPeriod),
+      bbPeriod: String(indicatorConfig.bbPeriod),
+      bbStdDev: String(indicatorConfig.bbStdDev),
+    });
+    fetch(`${apiBase}/api/prices/indicators?${params.toString()}`, { credentials: 'include' })
       .then(r => r.json())
       .then(data => {
         setIndicators(prev => ({ ...prev, ...data }));
@@ -1263,8 +1284,8 @@ export function PortfolioDashboard() {
   const toggleIndicator = (indId: 'dma50' | 'dma200' | 'rsi') => {
     if (!activePortfolioId) return;
     setPortfolioVisibleColumns(prev => {
-      const current = prev[activePortfolioId] 
-        ? new Set(prev[activePortfolioId]) 
+      const current = prev[activePortfolioId]
+        ? new Set(prev[activePortfolioId])
         : new Set(DEFAULT_VISIBLE_COLUMNS);
       const next = new Set(current);
       if (next.has(indId)) {
@@ -1279,7 +1300,7 @@ export function PortfolioDashboard() {
   useEffect(() => {
     if (!allStockSymbols || !indicatorColumnsVisible) return;
     fetchPortfolioIndicators(false);
-  }, [allStockSymbols, indicatorColumnsVisible]);
+  }, [allStockSymbols, indicatorColumnsVisible, indicatorConfig]);
 
   const toggleSymbol = (symbol: string) => {
     setExpandedSymbols(prev => {
@@ -1375,7 +1396,7 @@ export function PortfolioDashboard() {
   let portfolioRealizedCostBasis = filteredSymbolGroups.reduce((sum, g: any) => sum + convert(g.totalBuyCost - g.netCostBasis, livePrices[g.symbol]?.currency), 0);
   let maxNetInvested = convert(summary.maxNetInvested, 'INR');
 
-  const portfolioCashFlows = filteredSymbolGroups.flatMap((g: any) => 
+  const portfolioCashFlows = filteredSymbolGroups.flatMap((g: any) =>
     (g.cashFlows || []).map((cf: any) => ({
       ...cf,
       amount: convert(cf.amount, livePrices[g.symbol]?.currency)
@@ -1438,6 +1459,12 @@ export function PortfolioDashboard() {
       } else if (sortField === 'rsi') {
         valA = indicators[a.symbol]?.rsi ?? -1;
         valB = indicators[b.symbol]?.rsi ?? -1;
+      } else if (sortField === 'macd') {
+        valA = indicators[a.symbol]?.macdHist ?? indicators[a.symbol]?.macd ?? -Infinity;
+        valB = indicators[b.symbol]?.macdHist ?? indicators[b.symbol]?.macd ?? -Infinity;
+      } else if (sortField === 'bollinger') {
+        valA = indicators[a.symbol]?.bbPercentB ?? -Infinity;
+        valB = indicators[b.symbol]?.bbPercentB ?? -Infinity;
       } else if (sortField === 'obv') {
         valA = indicators[a.symbol]?.obv ?? -Infinity;
         valB = indicators[b.symbol]?.obv ?? -Infinity;
@@ -1466,8 +1493,8 @@ export function PortfolioDashboard() {
 
       // Handle string comparisons (e.g., symbol)
       if (typeof valA === 'string' && typeof valB === 'string') {
-        return sortDirection === 'asc' 
-          ? valA.localeCompare(valB) 
+        return sortDirection === 'asc'
+          ? valA.localeCompare(valB)
           : valB.localeCompare(valA);
       }
 
@@ -1518,7 +1545,7 @@ export function PortfolioDashboard() {
       const currentValue = group.netQty * currentPrice;
       const pnl = currentValue - group.netCostBasis;
       const pnlPct = group.netCostBasis > 0 ? (pnl / group.netCostBasis) * 100 : 0;
-      
+
       return {
         Ticker: group.symbol,
         'Total Quantity': group.netQty,
@@ -1640,7 +1667,7 @@ export function PortfolioDashboard() {
         data.forEach(row => {
           const type = row['Type']?.toString().toUpperCase();
           const symbol = row['Ticker'];
-          
+
           let rawQty = 0;
           let rawPrice = 0;
 
@@ -1666,7 +1693,7 @@ export function PortfolioDashboard() {
           } else if (typeof dateStr === 'string') {
             parsedDate = new Date(dateStr).toISOString().split('T')[0];
           } else {
-             parsedDate = new Date().toISOString().split('T')[0];
+            parsedDate = new Date().toISOString().split('T')[0];
           }
 
           if (type === 'BUY' || type === 'DIVIDEND' || type === 'SPLIT' || type === 'BONUS') {
@@ -1699,7 +1726,7 @@ export function PortfolioDashboard() {
 
   const renderStatCard = (id: string) => {
     if (!activeVisibleSummaryStats.has(id)) return null;
-    
+
     let content = null;
     switch (id) {
       case 'totalStocks':
@@ -1872,1416 +1899,1435 @@ export function PortfolioDashboard() {
 
   return (
     <>
-    <div className="flex-1 w-full flex flex-col min-h-0">
-              {/* Stats Cards & Customize */}
-              <div className="flex gap-2 mb-2 md:mb-3">
-                <DndContext 
-                  sensors={sensors}
-                  collisionDetection={closestCenter}
-                  onDragEnd={handleSummaryDragEnd}
-                >
-                  <SortableContext items={activeSummaryStatsOrder.filter(id => activeVisibleSummaryStats.has(id))} strategy={horizontalListSortingStrategy}>
-                    <div className="flex gap-2 flex-1 min-w-0 overflow-x-auto xl:overflow-x-hidden no-scrollbar pb-1 xl:pb-0 [&>div]:min-w-[115px] xl:[&>div]:min-w-0 [&>div]:flex-1">
-                      {activeSummaryStatsOrder.map(id => renderStatCard(id))}
-                    </div>
-                  </SortableContext>
-                </DndContext>
+      <div className="flex-1 w-full flex flex-col min-h-0">
+        {/* Stats Cards & Customize */}
+        <div className="flex gap-2 mb-2 md:mb-3">
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleSummaryDragEnd}
+          >
+            <SortableContext items={activeSummaryStatsOrder.filter(id => activeVisibleSummaryStats.has(id))} strategy={horizontalListSortingStrategy}>
+              <div className="flex gap-2 flex-1 min-w-0 overflow-x-auto xl:overflow-x-hidden no-scrollbar pb-1 xl:pb-0 [&>div]:min-w-[115px] xl:[&>div]:min-w-0 [&>div]:flex-1">
+                {activeSummaryStatsOrder.map(id => renderStatCard(id))}
+              </div>
+            </SortableContext>
+          </DndContext>
 
-                <div className="relative shrink-0 flex">
-                  <button
-                    onClick={() => setIsSummaryDropdownOpen(!isSummaryDropdownOpen)}
-                    className="flex items-center justify-center w-7 h-7 sm:w-8 sm:h-8 self-center bg-background hover:bg-surface-hover border border-divider rounded text-secondary hover:text-primary transition-colors"
-                    title="Customize Summary"
+          <div className="relative shrink-0 flex">
+            <button
+              onClick={() => setIsSummaryDropdownOpen(!isSummaryDropdownOpen)}
+              className="flex items-center justify-center w-7 h-7 sm:w-8 sm:h-8 self-center bg-background hover:bg-surface-hover border border-divider rounded text-secondary hover:text-primary transition-colors"
+              title="Customize Summary"
+            >
+              <Columns className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+            </button>
+            {isSummaryDropdownOpen && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setIsSummaryDropdownOpen(false)} />
+                <div className="absolute right-0 top-full mt-1 w-48 bg-surface border border-divider rounded-lg shadow-2xl shadow-black/50 z-50 py-1 max-h-64 overflow-y-auto">
+                  <div className="border-b border-divider p-1 mb-0.5 space-y-0.5">
+                    <button
+                      onClick={applySummaryLayoutToAll}
+                      className="w-full flex items-center justify-center px-2 py-1 text-[9px] uppercase tracking-wider font-semibold text-blue-400 hover:text-blue-800 hover:bg-blue-500/10 rounded transition-colors"
+                    >
+                      Apply to All Portfolios
+                    </button>
+                    <button
+                      onClick={resetSummaryStats}
+                      className="w-full flex items-center justify-center px-2 py-1 text-[9px] uppercase tracking-wider font-semibold text-secondary hover:text-secondary hover:bg-background rounded transition-colors"
+                    >
+                      Reset to Default
+                    </button>
+                  </div>
+                  <DndContext
+                    sensors={sensors}
+                    collisionDetection={closestCenter}
+                    onDragEnd={handleSummaryDragEnd}
                   >
-                    <Columns className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                  </button>
-                  {isSummaryDropdownOpen && (
-                    <>
-                      <div className="fixed inset-0 z-40" onClick={() => setIsSummaryDropdownOpen(false)} />
-                      <div className="absolute right-0 top-full mt-1 w-48 bg-surface border border-divider rounded-lg shadow-2xl shadow-black/50 z-50 py-1 max-h-64 overflow-y-auto">
-                        <div className="border-b border-divider p-1 mb-0.5 space-y-0.5">
-                          <button
-                            onClick={applySummaryLayoutToAll}
-                            className="w-full flex items-center justify-center px-2 py-1 text-[9px] uppercase tracking-wider font-semibold text-blue-400 hover:text-blue-800 hover:bg-blue-500/10 rounded transition-colors"
-                          >
-                            Apply to All Portfolios
-                          </button>
-                          <button
-                            onClick={resetSummaryStats}
-                            className="w-full flex items-center justify-center px-2 py-1 text-[9px] uppercase tracking-wider font-semibold text-secondary hover:text-secondary hover:bg-background rounded transition-colors"
-                          >
-                            Reset to Default
-                          </button>
-                        </div>
-                        <DndContext
-                          sensors={sensors}
-                          collisionDetection={closestCenter}
-                          onDragEnd={handleSummaryDragEnd}
-                        >
-                          <SortableContext items={activeSummaryStatsOrder} strategy={verticalListSortingStrategy}>
-                            {activeSummaryStatsOrder.map(id => {
-                              const stat = ALL_SUMMARY_STATS.find(s => s.id === id);
-                              if (!stat) return null;
-                              return (
-                                <SortableMenuItem
-                                  key={stat.id}
-                                  stat={stat}
-                                  isVisible={activeVisibleSummaryStats.has(stat.id)}
-                                  onToggle={toggleSummaryStat}
-                                />
-                              );
-                            })}
-                          </SortableContext>
-                        </DndContext>
-                      </div>
-                    </>
-                  )}
+                    <SortableContext items={activeSummaryStatsOrder} strategy={verticalListSortingStrategy}>
+                      {activeSummaryStatsOrder.map(id => {
+                        const stat = ALL_SUMMARY_STATS.find(s => s.id === id);
+                        if (!stat) return null;
+                        return (
+                          <SortableMenuItem
+                            key={stat.id}
+                            stat={stat}
+                            isVisible={activeVisibleSummaryStats.has(stat.id)}
+                            onToggle={toggleSummaryStat}
+                          />
+                        );
+                      })}
+                    </SortableContext>
+                  </DndContext>
                 </div>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Data Table */}
+        <div className="bg-surface border border-divider rounded-lg flex flex-col flex-1 min-h-0">
+          <div className="px-3 py-2 border-b border-divider flex flex-wrap justify-between items-center gap-2 bg-surface shrink-0">
+            <div className="flex flex-wrap items-center gap-2 sm:gap-4">
+              <div className="flex items-center gap-2">
+                <h3 className="font-semibold text-base text-primary">Assets</h3>
+                <button
+                  onClick={() => setIsPortfolioInfoModalOpen(true)}
+                  className="text-tertiary hover:text-blue-500 transition-colors"
+                  title="View Corporate Actions Timeline"
+                >
+                  <Info className="w-4 h-4" />
+                </button>
+                {pricesLoading && (
+                  <div className="w-3.5 h-3.5 border-2 border-divider border-t-zinc-900 rounded-full animate-spin" title="Updating live prices..." />
+                )}
+              </div>
+              <div className="flex bg-surface-hover p-0.5 rounded-lg border border-divider">
+                {(['open', 'closed', 'all'] as const).map(type => (
+                  <button
+                    key={type}
+                    onClick={() => setFilterType(type)}
+                    className={`px-3 py-1 text-[10px] font-medium rounded-md capitalize transition-colors ${filterType === type ? 'bg-surface text-primary ' : 'text-secondary hover:text-secondary'
+                      }`}
+                  >
+                    {type}
+                  </button>
+                ))}
               </div>
 
-              {/* Data Table */}
-              <div className="bg-surface border border-divider rounded-lg flex flex-col flex-1 min-h-0">
-                <div className="px-3 py-2 border-b border-divider flex flex-wrap justify-between items-center gap-2 bg-surface shrink-0">
-                  <div className="flex flex-wrap items-center gap-2 sm:gap-4">
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-semibold text-base text-primary">Assets</h3>
-                      <button 
-                        onClick={() => setIsPortfolioInfoModalOpen(true)}
-                        className="text-tertiary hover:text-blue-500 transition-colors"
-                        title="View Corporate Actions Timeline"
-                      >
-                        <Info className="w-4 h-4" />
-                      </button>
-                      {pricesLoading && (
-                        <div className="w-3.5 h-3.5 border-2 border-divider border-t-zinc-900 rounded-full animate-spin" title="Updating live prices..." />
-                      )}
-                    </div>
-                    <div className="flex bg-surface-hover p-0.5 rounded-lg border border-divider">
-                      {(['open', 'closed', 'all'] as const).map(type => (
-                        <button
-                          key={type}
-                          onClick={() => setFilterType(type)}
-                          className={`px-3 py-1 text-[10px] font-medium rounded-md capitalize transition-colors ${
-                            filterType === type ? 'bg-surface text-primary ' : 'text-secondary hover:text-secondary'
-                          }`}
-                        >
-                          {type}
-                        </button>
-                      ))}
-                    </div>
-                    
-                    <AssetSearch 
-                      availableAssets={activeSymbols.map(sym => ({ symbol: sym, name: livePrices[sym]?.name || '' }))} 
-                      selectedSymbols={searchSelectedSymbols} 
-                      onChange={setSearchSelectedSymbols} 
-                    />
+              <AssetSearch
+                availableAssets={activeSymbols.map(sym => ({ symbol: sym, name: livePrices[sym]?.name || '' }))}
+                selectedSymbols={searchSelectedSymbols}
+                onChange={setSearchSelectedSymbols}
+              />
 
-                    {(filterType !== 'open' || sortField !== null || searchSelectedSymbols.length > 0) && (
-                      <button
-                        onClick={() => {
-                          setFilterType('open');
-                          setSortField(null);
-                          setSearchSelectedSymbols([]);
-                        }}
-                        className="flex items-center gap-1 px-2 py-1 bg-surface border border-divider rounded-md  text-[10px] font-medium text-secondary hover:text-primary transition-colors"
-                      >
-                        <FilterX className="w-3 h-3" />
-                        Clear
-                      </button>
-                    )}
-                    
-                    {/* Technical Indicators Trigger Button */}
-                    <button
-                      onClick={() => setIsAddIndicatorsModalOpen(true)}
-                      className="flex items-center gap-1 px-2 py-1 bg-surface border border-divider rounded-md text-[10px] font-medium text-secondary hover:text-primary transition-colors"
-                      title="Technical Indicators (50 DMA, 200 DMA, RSI 14)"
-                    >
-                      <Activity className="w-3 h-3" />
-                      <span>Add Indicators</span>
-                    </button>
-
-                    {/* Strategy Builder Trigger Button */}
-                    <button
-                      onClick={() => setIsStrategyBuilderModalOpen(true)}
-                      className="flex items-center gap-1 px-2 py-1 bg-surface border border-divider rounded-md text-[10px] font-medium text-secondary hover:text-primary transition-colors cursor-pointer"
-                      title="Strategy Builder"
-                    >
-                      <Sliders className="w-3 h-3" />
-                      <span>Add Strategy</span>
-                    </button>
-
-                    <div className="relative">
-                      <button
-                        onClick={() => setIsColumnsDropdownOpen(!isColumnsDropdownOpen)}
-                        className="flex items-center gap-1 px-2 py-1 bg-surface border border-divider rounded-md text-[10px] font-medium text-secondary hover:text-primary transition-colors"
-                      >
-                        <Columns className="w-3 h-3" />
-                        Columns
-                      </button>
-                      
-                      {isColumnsDropdownOpen && (
-                        <>
-                          <div className="fixed inset-0 z-40" onClick={() => setIsColumnsDropdownOpen(false)} />
-                          <div className="absolute left-0 mt-1 w-48 bg-surface border border-divider rounded-lg shadow-2xl shadow-black/50 shadow-black/40 z-50 py-1 max-h-64 overflow-y-auto">
-                            <div className="border-b border-divider p-1 mb-0.5 space-y-0.5">
-                              <button
-                                onClick={applyColumnLayoutToAll}
-                                className="w-full flex items-center justify-center px-2 py-1 text-[9px] uppercase tracking-wider font-semibold text-blue-400 hover:text-blue-800 hover:bg-blue-500/10 rounded transition-colors"
-                              >
-                                Apply to All Portfolios
-                              </button>
-                              <button
-                                onClick={resetColumns}
-                                className="w-full flex items-center justify-center px-2 py-1 text-[9px] uppercase tracking-wider font-semibold text-secondary hover:text-secondary hover:bg-background rounded transition-colors"
-                              >
-                                Reset to Default
-                              </button>
-                            </div>
-                            <DndContext
-                              sensors={sensors}
-                              collisionDetection={closestCenter}
-                              onDragEnd={handleColumnDragEnd}
-                            >
-                              <SortableContext items={activeColumnOrder} strategy={verticalListSortingStrategy}>
-                                {activeColumnOrder.map(colId => {
-                                  const col = ALL_COLUMNS.find(c => c.id === colId);
-                                  if (!col) return null; // skip stale/unknown column IDs
-                                  return (
-                                    <SortableColumnMenuItem
-                                      key={col.id}
-                                      col={col}
-                                      isVisible={visibleColumns.has(col.id)}
-                                      onToggle={toggleColumn}
-                                    />
-                                  );
-                                })}
-                              </SortableContext>
-                            </DndContext>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-                    <button
-                      onClick={() => setAddStockPortfolioId(activePortfolioId)}
-                      className="text-xs font-medium text-secondary hover:text-primary transition-colors"
-                    >
-                      + Buy Asset
-                    </button>
-                    <button
-                      onClick={() => setSellStockPortfolioId(activePortfolioId)}
-                      className="text-xs font-medium text-danger hover:text-danger transition-colors"
-                    >
-                      − Sell Asset
-                    </button>
-                    <div className="relative flex items-center">
-                      <button
-                        onClick={() => setIsActionMenuOpen(!isActionMenuOpen)}
-                        className="text-secondary hover:text-primary transition-colors flex items-center justify-center p-1 rounded-md hover:bg-surface-hover"
-                        title="More Actions"
-                      >
-                        <MoreVertical className="w-4 h-4" />
-                      </button>
-                      {isActionMenuOpen && (
-                        <>
-                          <div className="fixed inset-0 z-40" onClick={() => setIsActionMenuOpen(false)} />
-                          <div className="absolute right-0 top-full mt-1 w-32 bg-surface border border-divider rounded-lg shadow-2xl shadow-black/50 z-50 py-1 flex flex-col">
-                            <button
-                              onClick={() => { setIsRebalanceModalOpen(true); setIsActionMenuOpen(false); }}
-                              className="px-3 py-1.5 text-left text-xs font-medium text-primary hover:bg-surface-hover transition-colors"
-                            >
-                              Rebalance
-                            </button>
-                            <div className="border-t border-divider my-0.5"></div>
-                            <button
-                              onClick={() => { setCorporateActionType('bonus'); setIsActionMenuOpen(false); }}
-                              className="px-3 py-1.5 text-left text-xs font-medium text-primary hover:bg-surface-hover transition-colors"
-                            >
-                              Add Bonus
-                            </button>
-                            <button
-                              onClick={() => { setCorporateActionType('split'); setIsActionMenuOpen(false); }}
-                              className="px-3 py-1.5 text-left text-xs font-medium text-primary hover:bg-surface-hover transition-colors"
-                            >
-                              Add Split
-                            </button>
-                            <button
-                              onClick={() => { setCorporateActionType('dividend'); setIsActionMenuOpen(false); }}
-                              className="px-3 py-1.5 text-left text-xs font-medium text-primary hover:bg-surface-hover transition-colors"
-                            >
-                              Add Dividend
-                            </button>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                    <button
-                      onClick={() => {
-                        if (expandedSymbols.size > 0) {
-                          setExpandedSymbols(new Set());
-                        } else {
-                          setExpandedSymbols(new Set(filteredSymbolGroups.map(g => g.symbol)));
-                        }
-                      }}
-                      className="text-xs font-medium text-secondary hover:text-primary transition-colors flex items-center gap-1"
-                    >
-                      <ArrowUpDown className="w-3 h-3" />
-                      {expandedSymbols.size > 0 ? 'Collapse All' : 'Expand All'}
-                    </button>
-                    <div className="w-px h-3 bg-divider mx-1"></div>
-
-                    <button
-                      onClick={exportToExcel}
-                      disabled={filteredSymbolGroups.length === 0}
-                      className="text-xs font-medium text-secondary hover:text-primary transition-colors flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      <Download className="w-3 h-3" />
-                      Export
-                    </button>
-                  </div>
-                </div>
-
-                <DndContext
-                  sensors={sensors}
-                  collisionDetection={closestCenter}
-                  onDragEnd={handleColumnDragEnd}
+              {(filterType !== 'open' || sortField !== null || searchSelectedSymbols.length > 0) && (
+                <button
+                  onClick={() => {
+                    setFilterType('open');
+                    setSortField(null);
+                    setSearchSelectedSymbols([]);
+                  }}
+                  className="flex items-center gap-1 px-2 py-1 bg-surface border border-divider rounded-md  text-[10px] font-medium text-secondary hover:text-primary transition-colors"
                 >
-                  <div className="flex-1 bg-surface overflow-auto relative min-h-0">
-                    <table className="w-full text-left border-collapse whitespace-nowrap table-fixed">
-                      <thead className="sticky top-0 z-40 bg-surface ">
-                        <tr className="border-b border-divider divide-x divide-divider">
-                          <th className="px-2 py-1.5 text-[9px] sm:text-[10px] uppercase tracking-wider font-semibold text-secondary w-6 bg-surface sticky left-0 z-30"></th>
-                          {visibleColumns.has('symbol') && (
-                            <SortableHeaderCell 
-                              key="symbol"
-                              field="symbol"
-                              label="Symbol"
-                              width={activeColumnWidths['symbol'] || 180}
-                              isNumber={false}
-                              sortField={sortField}
-                              sortDirection={sortDirection}
-                              resizingColId={resizingCol?.id}
-                              onSort={handleSort}
-                              onResizeStart={handleResizeStart}
-                              className="sticky left-6 z-30 bg-surface border-r border-divider"
-                            />
-                          )}
-                          <SortableContext items={activeColumnOrder.filter(id => visibleColumns.has(id) && id !== 'symbol')} strategy={horizontalListSortingStrategy}>
-                            {activeColumnOrder.filter(id => id !== 'symbol').map(colId => {
-                              if (!visibleColumns.has(colId)) return null;
-                              const col = ALL_COLUMNS.find(c => c.id === colId)!;
+                  <FilterX className="w-3 h-3" />
+                  Clear
+                </button>
+              )}
+
+              {/* Technical Indicators Trigger Button */}
+              <button
+                onClick={() => setIsAddIndicatorsModalOpen(true)}
+                className="flex items-center gap-1 px-2 py-1 bg-surface border border-divider rounded-md text-[10px] font-medium text-secondary hover:text-primary transition-colors"
+                title="Technical Indicators (50 DMA, 200 DMA, RSI 14)"
+              >
+                <Activity className="w-3 h-3" />
+                <span>Add Indicators</span>
+              </button>
+
+              {/* Strategy Builder Trigger Button */}
+              <button
+                onClick={() => setIsStrategyBuilderModalOpen(true)}
+                className="flex items-center gap-1 px-2 py-1 bg-surface border border-divider rounded-md text-[10px] font-medium text-secondary hover:text-primary transition-colors cursor-pointer"
+                title="Strategy Builder"
+              >
+                <Sliders className="w-3 h-3" />
+                <span>Add Strategy</span>
+              </button>
+
+              <div className="relative">
+                <button
+                  onClick={() => setIsColumnsDropdownOpen(!isColumnsDropdownOpen)}
+                  className="flex items-center gap-1 px-2 py-1 bg-surface border border-divider rounded-md text-[10px] font-medium text-secondary hover:text-primary transition-colors"
+                >
+                  <Columns className="w-3 h-3" />
+                  Columns
+                </button>
+
+                {isColumnsDropdownOpen && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setIsColumnsDropdownOpen(false)} />
+                    <div className="absolute left-0 mt-1 w-48 bg-surface border border-divider rounded-lg shadow-2xl shadow-black/50 shadow-black/40 z-50 py-1 max-h-64 overflow-y-auto">
+                      <div className="border-b border-divider p-1 mb-0.5 space-y-0.5">
+                        <button
+                          onClick={applyColumnLayoutToAll}
+                          className="w-full flex items-center justify-center px-2 py-1 text-[9px] uppercase tracking-wider font-semibold text-blue-400 hover:text-blue-800 hover:bg-blue-500/10 rounded transition-colors"
+                        >
+                          Apply to All Portfolios
+                        </button>
+                        <button
+                          onClick={resetColumns}
+                          className="w-full flex items-center justify-center px-2 py-1 text-[9px] uppercase tracking-wider font-semibold text-secondary hover:text-secondary hover:bg-background rounded transition-colors"
+                        >
+                          Reset to Default
+                        </button>
+                      </div>
+                      <DndContext
+                        sensors={sensors}
+                        collisionDetection={closestCenter}
+                        onDragEnd={handleColumnDragEnd}
+                      >
+                        <SortableContext items={activeColumnOrder} strategy={verticalListSortingStrategy}>
+                          {activeColumnOrder.map(colId => {
+                            const col = ALL_COLUMNS.find(c => c.id === colId);
+                            if (!col) return null; // skip stale/unknown column IDs
+                            return (
+                              <SortableColumnMenuItem
+                                key={col.id}
+                                col={col}
+                                isVisible={visibleColumns.has(col.id)}
+                                onToggle={toggleColumn}
+                              />
+                            );
+                          })}
+                        </SortableContext>
+                      </DndContext>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+              <button
+                onClick={() => setAddStockPortfolioId(activePortfolioId)}
+                className="text-xs font-medium text-secondary hover:text-primary transition-colors"
+              >
+                + Buy Asset
+              </button>
+              <button
+                onClick={() => setSellStockPortfolioId(activePortfolioId)}
+                className="text-xs font-medium text-danger hover:text-danger transition-colors"
+              >
+                − Sell Asset
+              </button>
+              <div className="relative flex items-center">
+                <button
+                  onClick={() => setIsActionMenuOpen(!isActionMenuOpen)}
+                  className="text-secondary hover:text-primary transition-colors flex items-center justify-center p-1 rounded-md hover:bg-surface-hover"
+                  title="More Actions"
+                >
+                  <MoreVertical className="w-4 h-4" />
+                </button>
+                {isActionMenuOpen && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setIsActionMenuOpen(false)} />
+                    <div className="absolute right-0 top-full mt-1 w-32 bg-surface border border-divider rounded-lg shadow-2xl shadow-black/50 z-50 py-1 flex flex-col">
+                      <button
+                        onClick={() => { setIsRebalanceModalOpen(true); setIsActionMenuOpen(false); }}
+                        className="px-3 py-1.5 text-left text-xs font-medium text-primary hover:bg-surface-hover transition-colors"
+                      >
+                        Rebalance
+                      </button>
+                      <div className="border-t border-divider my-0.5"></div>
+                      <button
+                        onClick={() => { setCorporateActionType('bonus'); setIsActionMenuOpen(false); }}
+                        className="px-3 py-1.5 text-left text-xs font-medium text-primary hover:bg-surface-hover transition-colors"
+                      >
+                        Add Bonus
+                      </button>
+                      <button
+                        onClick={() => { setCorporateActionType('split'); setIsActionMenuOpen(false); }}
+                        className="px-3 py-1.5 text-left text-xs font-medium text-primary hover:bg-surface-hover transition-colors"
+                      >
+                        Add Split
+                      </button>
+                      <button
+                        onClick={() => { setCorporateActionType('dividend'); setIsActionMenuOpen(false); }}
+                        className="px-3 py-1.5 text-left text-xs font-medium text-primary hover:bg-surface-hover transition-colors"
+                      >
+                        Add Dividend
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+              <button
+                onClick={() => {
+                  if (expandedSymbols.size > 0) {
+                    setExpandedSymbols(new Set());
+                  } else {
+                    setExpandedSymbols(new Set(filteredSymbolGroups.map(g => g.symbol)));
+                  }
+                }}
+                className="text-xs font-medium text-secondary hover:text-primary transition-colors flex items-center gap-1"
+              >
+                <ArrowUpDown className="w-3 h-3" />
+                {expandedSymbols.size > 0 ? 'Collapse All' : 'Expand All'}
+              </button>
+              <div className="w-px h-3 bg-divider mx-1"></div>
+
+              <button
+                onClick={exportToExcel}
+                disabled={filteredSymbolGroups.length === 0}
+                className="text-xs font-medium text-secondary hover:text-primary transition-colors flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Download className="w-3 h-3" />
+                Export
+              </button>
+            </div>
+          </div>
+
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleColumnDragEnd}
+          >
+            <div className="flex-1 bg-surface overflow-auto relative min-h-0">
+              <table className="w-full text-left border-collapse whitespace-nowrap table-fixed">
+                <thead className="sticky top-0 z-40 bg-surface ">
+                  <tr className="border-b border-divider divide-x divide-divider">
+                    <th className="px-2 py-1.5 text-[9px] sm:text-[10px] uppercase tracking-wider font-semibold text-secondary w-6 bg-surface sticky left-0 z-30"></th>
+                    {visibleColumns.has('symbol') && (
+                      <SortableHeaderCell
+                        key="symbol"
+                        field="symbol"
+                        label="Symbol"
+                        width={activeColumnWidths['symbol'] || 180}
+                        isNumber={false}
+                        sortField={sortField}
+                        sortDirection={sortDirection}
+                        resizingColId={resizingCol?.id}
+                        onSort={handleSort}
+                        onResizeStart={handleResizeStart}
+                        className="sticky left-6 z-30 bg-surface border-r border-divider"
+                      />
+                    )}
+                    <SortableContext items={activeColumnOrder.filter(id => visibleColumns.has(id) && id !== 'symbol')} strategy={horizontalListSortingStrategy}>
+                      {activeColumnOrder.filter(id => id !== 'symbol').map(colId => {
+                        if (!visibleColumns.has(colId)) return null;
+                        const col = ALL_COLUMNS.find(c => c.id === colId)!;
+                        return (
+                          <SortableHeaderCell
+                            key={col.id}
+                            field={col.id}
+                            label={
+                              col.id === 'bollinger'
+                                ? `Bollinger (${indicatorConfig.bbPeriod}, ${indicatorConfig.bbStdDev})`
+                                : col.id === 'macd'
+                                  ? `MACD (${indicatorConfig.macdFastPeriod}, ${indicatorConfig.macdSlowPeriod}, ${indicatorConfig.macdSignalPeriod})`
+                                  : col.id === 'rsi'
+                                    ? `RSI (${indicatorConfig.rsiPeriod})`
+                                    : col.label
+                            }
+                            width={
+                              col.id === 'strategy'
+                                ? Math.max(activeColumnWidths[col.id] || 0, 165)
+                                : col.id === 'bollinger'
+                                  ? Math.max(activeColumnWidths[col.id] || 0, 175)
+                                  : col.id === 'macd'
+                                    ? Math.max(activeColumnWidths[col.id] || 0, 125)
+                                    : (activeColumnWidths[col.id] || 100)
+                            }
+                            isNumber={col.id !== 'symbol'}
+                            sortField={sortField}
+                            sortDirection={sortDirection}
+                            resizingColId={resizingCol?.id}
+                            onSort={handleSort}
+                            onResizeStart={handleResizeStart}
+                          />
+                        );
+                      })}
+                    </SortableContext>
+                    <th className="px-2 py-1.5 text-[9px] sm:text-[10px] text-right w-8 bg-surface"></th>
+                  </tr>
+                  {filteredSymbolGroups.length > 0 && (() => {
+                    const fmt = (n: any) => (typeof n === 'number' && !isNaN(n)) ? n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0.00';
+                    const unrealizedPct = totalInvestment > 0 ? (totalUnrealizedPnL / totalInvestment) * 100 : 0;
+                    const totalNetPnL = totalUnrealizedPnL + totalRealizedPnL + portfolioTotalDividend - portfolioTotalBrokerage - portfolioTotalGovtTax;
+
+                    const portfolioRealizedPct = portfolioRealizedCostBasis > 0 ? (totalRealizedPnL / portfolioRealizedCostBasis) * 100 : 0;
+                    const totalNetPct = maxNetInvested > 0 ? (totalNetPnL / maxNetInvested) * 100 : 0;
+
+                    return (
+                      <tr className="border-b-[3px] border-divider bg-surface-hover font-semibold shadow-sm">
+                        <td className="px-2 py-1.5 text-[9px] sm:text-[10px] sticky left-0 z-30 bg-surface-hover"></td>
+                        {visibleColumns.has('symbol') && (
+                          <td key="symbol" className="px-2 py-1.5 text-[9px] sm:text-[10px] text-primary uppercase tracking-wider sticky left-6 z-30 bg-surface-hover border-r border-divider">Total</td>
+                        )}
+                        {activeColumnOrder.filter(id => id !== 'symbol').map(colId => {
+                          if (!visibleColumns.has(colId)) return null;
+                          switch (colId) {
+                            case 'netCostBasis':
+                              return <td key="netCostBasis" className="px-2 py-1.5 text-[9px] sm:text-[10px] text-right font-mono text-primary">{currencySymbol}{fmt(totalInvestment)}</td>;
+                            case 'currentValue':
+                              return <td key="currentValue" className="px-2 py-1.5 text-[9px] sm:text-[10px] text-right font-mono text-primary">{currencySymbol}{fmt(totalCurrentValue)}</td>;
+                            case 'unrealizedPnL':
                               return (
-                                <SortableHeaderCell 
-                                  key={col.id}
-                                  field={col.id}
-                                  label={col.label}
-                                  width={col.id === 'strategy' ? Math.max(activeColumnWidths[col.id] || 0, 165) : (activeColumnWidths[col.id] || 100)}
-                                  isNumber={col.id !== 'symbol'}
-                                  sortField={sortField}
-                                  sortDirection={sortDirection}
-                                  resizingColId={resizingCol?.id}
-                                  onSort={handleSort}
-                                  onResizeStart={handleResizeStart}
-                                />
-                              );
-                            })}
-                          </SortableContext>
-                          <th className="px-2 py-1.5 text-[9px] sm:text-[10px] text-right w-8 bg-surface"></th>
-                        </tr>
-                        {filteredSymbolGroups.length > 0 && (() => {
-                          const fmt = (n: any) => (typeof n === 'number' && !isNaN(n)) ? n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0.00';
-                          const unrealizedPct = totalInvestment > 0 ? (totalUnrealizedPnL / totalInvestment) * 100 : 0;
-                          const totalNetPnL = totalUnrealizedPnL + totalRealizedPnL + portfolioTotalDividend - portfolioTotalBrokerage - portfolioTotalGovtTax;
-                          
-                          const portfolioRealizedPct = portfolioRealizedCostBasis > 0 ? (totalRealizedPnL / portfolioRealizedCostBasis) * 100 : 0;
-                          const totalNetPct = maxNetInvested > 0 ? (totalNetPnL / maxNetInvested) * 100 : 0;
-                          
-                          return (
-                            <tr className="border-b-[3px] border-divider bg-surface-hover font-semibold shadow-sm">
-                              <td className="px-2 py-1.5 text-[9px] sm:text-[10px] sticky left-0 z-30 bg-surface-hover"></td>
-                              {visibleColumns.has('symbol') && (
-                                <td key="symbol" className="px-2 py-1.5 text-[9px] sm:text-[10px] text-primary uppercase tracking-wider sticky left-6 z-30 bg-surface-hover border-r border-divider">Total</td>
-                              )}
-                              {activeColumnOrder.filter(id => id !== 'symbol').map(colId => {
-                                if (!visibleColumns.has(colId)) return null;
-                                switch (colId) {
-                                  case 'netCostBasis':
-                                    return <td key="netCostBasis" className="px-2 py-1.5 text-[9px] sm:text-[10px] text-right font-mono text-primary">{currencySymbol}{fmt(totalInvestment)}</td>;
-                                  case 'currentValue':
-                                    return <td key="currentValue" className="px-2 py-1.5 text-[9px] sm:text-[10px] text-right font-mono text-primary">{currencySymbol}{fmt(totalCurrentValue)}</td>;
-                                  case 'unrealizedPnL':
-                                    return (
-                                      <td key="unrealizedPnL" className="px-2 py-1.5 text-[9px] sm:text-[10px] text-right font-mono">
-                                        <span className={totalUnrealizedPnL >= 0 ? 'text-success' : 'text-danger'}>
-                                          {totalUnrealizedPnL >= 0 ? '+' : ''}{currencySymbol}{fmt(totalUnrealizedPnL)}
-                                        </span>
-                                      </td>
-                                    );
-                                  case 'unrealizedPnLPct':
-                                    return (
-                                      <td key="unrealizedPnLPct" className="px-2 py-1.5 text-[9px] sm:text-[10px] text-right font-mono">
-                                        <span className={unrealizedPct >= 0 ? 'text-success' : 'text-danger'}>
-                                          {unrealizedPct >= 0 ? '+' : ''}{unrealizedPct.toFixed(2)}%
-                                        </span>
-                                      </td>
-                                    );
-                                  case 'realizedPnL':
-                                    return (
-                                      <td key="realizedPnL" className="px-2 py-1.5 text-[9px] sm:text-[10px] text-right font-mono">
-                                        <span className={totalRealizedPnL >= 0 ? 'text-success' : 'text-danger'}>
-                                          {totalRealizedPnL >= 0 ? '+' : ''}{currencySymbol}{fmt(totalRealizedPnL)}
-                                        </span>
-                                      </td>
-                                    );
-                                  case 'realizedPnLPct':
-                                    return (
-                                      <td key="realizedPnLPct" className="px-2 py-1.5 text-[9px] sm:text-[10px] text-right font-mono">
-                                        {portfolioRealizedCostBasis > 0 ? (
-                                          <span className={portfolioRealizedPct >= 0 ? 'text-success' : 'text-danger'}>
-                                            {portfolioRealizedPct >= 0 ? '+' : ''}{portfolioRealizedPct.toFixed(2)}%
-                                          </span>
-                                        ) : (
-                                          <span className="text-tertiary">—</span>
-                                        )}
-                                      </td>
-                                    );
-                                  case 'totalDividend':
-                                    return (
-                                      <td key="totalDividend" className="px-2 py-1.5 text-[9px] sm:text-[10px] text-right font-mono text-success">
-                                        {currencySymbol}{fmt(portfolioTotalDividend)}
-                                      </td>
-                                    );
-                                  case 'brokerage':
-                                    return <td key="brokerage" className="px-2 py-1.5 text-[9px] sm:text-[10px] text-right font-mono text-primary">{currencySymbol}{fmt(portfolioTotalBrokerage)}</td>;
-                                  case 'govtTax':
-                                    return <td key="govtTax" className="px-2 py-1.5 text-[9px] sm:text-[10px] text-right font-mono text-primary">{currencySymbol}{fmt(portfolioTotalGovtTax)}</td>;
-                                  case 'totalPnL':
-                                    return (
-                                      <td key="totalPnL" className="px-2 py-1.5 text-[9px] sm:text-[10px] text-right font-mono">
-                                        <span className={totalNetPnL >= 0 ? 'text-success' : 'text-danger'}>
-                                          {totalNetPnL >= 0 ? '+' : ''}{currencySymbol}{fmt(totalNetPnL)}
-                                        </span>
-                                      </td>
-                                    );
-                                  case 'totalPnLPct':
-                                    return (
-                                      <td key="totalPnLPct" className="px-2 py-1.5 text-[9px] sm:text-[10px] text-right font-mono">
-                                        <span className={totalNetPct >= 0 ? 'text-success' : 'text-danger'}>
-                                          {totalNetPct >= 0 ? '+' : ''}{totalNetPct.toFixed(2)}%
-                                        </span>
-                                      </td>
-                                    );
-                                  case 'xirr':
-                                    return (
-                                      <td key="xirr" className="px-2 py-1.5 text-[9px] sm:text-[10px] text-right font-mono">
-                                        <span className={portfolioXIRR >= 0 ? 'text-success' : 'text-danger'}>
-                                          {portfolioXIRR >= 0 ? '+' : ''}{(portfolioXIRR * 100).toFixed(2)}%
-                                        </span>
-                                      </td>
-                                    );
-                                  case 'dayGain':
-                                    return (
-                                      <td key="dayGain" className="px-2 py-1.5 text-[9px] sm:text-[10px] text-right font-mono">
-                                        <span className={portfolioTotalDayGain >= 0 ? 'text-success' : 'text-danger'}>
-                                          {portfolioTotalDayGain >= 0 ? '+' : ''}{currencySymbol}{fmt(portfolioTotalDayGain)}
-                                        </span>
-                                      </td>
-                                    );
-                                  case 'dayGainPct':
-                                    return (
-                                      <td key="dayGainPct" className="px-2 py-1.5 text-[9px] sm:text-[10px] text-right font-mono">
-                                        <span className={portfolioDayGainPct >= 0 ? 'text-success' : 'text-danger'}>
-                                          {portfolioDayGainPct >= 0 ? '+' : ''}{portfolioDayGainPct.toFixed(2)}%
-                                        </span>
-                                      </td>
-                                    );
-                                  case 'rsi':
-                                  case 'dma50':
-                                  case 'dma200':
-                                    return <td key={colId} className="px-2 py-1.5 text-[9px] sm:text-[10px] text-right font-mono text-tertiary">—</td>;
-                                  default:
-                                    return <td key={colId} className="px-2 py-1.5 text-[9px] sm:text-[10px] text-right font-mono text-tertiary">—</td>;
-                                }
-                              })}
-                              <td className="px-2 py-1.5 text-[9px] sm:text-[10px]"></td>
-                            </tr>
-                          );
-                        })()}
-                      </thead>
-                    <tbody>
-                      {filteredSymbolGroups.length === 0 ? (
-                        <tr>
-                          <td colSpan={visibleColumns.size + 2} className="px-3 py-6 text-center text-secondary text-[9px] sm:text-[10px]">
-                            No assets found matching the filter.
-                          </td>
-                        </tr>
-                      ) : (
-                        filteredSymbolGroups.map(group => {
-                          const isExpanded = expandedSymbols.has(group.symbol);
-                          const fmt = (n: any) => (typeof n === 'number' && !isNaN(n)) ? n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0.00';
-                          return (
-                            <React.Fragment key={group.symbol}>
-                              {/* ── Summary row ── */}
-                              <tr
-                                className="border-b border-divider divide-x divide-divider hover:bg-background transition-colors group"
-                              >
-                                <td 
-                                  onClick={() => toggleSymbol(group.symbol)}
-                                  className="pl-2 pr-1 py-1.5 sticky left-0 z-20 bg-background group-hover:bg-surface-hover cursor-pointer"
-                                >
-                                  <span className="text-tertiary group-hover:text-secondary transition-colors">
-                                    {isExpanded ? <ChevronDown className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> : <ChevronRight className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
+                                <td key="unrealizedPnL" className="px-2 py-1.5 text-[9px] sm:text-[10px] text-right font-mono">
+                                  <span className={totalUnrealizedPnL >= 0 ? 'text-success' : 'text-danger'}>
+                                    {totalUnrealizedPnL >= 0 ? '+' : ''}{currencySymbol}{fmt(totalUnrealizedPnL)}
                                   </span>
                                 </td>
-                                  
-                                {visibleColumns.has('symbol') && (
-                                  <td className="px-2 py-1.5 sticky left-6 z-20 bg-background group-hover:bg-surface-hover border-r border-divider min-w-[140px] w-[140px] truncate">
-                                    <div className="flex items-center gap-1.5 overflow-hidden">
-                                      <div className="min-w-0 flex-1">
-                                        <div 
-                                          className="font-semibold text-[9px] sm:text-[10px] text-primary flex items-center gap-1.5 truncate cursor-pointer hover:underline"
-                                          onClick={() => navigate(`/stocks/${group.symbol}`)}
-                                        >
-                                          <span className="truncate">{group.symbol}</span>
-                                          {group.liveData?.name && (
-                                            <span className="font-normal text-[9px] sm:text-[10px] text-secondary truncate" title={group.liveData.name}>
-                                              {group.liveData.name}
+                              );
+                            case 'unrealizedPnLPct':
+                              return (
+                                <td key="unrealizedPnLPct" className="px-2 py-1.5 text-[9px] sm:text-[10px] text-right font-mono">
+                                  <span className={unrealizedPct >= 0 ? 'text-success' : 'text-danger'}>
+                                    {unrealizedPct >= 0 ? '+' : ''}{unrealizedPct.toFixed(2)}%
+                                  </span>
+                                </td>
+                              );
+                            case 'realizedPnL':
+                              return (
+                                <td key="realizedPnL" className="px-2 py-1.5 text-[9px] sm:text-[10px] text-right font-mono">
+                                  <span className={totalRealizedPnL >= 0 ? 'text-success' : 'text-danger'}>
+                                    {totalRealizedPnL >= 0 ? '+' : ''}{currencySymbol}{fmt(totalRealizedPnL)}
+                                  </span>
+                                </td>
+                              );
+                            case 'realizedPnLPct':
+                              return (
+                                <td key="realizedPnLPct" className="px-2 py-1.5 text-[9px] sm:text-[10px] text-right font-mono">
+                                  {portfolioRealizedCostBasis > 0 ? (
+                                    <span className={portfolioRealizedPct >= 0 ? 'text-success' : 'text-danger'}>
+                                      {portfolioRealizedPct >= 0 ? '+' : ''}{portfolioRealizedPct.toFixed(2)}%
+                                    </span>
+                                  ) : (
+                                    <span className="text-tertiary">—</span>
+                                  )}
+                                </td>
+                              );
+                            case 'totalDividend':
+                              return (
+                                <td key="totalDividend" className="px-2 py-1.5 text-[9px] sm:text-[10px] text-right font-mono text-success">
+                                  {currencySymbol}{fmt(portfolioTotalDividend)}
+                                </td>
+                              );
+                            case 'brokerage':
+                              return <td key="brokerage" className="px-2 py-1.5 text-[9px] sm:text-[10px] text-right font-mono text-primary">{currencySymbol}{fmt(portfolioTotalBrokerage)}</td>;
+                            case 'govtTax':
+                              return <td key="govtTax" className="px-2 py-1.5 text-[9px] sm:text-[10px] text-right font-mono text-primary">{currencySymbol}{fmt(portfolioTotalGovtTax)}</td>;
+                            case 'totalPnL':
+                              return (
+                                <td key="totalPnL" className="px-2 py-1.5 text-[9px] sm:text-[10px] text-right font-mono">
+                                  <span className={totalNetPnL >= 0 ? 'text-success' : 'text-danger'}>
+                                    {totalNetPnL >= 0 ? '+' : ''}{currencySymbol}{fmt(totalNetPnL)}
+                                  </span>
+                                </td>
+                              );
+                            case 'totalPnLPct':
+                              return (
+                                <td key="totalPnLPct" className="px-2 py-1.5 text-[9px] sm:text-[10px] text-right font-mono">
+                                  <span className={totalNetPct >= 0 ? 'text-success' : 'text-danger'}>
+                                    {totalNetPct >= 0 ? '+' : ''}{totalNetPct.toFixed(2)}%
+                                  </span>
+                                </td>
+                              );
+                            case 'xirr':
+                              return (
+                                <td key="xirr" className="px-2 py-1.5 text-[9px] sm:text-[10px] text-right font-mono">
+                                  <span className={portfolioXIRR >= 0 ? 'text-success' : 'text-danger'}>
+                                    {portfolioXIRR >= 0 ? '+' : ''}{(portfolioXIRR * 100).toFixed(2)}%
+                                  </span>
+                                </td>
+                              );
+                            case 'dayGain':
+                              return (
+                                <td key="dayGain" className="px-2 py-1.5 text-[9px] sm:text-[10px] text-right font-mono">
+                                  <span className={portfolioTotalDayGain >= 0 ? 'text-success' : 'text-danger'}>
+                                    {portfolioTotalDayGain >= 0 ? '+' : ''}{currencySymbol}{fmt(portfolioTotalDayGain)}
+                                  </span>
+                                </td>
+                              );
+                            case 'dayGainPct':
+                              return (
+                                <td key="dayGainPct" className="px-2 py-1.5 text-[9px] sm:text-[10px] text-right font-mono">
+                                  <span className={portfolioDayGainPct >= 0 ? 'text-success' : 'text-danger'}>
+                                    {portfolioDayGainPct >= 0 ? '+' : ''}{portfolioDayGainPct.toFixed(2)}%
+                                  </span>
+                                </td>
+                              );
+                            case 'rsi':
+                            case 'dma50':
+                            case 'dma200':
+                              return <td key={colId} className="px-2 py-1.5 text-[9px] sm:text-[10px] text-right font-mono text-tertiary">—</td>;
+                            default:
+                              return <td key={colId} className="px-2 py-1.5 text-[9px] sm:text-[10px] text-right font-mono text-tertiary">—</td>;
+                          }
+                        })}
+                        <td className="px-2 py-1.5 text-[9px] sm:text-[10px]"></td>
+                      </tr>
+                    );
+                  })()}
+                </thead>
+                <tbody>
+                  {filteredSymbolGroups.length === 0 ? (
+                    <tr>
+                      <td colSpan={visibleColumns.size + 2} className="px-3 py-6 text-center text-secondary text-[9px] sm:text-[10px]">
+                        No assets found matching the filter.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredSymbolGroups.map(group => {
+                      const isExpanded = expandedSymbols.has(group.symbol);
+                      const fmt = (n: any) => (typeof n === 'number' && !isNaN(n)) ? n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0.00';
+                      return (
+                        <React.Fragment key={group.symbol}>
+                          {/* ── Summary row ── */}
+                          <tr
+                            className="border-b border-divider divide-x divide-divider hover:bg-background transition-colors group"
+                          >
+                            <td
+                              onClick={() => toggleSymbol(group.symbol)}
+                              className="pl-2 pr-1 py-1.5 sticky left-0 z-20 bg-background group-hover:bg-surface-hover cursor-pointer"
+                            >
+                              <span className="text-tertiary group-hover:text-secondary transition-colors">
+                                {isExpanded ? <ChevronDown className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> : <ChevronRight className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
+                              </span>
+                            </td>
+
+                            {visibleColumns.has('symbol') && (
+                              <td className="px-2 py-1.5 sticky left-6 z-20 bg-background group-hover:bg-surface-hover border-r border-divider min-w-[140px] w-[140px] truncate">
+                                <div className="flex items-center gap-1.5 overflow-hidden">
+                                  <div className="min-w-0 flex-1">
+                                    <div
+                                      className="font-semibold text-[9px] sm:text-[10px] text-primary flex items-center gap-1.5 truncate cursor-pointer hover:underline"
+                                      onClick={() => navigate(`/stocks/${group.symbol}`)}
+                                    >
+                                      <span className="truncate">{group.symbol}</span>
+                                      {group.liveData?.name && (
+                                        <span className="font-normal text-[9px] sm:text-[10px] text-secondary truncate" title={group.liveData.name}>
+                                          {group.liveData.name}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div className="text-[9px] sm:text-[10px] text-tertiary mt-0.5 truncate flex items-center gap-1.5">
+                                      <span>
+                                        {group.totalBoughtQty.toLocaleString()} bought
+                                        {group.totalSoldQty > 0 && <> · <span className="text-danger">{group.totalSoldQty.toLocaleString()} sold</span></>}
+                                      </span>
+                                      <span>·</span>
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setAddStockInitialSymbol(group.symbol);
+                                          setAddStockInitialPrice(group.livePrice);
+                                          setAddStockPortfolioId(activePortfolioId);
+                                        }}
+                                        className="text-success hover:text-success hover:underline transition-colors focus:outline-none"
+                                        title={`Buy more ${group.symbol}`}
+                                      >
+                                        Buy
+                                      </button>
+                                      <span>·</span>
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setSellStockInitialSymbol(group.symbol);
+                                          setSellStockInitialPrice(group.livePrice);
+                                          setSellStockPortfolioId(activePortfolioId);
+                                        }}
+                                        className="text-danger hover:text-danger hover:underline transition-colors focus:outline-none"
+                                        title={`Sell ${group.symbol}`}
+                                      >
+                                        Sell
+                                      </button>
+                                      <span>·</span>
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setViewCorporateActionsSymbol(group.symbol);
+                                        }}
+                                        className="text-blue-500 hover:text-blue-300 hover:underline transition-colors focus:outline-none"
+                                        title={`View Corporate Actions for ${group.symbol}`}
+                                      >
+                                        Corporate Actions
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+                              </td>
+                            )}
+
+                            {activeColumnOrder.filter(id => id !== 'symbol').map(colId => {
+                              if (!visibleColumns.has(colId)) return null;
+                              switch (colId) {
+
+                                case 'netQty':
+                                  return <td key="netQty" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right font-semibold text-primary truncate">{group.netQty.toLocaleString()}</td>;
+                                case 'avgBuyPrice':
+                                  return <td key="avgBuyPrice" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right text-secondary truncate">{fmtCurrency(group.avgBuyPrice, group.liveData?.currency)}</td>;
+                                case 'netCostBasis':
+                                  return <td key="netCostBasis" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right text-secondary truncate" title="Avg buy price × remaining shares — money still at work">{fmtCurrency(group.netCostBasis, group.liveData?.currency)}</td>;
+                                case 'portfolioWeight':
+                                  const weight = totalInvestment > 0 ? (group.netCostBasis / totalInvestment) * 100 : 0;
+                                  return (
+                                    <td key="portfolioWeight" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right text-secondary truncate">
+                                      {weight.toFixed(2)}%
+                                    </td>
+                                  );
+                                case 'currentValueWeight':
+                                  const cvWeight = totalCurrentValue > 0 ? (group.currentValue / totalCurrentValue) * 100 : 0;
+                                  return (
+                                    <td key="currentValueWeight" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right text-secondary truncate">
+                                      {cvWeight.toFixed(2)}%
+                                    </td>
+                                  );
+                                case 'livePrice':
+                                  return <td key="livePrice" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right font-medium text-primary truncate">{fmtCurrency(group.livePrice, group.liveData?.currency)}</td>;
+                                case 'currentValue':
+                                  return <td key="currentValue" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right font-medium text-primary truncate">{fmtCurrency(group.currentValue, group.liveData?.currency)}</td>;
+                                case 'unrealizedPnL':
+                                  return (
+                                    <td key="unrealizedPnL" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right truncate">
+                                      <span className={`font-medium ${group.unrealizedPnL >= 0 ? 'text-success' : 'text-danger'}`}>
+                                        {group.unrealizedPnL >= 0 ? '+' : ''}{fmtCurrency(group.unrealizedPnL, group.liveData?.currency)}
+                                      </span>
+                                    </td>
+                                  );
+                                case 'unrealizedPnLPct':
+                                  return (
+                                    <td key="unrealizedPnLPct" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right truncate">
+                                      <span className={`font-medium ${group.unrealizedPnLPct >= 0 ? 'text-success' : 'text-danger'}`}>
+                                        {group.unrealizedPnLPct >= 0 ? '+' : ''}{group.unrealizedPnLPct.toFixed(2)}%
+                                      </span>
+                                    </td>
+                                  );
+                                case 'realizedPnL':
+                                  return (
+                                    <td key="realizedPnL" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right truncate">
+                                      {group.totalSoldQty > 0 ? (
+                                        <span className={`font-medium ${group.realizedPnL >= 0 ? 'text-success' : 'text-danger'}`}>
+                                          {group.realizedPnL >= 0 ? '+' : ''}{fmtCurrency(group.realizedPnL, group.liveData?.currency)}
+                                        </span>
+                                      ) : (
+                                        <span className="text-tertiary">—</span>
+                                      )}
+                                    </td>
+                                  );
+                                case 'realizedPnLPct':
+                                  return (
+                                    <td key="realizedPnLPct" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right truncate">
+                                      {group.totalSoldQty > 0 ? (
+                                        <span className={`font-medium ${group.realizedPnLPct >= 0 ? 'text-success' : 'text-danger'}`}>
+                                          {group.realizedPnLPct >= 0 ? '+' : ''}{group.realizedPnLPct.toFixed(2)}%
+                                        </span>
+                                      ) : (
+                                        <span className="text-tertiary">—</span>
+                                      )}
+                                    </td>
+                                  );
+                                case 'totalDividend':
+                                  return (
+                                    <td key="totalDividend" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right truncate">
+                                      {group.totalDividend > 0 ? (
+                                        <span className="font-medium text-success">
+                                          {fmtCurrency(group.totalDividend, group.liveData?.currency)}
+                                        </span>
+                                      ) : (
+                                        <span className="text-tertiary">—</span>
+                                      )}
+                                    </td>
+                                  );
+                                case 'brokerage':
+                                  return <td key="brokerage" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right text-secondary truncate">{fmtCurrency(group.brokerage, group.liveData?.currency)}</td>;
+                                case 'govtTax':
+                                  return <td key="govtTax" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right text-secondary truncate">{fmtCurrency(group.govtTax, group.liveData?.currency)}</td>;
+                                case 'totalPnL':
+                                  return (
+                                    <td key="totalPnL" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right truncate">
+                                      <span className={`font-medium ${group.totalPnL >= 0 ? 'text-success' : 'text-danger'}`}>
+                                        {group.totalPnL >= 0 ? '+' : ''}{fmtCurrency(group.totalPnL, group.liveData?.currency)}
+                                      </span>
+                                    </td>
+                                  );
+                                case 'totalPnLPct':
+                                  return (
+                                    <td key="totalPnLPct" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right truncate">
+                                      <span className={`font-medium ${group.totalPnLPct >= 0 ? 'text-success' : 'text-danger'}`}>
+                                        {group.totalPnLPct >= 0 ? '+' : ''}{group.totalPnLPct.toFixed(2)}%
+                                      </span>
+                                    </td>
+                                  );
+                                case 'xirr':
+                                  return (
+                                    <td key="xirr" className={`px-2 py-1.5 text-[9px] sm:text-[10px] font-bold ${group.xirr >= 0 ? 'text-success' : 'text-danger'} truncate`}>
+                                      {group.xirr >= 0 ? '+' : ''}{(group.xirr * 100).toFixed(2)}%
+                                    </td>
+                                  );
+                                case 'priceChange':
+                                  const priceChange = group.liveData?.change || 0;
+                                  return (
+                                    <td key="priceChange" className={`px-2 py-1.5 text-[9px] sm:text-[10px] font-medium ${priceChange >= 0 ? 'text-success' : 'text-danger'} truncate`}>
+                                      {priceChange >= 0 ? '+' : ''}{fmtCurrency(priceChange, group.liveData?.currency)}
+                                    </td>
+                                  );
+                                case 'changePercent':
+                                  const changePercent = group.liveData?.changePercent || 0;
+                                  return (
+                                    <td key="changePercent" className={`px-2 py-1.5 text-[9px] sm:text-[10px] font-medium ${changePercent >= 0 ? 'text-success' : 'text-danger'} truncate`}>
+                                      {changePercent >= 0 ? '+' : ''}{changePercent.toFixed(2)}%
+                                    </td>
+                                  );
+                                case 'dayHigh':
+                                  return <td key="dayHigh" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right text-primary truncate">{group.liveData?.dayHigh ? `${currencySymbol}${fmt(group.liveData.dayHigh)}` : '—'}</td>;
+                                case 'dayLow':
+                                  return <td key="dayLow" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right text-primary truncate">{group.liveData?.dayLow ? `${currencySymbol}${fmt(group.liveData.dayLow)}` : '—'}</td>;
+                                case '52wkHigh':
+                                  return <td key="52wkHigh" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right text-primary truncate">{group.liveData?.fiftyTwoWeekHigh ? `${currencySymbol}${fmt(group.liveData.fiftyTwoWeekHigh)}` : '—'}</td>;
+                                case '52wkLow':
+                                  return <td key="52wkLow" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right text-primary truncate">{group.liveData?.fiftyTwoWeekLow ? `${currencySymbol}${fmt(group.liveData.fiftyTwoWeekLow)}` : '—'}</td>;
+                                case 'marketCap':
+                                  return (
+                                    <td key="marketCap" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right text-primary truncate">
+                                      {group.liveData?.marketCap ? formatCurrencyCompact(group.liveData.marketCap, group.liveData?.currency) : '—'}
+                                    </td>
+                                  );
+                                case 'volume':
+                                  return <td key="volume" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right text-primary truncate">{group.liveData?.volume ? group.liveData.volume.toLocaleString() : '—'}</td>;
+                                case 'avgVolume':
+                                  return <td key="avgVolume" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right text-primary truncate">{group.liveData?.avgVolume ? group.liveData.avgVolume.toLocaleString() : '—'}</td>;
+                                case 'tradeValue':
+                                  const tradeVal = (group.liveData?.volume || 0) * (group.liveData?.price || 0);
+                                  return (
+                                    <td key="tradeValue" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right text-primary truncate">
+                                      {tradeVal > 0 ? formatCurrencyCompact(tradeVal, group.liveData?.currency) : '—'}
+                                    </td>
+                                  );
+                                case 'dayGain':
+                                  const dayGain = group.netQty * (group.liveData?.change || 0);
+                                  return (
+                                    <td key="dayGain" className={`px-2 py-1.5 text-[9px] sm:text-[10px] font-medium ${dayGain >= 0 ? 'text-success' : 'text-danger'} truncate`}>
+                                      {dayGain >= 0 ? '+' : ''}{fmtCurrency(dayGain, group.liveData?.currency)}
+                                    </td>
+                                  );
+                                case 'dayGainPct':
+                                  const dayGainPct = group.liveData?.changePercent || 0;
+                                  return (
+                                    <td key="dayGainPct" className={`px-2 py-1.5 text-[9px] sm:text-[10px] font-medium ${dayGainPct >= 0 ? 'text-success' : 'text-danger'} truncate`}>
+                                      {dayGainPct >= 0 ? '+' : ''}{dayGainPct.toFixed(2)}%
+                                    </td>
+                                  );
+                                case 'rsi': {
+                                  const rsiVal = indicators[group.symbol]?.rsi;
+                                  const rsiColor = rsiVal == null
+                                    ? 'text-tertiary'
+                                    : rsiVal >= 70
+                                      ? 'text-danger'      // overbought
+                                      : rsiVal <= 30
+                                        ? 'text-success'   // oversold
+                                        : 'text-primary';
+                                  return (
+                                    <td
+                                      key="rsi"
+                                      className={`px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right font-medium truncate ${rsiColor}`}
+                                      title={rsiVal != null ? `RSI(14): ${rsiVal.toFixed(2)} (${rsiVal >= 70 ? 'Overbought >= 70' : rsiVal <= 30 ? 'Oversold <= 30' : 'Neutral 30-70'})` : undefined}
+                                    >
+                                      {indicatorsLoading && rsiVal == null ? (
+                                        <span className="text-tertiary animate-pulse">…</span>
+                                      ) : rsiVal != null ? (
+                                        <div className="flex items-center justify-end gap-1">
+                                          <span>{rsiVal.toFixed(2)}</span>
+                                          {indicators[group.symbol]?.rsiDivergence === 'BULLISH' && (
+                                            <span className="text-[8px] font-sans px-1 rounded bg-success/20 text-success font-semibold" title="Bullish Divergence: Price Lower Low while RSI Higher Low">
+                                              Bull Div ↗
+                                            </span>
+                                          )}
+                                          {indicators[group.symbol]?.rsiDivergence === 'BEARISH' && (
+                                            <span className="text-[8px] font-sans px-1 rounded bg-danger/20 text-danger font-semibold" title="Bearish Divergence: Price Higher High while RSI Lower High">
+                                              Bear Div ↘
+                                            </span>
+                                          )}
+                                          {rsiVal >= 70 && (
+                                            <span className="text-[8px] font-sans px-1 rounded bg-danger/20 text-danger font-semibold" title="Overbought (>= 70)">
+                                              OB
+                                            </span>
+                                          )}
+                                          {rsiVal <= 30 && (
+                                            <span className="text-[8px] font-sans px-1 rounded bg-success/20 text-success font-semibold" title="Oversold (<= 30)">
+                                              OS
                                             </span>
                                           )}
                                         </div>
-                                        <div className="text-[9px] sm:text-[10px] text-tertiary mt-0.5 truncate flex items-center gap-1.5">
-                                          <span>
-                                            {group.totalBoughtQty.toLocaleString()} bought
-                                            {group.totalSoldQty > 0 && <> · <span className="text-danger">{group.totalSoldQty.toLocaleString()} sold</span></>}
+                                      ) : (
+                                        '—'
+                                      )}
+                                    </td>
+                                  );
+                                }
+
+                                case 'macd': {
+                                  const m = indicators[group.symbol]?.macd;
+                                  const s = indicators[group.symbol]?.macdSignal;
+                                  const h = indicators[group.symbol]?.macdHist;
+                                  const tooltip = m != null && s != null
+                                    ? `MACD (12, 26): ${m.toFixed(2)} | Signal (9): ${s.toFixed(2)} | Hist: ${h != null ? (h >= 0 ? '+' : '') + h.toFixed(2) : '—'}`
+                                    : undefined;
+
+                                  return (
+                                    <td
+                                      key="macd"
+                                      className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right font-medium truncate"
+                                      title={tooltip}
+                                    >
+                                      {indicatorsLoading && m == null ? (
+                                        <span className="text-tertiary animate-pulse">…</span>
+                                      ) : m != null && s != null ? (
+                                        <div className="flex items-center justify-end gap-1.5">
+                                          <span className={m >= s ? 'text-success' : 'text-danger'}>
+                                            {m.toFixed(2)}
                                           </span>
-                                          <span>·</span>
-                                          <button
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              setAddStockInitialSymbol(group.symbol);
-                                              setAddStockInitialPrice(group.livePrice);
-                                              setAddStockPortfolioId(activePortfolioId);
-                                            }}
-                                            className="text-success hover:text-success hover:underline transition-colors focus:outline-none"
-                                            title={`Buy more ${group.symbol}`}
-                                          >
-                                            Buy
-                                          </button>
-                                          <span>·</span>
-                                          <button
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              setSellStockInitialSymbol(group.symbol);
-                                              setSellStockInitialPrice(group.livePrice);
-                                              setSellStockPortfolioId(activePortfolioId);
-                                            }}
-                                            className="text-danger hover:text-danger hover:underline transition-colors focus:outline-none"
-                                            title={`Sell ${group.symbol}`}
-                                          >
-                                            Sell
-                                          </button>
-                                          <span>·</span>
-                                          <button
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              setViewCorporateActionsSymbol(group.symbol);
-                                            }}
-                                            className="text-blue-500 hover:text-blue-300 hover:underline transition-colors focus:outline-none"
-                                            title={`View Corporate Actions for ${group.symbol}`}
-                                          >
-                                            Corporate Actions
-                                          </button>
+                                          <span className="text-[8px] text-tertiary">
+                                            / {s.toFixed(2)}
+                                          </span>
+                                          {h != null && (
+                                            <span
+                                              className={`text-[8px] font-sans px-1 rounded font-semibold ${h >= 0 ? 'bg-success/15 text-success' : 'bg-danger/15 text-danger'
+                                                }`}
+                                            >
+                                              {h >= 0 ? '+' : ''}{h.toFixed(1)}
+                                            </span>
+                                          )}
+                                        </div>
+                                      ) : (
+                                        '—'
+                                      )}
+                                    </td>
+                                  );
+                                }
+
+                                case 'bollinger': {
+                                  const u = indicators[group.symbol]?.bbUpper;
+                                  const m = indicators[group.symbol]?.bbMiddle;
+                                  const l = indicators[group.symbol]?.bbLower;
+                                  const bw = indicators[group.symbol]?.bbBandwidth;
+                                  const liveP = group.livePrice || 0;
+                                  const pctB = (u != null && l != null && u > l && liveP > 0)
+                                    ? ((liveP - l) / (u - l))
+                                    : indicators[group.symbol]?.bbPercentB;
+                                  const tooltip = u != null && l != null && m != null
+                                    ? `Bollinger (${indicatorConfig.bbPeriod}, ${indicatorConfig.bbStdDev}): Upper=${u.toFixed(2)} | Mid=${m.toFixed(2)} | Lower=${l.toFixed(2)} | BW=${bw != null ? bw.toFixed(1) + '%' : '—'} | %B=${pctB != null ? pctB.toFixed(2) : '—'}`
+                                    : undefined;
+
+                                  return (
+                                    <td
+                                      key="bollinger"
+                                      className="px-2 py-1 text-[9px] sm:text-[10px] font-mono text-right font-medium"
+                                      title={tooltip}
+                                    >
+                                      {indicatorsLoading && u == null ? (
+                                        <span className="text-tertiary animate-pulse">…</span>
+                                      ) : u != null && l != null && m != null ? (
+                                        <div className="flex flex-col items-end leading-tight gap-0.5">
+                                          {/* Row 1: Upper and Lower Bands */}
+                                          <div className="flex items-center justify-end gap-1.5 text-[9px]">
+                                            <span className="text-tertiary text-[8px]">U:</span>
+                                            <span className={`font-semibold ${liveP > 0 && liveP >= u ? 'text-danger font-bold' : 'text-primary'}`}>
+                                              {u >= 1000 ? u.toFixed(1) : u.toFixed(2)}
+                                            </span>
+                                            <span className="text-tertiary text-[8px]">L:</span>
+                                            <span className={`font-semibold ${liveP > 0 && liveP <= l ? 'text-success font-bold' : 'text-primary'}`}>
+                                              {l >= 1000 ? l.toFixed(1) : l.toFixed(2)}
+                                            </span>
+                                          </div>
+                                          {/* Row 2: Middle SMA */}
+                                          <div className="flex items-center justify-end gap-1 text-[8.5px]">
+                                            <span className="text-tertiary text-[8px]">Mid:</span>
+                                            <span className="text-secondary font-medium">
+                                              {m >= 1000 ? m.toFixed(1) : m.toFixed(2)}
+                                            </span>
+                                          </div>
+                                          {/* Row 3: Bandwidth % and %B */}
+                                          <div className="flex items-center justify-end gap-1.5 text-[8px]">
+                                            <span className="text-tertiary">BW:</span>
+                                            <span className="text-secondary font-medium">
+                                              {bw != null ? `${bw.toFixed(1)}%` : '—'}
+                                            </span>
+                                            <span className="text-divider">|</span>
+                                            <span className="text-tertiary">%B:</span>
+                                            <span
+                                              className={`px-1 py-0.2 rounded font-semibold ${pctB != null && pctB <= 0
+                                                  ? 'bg-success/20 text-success'
+                                                  : pctB != null && pctB >= 1
+                                                    ? 'bg-danger/20 text-danger'
+                                                    : 'text-primary'
+                                                }`}
+                                            >
+                                              {pctB != null ? pctB.toFixed(2) : '—'}
+                                            </span>
+                                          </div>
+                                        </div>
+                                      ) : (
+                                        '—'
+                                      )}
+                                    </td>
+                                  );
+                                }
+                                case 'vwap': {
+                                  const vwapVal = indicators[group.symbol]?.vwap;
+                                  const avgVol = indicators[group.symbol]?.avgVolume;
+                                  const liveP = group.livePrice || 0;
+                                  const vwapColor = vwapVal == null
+                                    ? 'text-tertiary'
+                                    : liveP >= vwapVal
+                                      ? 'text-success'
+                                      : 'text-danger';
+                                  const diffPct = vwapVal && liveP ? ((liveP - vwapVal) / vwapVal) * 100 : 0;
+                                  const tooltip = vwapVal != null
+                                    ? `VWAP: ${fmtCurrency(vwapVal, group.liveData?.currency)} (${diffPct >= 0 ? '+' : ''}${diffPct.toFixed(2)}% ${liveP >= vwapVal ? 'above' : 'below'} VWAP)${avgVol ? ` | 20d Avg Vol: ${avgVol.toLocaleString()}` : ''}`
+                                    : undefined;
+
+                                  return (
+                                    <td
+                                      key="vwap"
+                                      className={`px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right font-medium truncate ${vwapColor}`}
+                                      title={tooltip}
+                                    >
+                                      {indicatorsLoading && vwapVal == null ? (
+                                        <span className="text-tertiary animate-pulse">…</span>
+                                      ) : vwapVal != null ? (
+                                        <div className="flex items-center justify-end gap-1">
+                                          <span>{fmtCurrency(vwapVal, group.liveData?.currency)}</span>
+                                          {liveP > 0 && (
+                                            <span
+                                              className={`text-[8px] font-sans px-1 rounded font-semibold ${liveP >= vwapVal ? 'bg-success/15 text-success' : 'bg-danger/15 text-danger'
+                                                }`}
+                                            >
+                                              {diffPct >= 0 ? '+' : ''}{diffPct.toFixed(1)}%
+                                            </span>
+                                          )}
+                                        </div>
+                                      ) : (
+                                        '—'
+                                      )}
+                                    </td>
+                                  );
+                                }
+
+                                case 'obv': {
+                                  const obvVal = indicators[group.symbol]?.obv;
+                                  const obvSig = indicators[group.symbol]?.obvSignal;
+                                  const isBullish = obvVal != null && obvSig != null ? obvVal >= obvSig : null;
+                                  const fmtCompact = (num: number) => {
+                                    const abs = Math.abs(num);
+                                    if (abs >= 1e9) return (num / 1e9).toFixed(2) + 'B';
+                                    if (abs >= 1e6) return (num / 1e6).toFixed(2) + 'M';
+                                    if (abs >= 1e3) return (num / 1e3).toFixed(1) + 'K';
+                                    return num.toLocaleString();
+                                  };
+                                  const tooltip = obvVal != null
+                                    ? `OBV: ${obvVal.toLocaleString()}${obvSig != null ? ` | Signal (20): ${obvSig.toLocaleString()} (${isBullish ? 'Bullish Accumulation' : 'Bearish Distribution'})` : ''}`
+                                    : undefined;
+
+                                  return (
+                                    <td
+                                      key="obv"
+                                      className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right font-medium truncate"
+                                      title={tooltip}
+                                    >
+                                      {indicatorsLoading && obvVal == null ? (
+                                        <span className="text-tertiary animate-pulse">…</span>
+                                      ) : obvVal != null ? (
+                                        <div className="flex items-center justify-end gap-1">
+                                          <span className={isBullish === true ? 'text-success' : isBullish === false ? 'text-danger' : 'text-primary'}>
+                                            {fmtCompact(obvVal)}
+                                          </span>
+                                          {isBullish != null && (
+                                            <span
+                                              className={`text-[8px] font-sans px-1 rounded font-semibold ${isBullish ? 'bg-success/15 text-success' : 'bg-danger/15 text-danger'
+                                                }`}
+                                            >
+                                              {isBullish ? 'Bull ↗' : 'Bear ↘'}
+                                            </span>
+                                          )}
+                                        </div>
+                                      ) : (
+                                        '—'
+                                      )}
+                                    </td>
+                                  );
+                                }
+
+                                case 'dma50': {
+                                  const dma50Val = group.liveData?.dma50 ?? indicators[group.symbol]?.dma50;
+                                  const liveP = group.livePrice || 0;
+                                  const dma50Color = dma50Val == null
+                                    ? 'text-tertiary'
+                                    : liveP >= dma50Val
+                                      ? 'text-success'
+                                      : 'text-danger';
+                                  const diffPct50 = dma50Val && liveP ? ((liveP - dma50Val) / dma50Val) * 100 : 0;
+                                  const tooltip50 = dma50Val && liveP
+                                    ? `${diffPct50 >= 0 ? '+' : ''}${diffPct50.toFixed(2)}% ${liveP >= dma50Val ? 'above' : 'below'} 50 DMA (Live: ${fmtCurrency(liveP, group.liveData?.currency)})`
+                                    : undefined;
+
+                                  return (
+                                    <td
+                                      key="dma50"
+                                      className={`px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right font-medium truncate ${dma50Color}`}
+                                      title={tooltip50}
+                                    >
+                                      {indicatorsLoading && dma50Val == null ? (
+                                        <span className="text-tertiary animate-pulse">…</span>
+                                      ) : dma50Val != null ? (
+                                        <div className="flex items-center justify-end gap-1">
+                                          <span>{fmtCurrency(dma50Val, group.liveData?.currency)}</span>
+                                          {liveP > 0 && (
+                                            <span
+                                              className={`text-[8px] font-sans px-1 rounded font-semibold ${liveP >= dma50Val ? 'bg-success/15 text-success' : 'bg-danger/15 text-danger'
+                                                }`}
+                                            >
+                                              {diffPct50 >= 0 ? '+' : ''}{diffPct50.toFixed(1)}%
+                                            </span>
+                                          )}
+                                        </div>
+                                      ) : (
+                                        '—'
+                                      )}
+                                    </td>
+                                  );
+                                }
+
+                                case 'dma200': {
+                                  const dma200Val = group.liveData?.dma200 ?? indicators[group.symbol]?.dma200;
+                                  const liveP2 = group.livePrice || 0;
+                                  const dma200Color = dma200Val == null
+                                    ? 'text-tertiary'
+                                    : liveP2 >= dma200Val
+                                      ? 'text-success'
+                                      : 'text-danger';
+                                  const diffPct200 = dma200Val && liveP2 ? ((liveP2 - dma200Val) / dma200Val) * 100 : 0;
+                                  const tooltip200 = dma200Val && liveP2
+                                    ? `${diffPct200 >= 0 ? '+' : ''}${diffPct200.toFixed(2)}% ${liveP2 >= dma200Val ? 'above' : 'below'} 200 DMA (Live: ${fmtCurrency(liveP2, group.liveData?.currency)})`
+                                    : undefined;
+
+                                  return (
+                                    <td
+                                      key="dma200"
+                                      className={`px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right font-medium truncate ${dma200Color}`}
+                                      title={tooltip200}
+                                    >
+                                      {indicatorsLoading && dma200Val == null ? (
+                                        <span className="text-tertiary animate-pulse">…</span>
+                                      ) : dma200Val != null ? (
+                                        <div className="flex items-center justify-end gap-1">
+                                          <span>{fmtCurrency(dma200Val, group.liveData?.currency)}</span>
+                                          {liveP2 > 0 && (
+                                            <span
+                                              className={`text-[8px] font-sans px-1 rounded font-semibold ${liveP2 >= dma200Val ? 'bg-success/15 text-success' : 'bg-danger/15 text-danger'
+                                                }`}
+                                            >
+                                              {diffPct200 >= 0 ? '+' : ''}{diffPct200.toFixed(1)}%
+                                            </span>
+                                          )}
+                                        </div>
+                                      ) : (
+                                        '—'
+                                      )}
+                                    </td>
+                                  );
+                                }
+
+                                case 'ema20':
+                                case 'ema50':
+                                case 'ema200': {
+                                  const periodLabel = colId === 'ema20' ? '20 EMA' : colId === 'ema50' ? '50 EMA' : '200 EMA';
+                                  const emaVal = (indicators[group.symbol] as any)?.[colId];
+                                  const liveP = group.livePrice || 0;
+                                  const emaColor = emaVal == null
+                                    ? 'text-tertiary'
+                                    : liveP >= emaVal
+                                      ? 'text-success'
+                                      : 'text-danger';
+                                  const diffPct = emaVal && liveP ? ((liveP - emaVal) / emaVal) * 100 : 0;
+                                  const tooltip = emaVal && liveP
+                                    ? `${diffPct >= 0 ? '+' : ''}${diffPct.toFixed(2)}% ${liveP >= emaVal ? 'above' : 'below'} ${periodLabel} (Live: ${fmtCurrency(liveP, group.liveData?.currency)})`
+                                    : undefined;
+
+                                  return (
+                                    <td
+                                      key={colId}
+                                      className={`px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right font-medium truncate ${emaColor}`}
+                                      title={tooltip}
+                                    >
+                                      {indicatorsLoading && emaVal == null ? (
+                                        <span className="text-tertiary animate-pulse">…</span>
+                                      ) : emaVal != null ? (
+                                        <div className="flex items-center justify-end gap-1">
+                                          <span>{fmtCurrency(emaVal, group.liveData?.currency)}</span>
+                                          {liveP > 0 && (
+                                            <span
+                                              className={`text-[8px] font-sans px-1 rounded font-semibold ${liveP >= emaVal ? 'bg-success/15 text-success' : 'bg-danger/15 text-danger'
+                                                }`}
+                                            >
+                                              {diffPct >= 0 ? '+' : ''}{diffPct.toFixed(1)}%
+                                            </span>
+                                          )}
+                                        </div>
+                                      ) : (
+                                        '—'
+                                      )}
+                                    </td>
+                                  );
+                                }
+
+                                case 'strategy': {
+                                  const stratStatus = getStockStrategyEvaluation(group.symbol);
+                                  const executedToday = todayExecutions[group.symbol];
+                                  return (
+                                    <td
+                                      key="strategy"
+                                      className="px-2 py-1 text-[9px] sm:text-[10px] border-r border-divider text-center align-middle"
+                                    >
+                                      <div className="grid grid-cols-2 divide-x divide-divider/70 items-center justify-center text-center h-full min-h-[24px]">
+                                        <div className="px-1.5 flex items-center justify-center">
+                                          {stratStatus.hasActiveStrategy ? (
+                                            <span
+                                              className="inline-flex items-center justify-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 text-[8px] sm:text-[9px] font-semibold tracking-wide whitespace-nowrap"
+                                              title={`Active Strategy: ${stratStatus.strategyName || 'Global Strategy'}`}
+                                            >
+                                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0 shadow-[0_0_4px_rgba(52,211,153,0.8)]"></span>
+                                              Active
+                                            </span>
+                                          ) : (
+                                            <span className="text-tertiary font-mono text-xs">—</span>
+                                          )}
+                                        </div>
+                                        <div className="px-1.5 flex items-center justify-center">
+                                          {executedToday ? (
+                                            <span
+                                              className="inline-flex items-center justify-center gap-1 px-2 py-0.5 rounded text-[8px] sm:text-[9px] font-medium bg-surface-hover text-secondary border border-divider cursor-default select-none tracking-normal whitespace-nowrap"
+                                              title={`Executed today (${executedToday.action} ${executedToday.quantity || ''} shares @ ₹${executedToday.price || ''}) — 1 action per day limit`}
+                                            >
+                                              <Check className="w-2.5 h-2.5 text-emerald-400 shrink-0" />
+                                              Executed
+                                            </span>
+                                          ) : stratStatus.signal === 'BUY' ? (
+                                            <button
+                                              type="button"
+                                              disabled={executingSignalSymbol === group.symbol}
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleExecuteStrategySignal(group, 'BUY', stratStatus.matchedRule);
+                                              }}
+                                              className={`group/sig relative inline-flex items-center justify-center gap-1 px-2.5 py-0.5 rounded font-bold text-[8px] sm:text-[9px] bg-emerald-500/25 text-emerald-300 border border-emerald-500/60 uppercase tracking-wider transition-all cursor-pointer shadow-[0_0_10px_rgba(16,185,129,0.35)] hover:bg-emerald-500 hover:text-white hover:shadow-[0_0_14px_rgba(16,185,129,0.7)] active:scale-95 ${executingSignalSymbol === group.symbol ? 'opacity-60 cursor-wait' : 'animate-pulse'
+                                                }`}
+                                              title={`Click to automatically BUY ${stratStatus.matchedRule?.sizingValue ? `(${stratStatus.matchedRule.sizingType}: ${stratStatus.matchedRule.sizingValue})` : ''} via ${stratStatus.strategyName || 'strategy'}`}
+                                            >
+                                              {executingSignalSymbol === group.symbol ? (
+                                                <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                                              ) : (
+                                                <>
+                                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 group-hover/sig:bg-white animate-ping mr-0.5"></span>
+                                                  BUY
+                                                </>
+                                              )}
+                                            </button>
+                                          ) : stratStatus.signal === 'SELL' ? (
+                                            <button
+                                              type="button"
+                                              disabled={executingSignalSymbol === group.symbol}
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleExecuteStrategySignal(group, 'SELL', stratStatus.matchedRule);
+                                              }}
+                                              className={`group/sig relative inline-flex items-center justify-center gap-1 px-2.5 py-0.5 rounded font-bold text-[8px] sm:text-[9px] bg-rose-500/25 text-rose-300 border border-rose-500/60 uppercase tracking-wider transition-all cursor-pointer shadow-[0_0_10px_rgba(244,63,94,0.35)] hover:bg-rose-500 hover:text-white hover:shadow-[0_0_14px_rgba(244,63,94,0.7)] active:scale-95 ${executingSignalSymbol === group.symbol ? 'opacity-60 cursor-wait' : 'animate-pulse'
+                                                }`}
+                                              title={`Click to automatically SELL ${stratStatus.matchedRule?.sizingValue ? `(${stratStatus.matchedRule.sizingType}: ${stratStatus.matchedRule.sizingValue})` : ''} via ${stratStatus.strategyName || 'strategy'}`}
+                                            >
+                                              {executingSignalSymbol === group.symbol ? (
+                                                <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                                              ) : (
+                                                <>
+                                                  <span className="w-1.5 h-1.5 rounded-full bg-rose-400 group-hover/sig:bg-white animate-ping mr-0.5"></span>
+                                                  SELL
+                                                </>
+                                              )}
+                                            </button>
+                                          ) : (
+                                            <span className="text-tertiary font-mono text-xs">—</span>
+                                          )}
                                         </div>
                                       </div>
-                                    </div>
-                                  </td>
-                                )}
+                                    </td>
+                                  );
+                                }
+                                default:
+                                  return null;
+                              }
+                            })}
+                            <td className="px-2 py-1.5 text-[9px] sm:text-[10px] text-right">
+                              <button onClick={(e) => { e.stopPropagation(); handleDeleteAsset(group.symbol); }} className="p-1 text-tertiary hover:text-danger rounded hover:bg-danger/10 transition-colors" title={`Delete ${group.symbol}`}>
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </td>
+                          </tr>
 
-                                {activeColumnOrder.filter(id => id !== 'symbol').map(colId => {
-                                  if (!visibleColumns.has(colId)) return null;
-                                  switch (colId) {
-
-                                    case 'netQty':
-                                      return <td key="netQty" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right font-semibold text-primary truncate">{group.netQty.toLocaleString()}</td>;
-                                    case 'avgBuyPrice':
-                                      return <td key="avgBuyPrice" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right text-secondary truncate">{fmtCurrency(group.avgBuyPrice, group.liveData?.currency)}</td>;
-                                    case 'netCostBasis':
-                                      return <td key="netCostBasis" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right text-secondary truncate" title="Avg buy price × remaining shares — money still at work">{fmtCurrency(group.netCostBasis, group.liveData?.currency)}</td>;
-                                    case 'portfolioWeight':
-                                      const weight = totalInvestment > 0 ? (group.netCostBasis / totalInvestment) * 100 : 0;
-                                      return (
-                                        <td key="portfolioWeight" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right text-secondary truncate">
-                                          {weight.toFixed(2)}%
-                                        </td>
-                                      );
-                                    case 'currentValueWeight':
-                                      const cvWeight = totalCurrentValue > 0 ? (group.currentValue / totalCurrentValue) * 100 : 0;
-                                      return (
-                                        <td key="currentValueWeight" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right text-secondary truncate">
-                                          {cvWeight.toFixed(2)}%
-                                        </td>
-                                      );
-                                    case 'livePrice':
-                                      return <td key="livePrice" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right font-medium text-primary truncate">{fmtCurrency(group.livePrice, group.liveData?.currency)}</td>;
-                                    case 'currentValue':
-                                      return <td key="currentValue" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right font-medium text-primary truncate">{fmtCurrency(group.currentValue, group.liveData?.currency)}</td>;
-                                    case 'unrealizedPnL':
-                                      return (
-                                        <td key="unrealizedPnL" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right truncate">
-                                          <span className={`font-medium ${group.unrealizedPnL >= 0 ? 'text-success' : 'text-danger'}`}>
-                                            {group.unrealizedPnL >= 0 ? '+' : ''}{fmtCurrency(group.unrealizedPnL, group.liveData?.currency)}
-                                          </span>
-                                        </td>
-                                      );
-                                    case 'unrealizedPnLPct':
-                                      return (
-                                        <td key="unrealizedPnLPct" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right truncate">
-                                          <span className={`font-medium ${group.unrealizedPnLPct >= 0 ? 'text-success' : 'text-danger'}`}>
-                                            {group.unrealizedPnLPct >= 0 ? '+' : ''}{group.unrealizedPnLPct.toFixed(2)}%
-                                          </span>
-                                        </td>
-                                      );
-                                    case 'realizedPnL':
-                                      return (
-                                        <td key="realizedPnL" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right truncate">
-                                          {group.totalSoldQty > 0 ? (
-                                            <span className={`font-medium ${group.realizedPnL >= 0 ? 'text-success' : 'text-danger'}`}>
-                                              {group.realizedPnL >= 0 ? '+' : ''}{fmtCurrency(group.realizedPnL, group.liveData?.currency)}
-                                            </span>
-                                          ) : (
-                                            <span className="text-tertiary">—</span>
-                                          )}
-                                        </td>
-                                      );
-                                    case 'realizedPnLPct':
-                                      return (
-                                        <td key="realizedPnLPct" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right truncate">
-                                          {group.totalSoldQty > 0 ? (
-                                            <span className={`font-medium ${group.realizedPnLPct >= 0 ? 'text-success' : 'text-danger'}`}>
-                                              {group.realizedPnLPct >= 0 ? '+' : ''}{group.realizedPnLPct.toFixed(2)}%
-                                            </span>
-                                          ) : (
-                                            <span className="text-tertiary">—</span>
-                                          )}
-                                        </td>
-                                      );
-                                    case 'totalDividend':
-                                      return (
-                                        <td key="totalDividend" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right truncate">
-                                          {group.totalDividend > 0 ? (
-                                            <span className="font-medium text-success">
-                                              {fmtCurrency(group.totalDividend, group.liveData?.currency)}
-                                            </span>
-                                          ) : (
-                                            <span className="text-tertiary">—</span>
-                                          )}
-                                        </td>
-                                      );
-                                    case 'brokerage':
-                                      return <td key="brokerage" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right text-secondary truncate">{fmtCurrency(group.brokerage, group.liveData?.currency)}</td>;
-                                    case 'govtTax':
-                                      return <td key="govtTax" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right text-secondary truncate">{fmtCurrency(group.govtTax, group.liveData?.currency)}</td>;
-                                    case 'totalPnL':
-                                      return (
-                                        <td key="totalPnL" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right truncate">
-                                          <span className={`font-medium ${group.totalPnL >= 0 ? 'text-success' : 'text-danger'}`}>
-                                            {group.totalPnL >= 0 ? '+' : ''}{fmtCurrency(group.totalPnL, group.liveData?.currency)}
-                                          </span>
-                                        </td>
-                                      );
-                                    case 'totalPnLPct':
-                                      return (
-                                        <td key="totalPnLPct" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right truncate">
-                                          <span className={`font-medium ${group.totalPnLPct >= 0 ? 'text-success' : 'text-danger'}`}>
-                                            {group.totalPnLPct >= 0 ? '+' : ''}{group.totalPnLPct.toFixed(2)}%
-                                          </span>
-                                        </td>
-                                      );
-                                    case 'xirr':
-                                      return (
-                                        <td key="xirr" className={`px-2 py-1.5 text-[9px] sm:text-[10px] font-bold ${group.xirr >= 0 ? 'text-success' : 'text-danger'} truncate`}>
-                                          {group.xirr >= 0 ? '+' : ''}{(group.xirr * 100).toFixed(2)}%
-                                        </td>
-                                      );
-                                    case 'priceChange':
-                                      const priceChange = group.liveData?.change || 0;
-                                      return (
-                                        <td key="priceChange" className={`px-2 py-1.5 text-[9px] sm:text-[10px] font-medium ${priceChange >= 0 ? 'text-success' : 'text-danger'} truncate`}>
-                                          {priceChange >= 0 ? '+' : ''}{fmtCurrency(priceChange, group.liveData?.currency)}
-                                        </td>
-                                      );
-                                    case 'changePercent':
-                                      const changePercent = group.liveData?.changePercent || 0;
-                                      return (
-                                        <td key="changePercent" className={`px-2 py-1.5 text-[9px] sm:text-[10px] font-medium ${changePercent >= 0 ? 'text-success' : 'text-danger'} truncate`}>
-                                          {changePercent >= 0 ? '+' : ''}{changePercent.toFixed(2)}%
-                                        </td>
-                                      );
-                                    case 'dayHigh':
-                                      return <td key="dayHigh" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right text-primary truncate">{group.liveData?.dayHigh ? `${currencySymbol}${fmt(group.liveData.dayHigh)}` : '—'}</td>;
-                                    case 'dayLow':
-                                      return <td key="dayLow" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right text-primary truncate">{group.liveData?.dayLow ? `${currencySymbol}${fmt(group.liveData.dayLow)}` : '—'}</td>;
-                                    case '52wkHigh':
-                                      return <td key="52wkHigh" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right text-primary truncate">{group.liveData?.fiftyTwoWeekHigh ? `${currencySymbol}${fmt(group.liveData.fiftyTwoWeekHigh)}` : '—'}</td>;
-                                    case '52wkLow':
-                                      return <td key="52wkLow" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right text-primary truncate">{group.liveData?.fiftyTwoWeekLow ? `${currencySymbol}${fmt(group.liveData.fiftyTwoWeekLow)}` : '—'}</td>;
-                                    case 'marketCap':
-                                      return (
-                                        <td key="marketCap" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right text-primary truncate">
-                                          {group.liveData?.marketCap ? formatCurrencyCompact(group.liveData.marketCap, group.liveData?.currency) : '—'}
-                                        </td>
-                                      );
-                                    case 'volume':
-                                      return <td key="volume" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right text-primary truncate">{group.liveData?.volume ? group.liveData.volume.toLocaleString() : '—'}</td>;
-                                    case 'avgVolume':
-                                      return <td key="avgVolume" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right text-primary truncate">{group.liveData?.avgVolume ? group.liveData.avgVolume.toLocaleString() : '—'}</td>;
-                                    case 'tradeValue':
-                                      const tradeVal = (group.liveData?.volume || 0) * (group.liveData?.price || 0);
-                                      return (
-                                        <td key="tradeValue" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right text-primary truncate">
-                                          {tradeVal > 0 ? formatCurrencyCompact(tradeVal, group.liveData?.currency) : '—'}
-                                        </td>
-                                      );
-                                    case 'dayGain':
-                                      const dayGain = group.netQty * (group.liveData?.change || 0);
-                                      return (
-                                        <td key="dayGain" className={`px-2 py-1.5 text-[9px] sm:text-[10px] font-medium ${dayGain >= 0 ? 'text-success' : 'text-danger'} truncate`}>
-                                          {dayGain >= 0 ? '+' : ''}{fmtCurrency(dayGain, group.liveData?.currency)}
-                                        </td>
-                                      );
-                                    case 'dayGainPct':
-                                      const dayGainPct = group.liveData?.changePercent || 0;
-                                      return (
-                                        <td key="dayGainPct" className={`px-2 py-1.5 text-[9px] sm:text-[10px] font-medium ${dayGainPct >= 0 ? 'text-success' : 'text-danger'} truncate`}>
-                                          {dayGainPct >= 0 ? '+' : ''}{dayGainPct.toFixed(2)}%
-                                        </td>
-                                      );
-                                    case 'rsi': {
-                                      const rsiVal = indicators[group.symbol]?.rsi;
-                                      const rsiColor = rsiVal == null
-                                        ? 'text-tertiary'
-                                        : rsiVal >= 70
-                                          ? 'text-danger'      // overbought
-                                          : rsiVal <= 30
-                                            ? 'text-success'   // oversold
-                                            : 'text-primary';
-                                      return (
-                                        <td
-                                          key="rsi"
-                                          className={`px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right font-medium truncate ${rsiColor}`}
-                                          title={rsiVal != null ? `RSI(14): ${rsiVal.toFixed(2)} (${rsiVal >= 70 ? 'Overbought >= 70' : rsiVal <= 30 ? 'Oversold <= 30' : 'Neutral 30-70'})` : undefined}
-                                        >
-                                          {indicatorsLoading && rsiVal == null ? (
-                                            <span className="text-tertiary animate-pulse">…</span>
-                                          ) : rsiVal != null ? (
-                                            <div className="flex items-center justify-end gap-1">
-                                              <span>{rsiVal.toFixed(2)}</span>
-                                              {indicators[group.symbol]?.rsiDivergence === 'BULLISH' && (
-                                                <span className="text-[8px] font-sans px-1 rounded bg-success/20 text-success font-semibold" title="Bullish Divergence: Price Lower Low while RSI Higher Low">
-                                                  Bull Div ↗
-                                                </span>
-                                              )}
-                                              {indicators[group.symbol]?.rsiDivergence === 'BEARISH' && (
-                                                <span className="text-[8px] font-sans px-1 rounded bg-danger/20 text-danger font-semibold" title="Bearish Divergence: Price Higher High while RSI Lower High">
-                                                  Bear Div ↘
-                                                </span>
-                                              )}
-                                              {rsiVal >= 70 && (
-                                                <span className="text-[8px] font-sans px-1 rounded bg-danger/20 text-danger font-semibold" title="Overbought (>= 70)">
-                                                  OB
-                                                </span>
-                                              )}
-                                              {rsiVal <= 30 && (
-                                                <span className="text-[8px] font-sans px-1 rounded bg-success/20 text-success font-semibold" title="Oversold (<= 30)">
-                                                  OS
-                                                </span>
-                                              )}
-                                            </div>
-                                          ) : (
-                                            '—'
-                                          )}
-                                        </td>
-                                      );
-                                    }
-
-                                    case 'macd': {
-                                      const m = indicators[group.symbol]?.macd;
-                                      const s = indicators[group.symbol]?.macdSignal;
-                                      const h = indicators[group.symbol]?.macdHist;
-                                      const tooltip = m != null && s != null
-                                        ? `MACD (12, 26): ${m.toFixed(2)} | Signal (9): ${s.toFixed(2)} | Hist: ${h != null ? (h >= 0 ? '+' : '') + h.toFixed(2) : '—'}`
-                                        : undefined;
-
-                                      return (
-                                        <td
-                                          key="macd"
-                                          className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right font-medium truncate"
-                                          title={tooltip}
-                                        >
-                                          {indicatorsLoading && m == null ? (
-                                            <span className="text-tertiary animate-pulse">…</span>
-                                          ) : m != null && s != null ? (
-                                            <div className="flex items-center justify-end gap-1.5">
-                                              <span className={m >= s ? 'text-success' : 'text-danger'}>
-                                                {m.toFixed(2)}
-                                              </span>
-                                              <span className="text-[8px] text-tertiary">
-                                                / {s.toFixed(2)}
-                                              </span>
-                                              {h != null && (
-                                                <span
-                                                  className={`text-[8px] font-sans px-1 rounded font-semibold ${
-                                                    h >= 0 ? 'bg-success/15 text-success' : 'bg-danger/15 text-danger'
-                                                  }`}
-                                                >
-                                                  {h >= 0 ? '+' : ''}{h.toFixed(1)}
-                                                </span>
-                                              )}
-                                            </div>
-                                          ) : (
-                                            '—'
-                                          )}
-                                        </td>
-                                      );
-                                    }
-
-                                    case 'bollinger': {
-                                      const u = indicators[group.symbol]?.bbUpper;
-                                      const m = indicators[group.symbol]?.bbMiddle;
-                                      const l = indicators[group.symbol]?.bbLower;
-                                      const bw = indicators[group.symbol]?.bbBandwidth;
-                                      const liveP = group.livePrice || 0;
-                                      const pctB = (u != null && l != null && u > l && liveP > 0)
-                                        ? ((liveP - l) / (u - l))
-                                        : indicators[group.symbol]?.bbPercentB;
-                                      const tooltip = u != null && l != null && m != null
-                                        ? `Bollinger (20, 2): Upper=${u.toFixed(2)} | Mid(20)=${m.toFixed(2)} | Lower=${l.toFixed(2)} | BW=${bw != null ? bw.toFixed(1) + '%' : '—'} | %B=${pctB != null ? pctB.toFixed(2) : '—'}`
-                                        : undefined;
-
-                                      return (
-                                        <td
-                                          key="bollinger"
-                                          className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right font-medium truncate"
-                                          title={tooltip}
-                                        >
-                                          {indicatorsLoading && u == null ? (
-                                            <span className="text-tertiary animate-pulse">…</span>
-                                          ) : u != null && l != null && m != null ? (
-                                            <div className="flex flex-col items-end leading-tight">
-                                              <div className="flex items-center gap-1">
-                                                <span className={`text-[9px] ${liveP > 0 && liveP <= l ? 'text-success font-bold' : 'text-primary'}`}>
-                                                  {l.toFixed(0)}
-                                                </span>
-                                                <span className="text-[8px] text-tertiary">-</span>
-                                                <span className={`text-[9px] ${liveP > 0 && liveP >= u ? 'text-danger font-bold' : 'text-primary'}`}>
-                                                  {u.toFixed(0)}
+                          {/* ── Expanded detail side-by-side FIFO section ── */}
+                          {isExpanded && (
+                            <tr className="border-t border-b border-divider bg-background/70">
+                              <td colSpan={visibleColumns.size + 2} className="p-2">
+                                <div className="space-y-2">
+                                  {group.fifoBuyLots.length === 0 ? (
+                                    <p className="text-[9px] sm:text-[10px] text-tertiary py-2 text-center">No buy entries found.</p>
+                                  ) : (
+                                    group.fifoBuyLots.map((lot: any, lotIdx: number) => (
+                                      <div key={`lot-${lot.buy.id}`} className="bg-surface border border-divider rounded-lg p-2 shadow-xs">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                          {/* Left Column: BUY Lot Details */}
+                                          <div className="pr-0 md:pr-2 border-b md:border-b-0 md:border-r border-divider pb-2 md:pb-0">
+                                            <div className="flex items-center justify-between pb-1.5 mb-1.5 border-b border-divider">
+                                              <div className="flex items-center gap-1.5 font-semibold text-xs text-success">
+                                                <ArrowUpCircle className="w-4 h-4 text-success" />
+                                                <span>Buy Position{group.fifoBuyLots.length > 1 ? ` #${lotIdx + 1}` : ''}</span>
+                                              </div>
+                                              <div className="flex items-center gap-2">
+                                                <span className={`px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-semibold ${lot.status === 'CLOSED'
+                                                  ? 'bg-surface-hover text-secondary'
+                                                  : lot.status === 'PARTIALLY_SOLD'
+                                                    ? 'bg-amber-100 text-amber-700'
+                                                    : 'bg-success/20 text-success'
+                                                  }`}>
+                                                  {lot.status === 'CLOSED'
+                                                    ? `CLOSED (${lot.buyQty}/${lot.buyQty} sold)`
+                                                    : lot.status === 'PARTIALLY_SOLD'
+                                                      ? `PARTIAL (${lot.soldQty}/${lot.buyQty} sold)`
+                                                      : `OPEN (${lot.remainingQty} held)`}
                                                 </span>
                                               </div>
-                                              <div className="flex items-center gap-1 text-[8px]">
-                                                <span className="text-tertiary">m:{m.toFixed(0)}</span>
-                                                {pctB != null && (
-                                                  <span
-                                                    className={`px-1 rounded font-semibold ${
-                                                      pctB <= 0
-                                                        ? 'bg-success/20 text-success'
-                                                        : pctB >= 1
-                                                          ? 'bg-danger/20 text-danger'
-                                                          : 'text-secondary'
-                                                    }`}
-                                                  >
-                                                    {pctB <= 0 ? 'Dip ⤵' : pctB >= 1 ? 'Peak ⤴' : `%B:${pctB.toFixed(2)}`}
+                                            </div>
+
+                                            <table className="w-full text-left text-[9px] sm:text-[10px] whitespace-nowrap">
+                                              <thead>
+                                                <tr className="text-[9px] sm:text-[10px] text-tertiary uppercase border-b border-divider">
+                                                  <th className="pb-1 font-medium">Type</th>
+                                                  <th className="pb-1 font-medium">Date</th>
+                                                  <th className="pb-1 font-medium">Qty</th>
+                                                  <th className="pb-1 font-medium">Price</th>
+                                                  <th className="pb-1 font-medium">Value</th>
+                                                  <th className="pb-1 font-medium">Brokerage</th>
+                                                  <th className="pb-1 font-medium">Govt Tax</th>
+                                                  <th className="pb-1 font-medium">Unrealized PnL</th>
+                                                  <th className="pb-1 text-right font-medium">Actions</th>
+                                                </tr>
+                                              </thead>
+                                              <tbody>
+                                                {/* Current Combined State Row */}
+                                                {lot.history && lot.history.length > 0 && (
+                                                  <tr className="bg-blue-500/10/30">
+                                                    <td className="py-1">
+                                                      <span className="px-1.5 py-0.5 rounded text-[9px] sm:text-[10px] font-semibold bg-blue-500/20 text-blue-300">COMBINED</span>
+                                                    </td>
+                                                    <td className="py-1 text-secondary font-medium">
+                                                      {new Date(lot.history[lot.history.length - 1].date).toLocaleDateString()}
+                                                    </td>
+                                                    <td className="py-1 font-bold text-primary">{lot.buyQty.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 4 })}</td>
+                                                    <td className="py-1 text-secondary font-semibold">{fmtCurrency(lot.entryPrice, group.liveData?.currency)}</td>
+                                                    <td className="py-1 text-secondary font-medium">{fmtCurrency(lot.cost, group.liveData?.currency)}</td>
+                                                    <td></td>
+                                                    <td></td>
+                                                    <td className="py-1 font-medium">
+                                                      <span className={lot.unrealizedPnL >= 0 ? 'text-success' : 'text-danger'}>
+                                                        {lot.unrealizedPnL >= 0 ? '+' : ''}{fmtCurrency(lot.unrealizedPnL, group.liveData?.currency)}
+                                                      </span>
+                                                      <span className="text-[9px] sm:text-[10px] ml-1 text-tertiary">({lot.unrealizedPct >= 0 ? '+' : ''}{lot.unrealizedPct.toFixed(2)}%)</span>
+                                                    </td>
+                                                    <td className="py-1 text-right"></td>
+                                                  </tr>
+                                                )}
+
+                                                {/* History Events Rows */}
+                                                {[...(lot.history || [])].reverse().map((ev: any, idx: number) => {
+                                                  const isBuy = ev.type === 'BUY';
+                                                  const eventCost = ev.qty * (ev.price || 0);
+                                                  const eventUnrealizedPnL = isBuy ? ev.qty * (group.livePrice - (ev.price || 0)) : 0;
+                                                  const eventUnrealizedPct = eventCost > 0 ? (eventUnrealizedPnL / eventCost) * 100 : 0;
+
+                                                  return (
+                                                    <tr key={`${ev.type}-${idx}`} className="border-t border-divider">
+                                                      <td className="py-1">
+                                                        {ev.type === 'BONUS' ? (
+                                                          <span className="px-1.5 py-0.5 rounded text-[9px] sm:text-[10px] font-semibold bg-purple-500/20 text-purple-300">BONUS</span>
+                                                        ) : ev.type === 'SPLIT' ? (
+                                                          <span className="px-1.5 py-0.5 rounded text-[9px] sm:text-[10px] font-semibold bg-amber-100 text-amber-700">SPLIT</span>
+                                                        ) : ev.type === 'DIVIDEND' ? (
+                                                          <span className="px-1.5 py-0.5 rounded text-[9px] sm:text-[10px] font-semibold bg-blue-500/20 text-blue-300">DIVIDEND</span>
+                                                        ) : (
+                                                          <span className="px-1.5 py-0.5 rounded text-[9px] sm:text-[10px] font-semibold bg-success/20 text-success">BUY</span>
+                                                        )}
+                                                      </td>
+                                                      <td className="py-1 text-tertiary">{new Date(ev.date).toLocaleDateString()}</td>
+                                                      <td className="py-1 font-medium text-secondary">
+                                                        {ev.type === 'SPLIT'
+                                                          ? `x${ev.qty.toFixed(2)}`
+                                                          : ev.qty.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 4 })}
+                                                      </td>
+                                                      <td className="py-1 text-tertiary">
+                                                        {ev.type === 'SPLIT' ? '—' : ev.type === 'DIVIDEND' ? `${currencySymbol}${fmt(ev.qty)}/sh` : (ev.price !== undefined ? `${currencySymbol}${fmt(ev.price)}` : `${currencySymbol}0.00`)}
+                                                      </td>
+                                                      <td className="py-1 text-secondary font-medium">{eventCost > 0 ? `${currencySymbol}${fmt(eventCost)}` : '—'}</td>
+                                                      <td className="py-1 text-secondary text-[9px] sm:text-[10px]">
+                                                        {ev.brokerage ? `${currencySymbol}${fmt(ev.brokerage)}` : '—'}
+                                                      </td>
+                                                      <td className="py-1 text-secondary text-[9px] sm:text-[10px]">
+                                                        {ev.govtTax ? `${currencySymbol}${fmt(ev.govtTax)}` : '—'}
+                                                      </td>
+                                                      <td className="py-1 font-medium">
+                                                        {isBuy ? (
+                                                          <>
+                                                            <span className={eventUnrealizedPnL >= 0 ? 'text-success' : 'text-danger'}>
+                                                              {eventUnrealizedPnL >= 0 ? '+' : ''}{fmtCurrency(eventUnrealizedPnL, group.liveData?.currency)}
+                                                            </span>
+                                                            <span className="text-[9px] sm:text-[10px] ml-1 text-tertiary">({eventUnrealizedPct >= 0 ? '+' : ''}{eventUnrealizedPct.toFixed(2)}%)</span>
+                                                          </>
+                                                        ) : '—'}
+                                                      </td>
+                                                      <td className="py-1 text-right">
+                                                        {ev.id && (
+                                                          <div className="flex items-center justify-end gap-1">
+                                                            <button onClick={(e) => { e.stopPropagation(); setEditStockId(ev.id); }} className="p-1 text-secondary hover:text-primary rounded hover:bg-surface-hover transition-colors" title="Edit Entry">
+                                                              <Pencil className="w-3.5 h-3.5" />
+                                                            </button>
+                                                            <button onClick={(e) => { e.stopPropagation(); handleDeleteStock(ev.id); }} className="p-1 text-secondary hover:text-danger rounded hover:bg-danger/10 transition-colors" title="Delete Entry">
+                                                              <Trash2 className="w-3.5 h-3.5" />
+                                                            </button>
+                                                          </div>
+                                                        )}
+                                                      </td>
+                                                    </tr>
+                                                  );
+                                                })}
+
+                                                {/* If no history (fallback for older DB structures before refactor) */}
+                                                {(!lot.history || lot.history.length === 0) && (
+                                                  <tr>
+                                                    <td className="py-1">
+                                                      {lot.entryPrice === 0 ? (
+                                                        <span className="px-1.5 py-0.5 rounded text-[9px] sm:text-[10px] font-semibold bg-purple-500/20 text-purple-300">BONUS</span>
+                                                      ) : (
+                                                        <span className="px-1.5 py-0.5 rounded text-[9px] sm:text-[10px] font-semibold bg-success/20 text-success">BUY</span>
+                                                      )}
+                                                    </td>
+                                                    <td className="py-1 text-secondary">{new Date(lot.buy.entry_date).toLocaleDateString()}</td>
+                                                    <td className="py-1 font-medium text-primary">{lot.buyQty.toLocaleString()}</td>
+                                                    <td className="py-1 text-secondary">{fmtCurrency(lot.entryPrice, group.liveData?.currency)}</td>
+                                                    <td className="py-1 text-secondary font-medium">{fmtCurrency(lot.cost, group.liveData?.currency)}</td>
+                                                    <td className="py-1 font-medium">
+                                                      <span className={lot.unrealizedPnL >= 0 ? 'text-success' : 'text-danger'}>
+                                                        {lot.unrealizedPnL >= 0 ? '+' : ''}{fmtCurrency(lot.unrealizedPnL, group.liveData?.currency)}
+                                                      </span>
+                                                      <span className="text-[9px] sm:text-[10px] ml-1 text-tertiary">({lot.unrealizedPct >= 0 ? '+' : ''}{lot.unrealizedPct.toFixed(2)}%)</span>
+                                                    </td>
+                                                    <td className="py-1 text-right">
+                                                      <div className="flex items-center justify-end gap-1">
+                                                        <button onClick={(e) => { e.stopPropagation(); setEditStockId(lot.buy.id); }} className="p-1 text-secondary hover:text-primary rounded hover:bg-surface-hover transition-colors" title="Edit Buy">
+                                                          <Pencil className="w-3.5 h-3.5" />
+                                                        </button>
+                                                        <button onClick={(e) => { e.stopPropagation(); handleDeleteStock(lot.buy.id); }} className="p-1 text-secondary hover:text-danger rounded hover:bg-danger/10 transition-colors" title="Delete Buy">
+                                                          <Trash2 className="w-3.5 h-3.5" />
+                                                        </button>
+                                                      </div>
+                                                    </td>
+                                                  </tr>
+                                                )}
+                                              </tbody>
+                                            </table>
+                                          </div>
+
+                                          {/* Right Column: Sell Positions */}
+                                          <div>
+                                            <div className="flex items-center justify-between pb-1.5 mb-1.5 border-b border-divider">
+                                              <div className="flex items-center gap-1.5 font-semibold text-[10px] text-danger">
+                                                <ArrowDownCircle className="w-4 h-4 text-danger" />
+                                                <span>Sell Positions</span>
+                                              </div>
+                                              <div className="flex items-center gap-2">
+                                                <span className="text-[10px] text-secondary font-medium">
+                                                  {lot.soldQty.toLocaleString()} / {lot.buyQty.toLocaleString()} sold
+                                                </span>
+                                                {lot.matchedSells.length > 0 && (
+                                                  <span className={`text-[10px] font-semibold ${lot.realizedPnL >= 0 ? 'text-success' : 'text-danger'}`}>
+                                                    (Realized: {lot.realizedPnL >= 0 ? '+' : ''}{fmtCurrency(lot.realizedPnL, group.liveData?.currency)})
                                                   </span>
                                                 )}
                                               </div>
                                             </div>
-                                          ) : (
-                                            '—'
-                                          )}
-                                        </td>
-                                      );
-                                    }
-                                    case 'vwap': {
-                                      const vwapVal = indicators[group.symbol]?.vwap;
-                                      const avgVol = indicators[group.symbol]?.avgVolume;
-                                      const liveP = group.livePrice || 0;
-                                      const vwapColor = vwapVal == null
-                                        ? 'text-tertiary'
-                                        : liveP >= vwapVal
-                                          ? 'text-success'
-                                          : 'text-danger';
-                                      const diffPct = vwapVal && liveP ? ((liveP - vwapVal) / vwapVal) * 100 : 0;
-                                      const tooltip = vwapVal != null
-                                        ? `VWAP: ${fmtCurrency(vwapVal, group.liveData?.currency)} (${diffPct >= 0 ? '+' : ''}${diffPct.toFixed(2)}% ${liveP >= vwapVal ? 'above' : 'below'} VWAP)${avgVol ? ` | 20d Avg Vol: ${avgVol.toLocaleString()}` : ''}`
-                                        : undefined;
 
-                                      return (
-                                        <td
-                                          key="vwap"
-                                          className={`px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right font-medium truncate ${vwapColor}`}
-                                          title={tooltip}
-                                        >
-                                          {indicatorsLoading && vwapVal == null ? (
-                                            <span className="text-tertiary animate-pulse">…</span>
-                                          ) : vwapVal != null ? (
-                                            <div className="flex items-center justify-end gap-1">
-                                              <span>{fmtCurrency(vwapVal, group.liveData?.currency)}</span>
-                                              {liveP > 0 && (
-                                                <span
-                                                  className={`text-[8px] font-sans px-1 rounded font-semibold ${
-                                                    liveP >= vwapVal ? 'bg-success/15 text-success' : 'bg-danger/15 text-danger'
-                                                  }`}
-                                                >
-                                                  {diffPct >= 0 ? '+' : ''}{diffPct.toFixed(1)}%
-                                                </span>
-                                              )}
-                                            </div>
-                                          ) : (
-                                            '—'
-                                          )}
-                                        </td>
-                                      );
-                                    }
-
-                                    case 'obv': {
-                                      const obvVal = indicators[group.symbol]?.obv;
-                                      const obvSig = indicators[group.symbol]?.obvSignal;
-                                      const isBullish = obvVal != null && obvSig != null ? obvVal >= obvSig : null;
-                                      const fmtCompact = (num: number) => {
-                                        const abs = Math.abs(num);
-                                        if (abs >= 1e9) return (num / 1e9).toFixed(2) + 'B';
-                                        if (abs >= 1e6) return (num / 1e6).toFixed(2) + 'M';
-                                        if (abs >= 1e3) return (num / 1e3).toFixed(1) + 'K';
-                                        return num.toLocaleString();
-                                      };
-                                      const tooltip = obvVal != null
-                                        ? `OBV: ${obvVal.toLocaleString()}${obvSig != null ? ` | Signal (20): ${obvSig.toLocaleString()} (${isBullish ? 'Bullish Accumulation' : 'Bearish Distribution'})` : ''}`
-                                        : undefined;
-
-                                      return (
-                                        <td
-                                          key="obv"
-                                          className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right font-medium truncate"
-                                          title={tooltip}
-                                        >
-                                          {indicatorsLoading && obvVal == null ? (
-                                            <span className="text-tertiary animate-pulse">…</span>
-                                          ) : obvVal != null ? (
-                                            <div className="flex items-center justify-end gap-1">
-                                              <span className={isBullish === true ? 'text-success' : isBullish === false ? 'text-danger' : 'text-primary'}>
-                                                {fmtCompact(obvVal)}
-                                              </span>
-                                              {isBullish != null && (
-                                                <span
-                                                  className={`text-[8px] font-sans px-1 rounded font-semibold ${
-                                                    isBullish ? 'bg-success/15 text-success' : 'bg-danger/15 text-danger'
-                                                  }`}
-                                                >
-                                                  {isBullish ? 'Bull ↗' : 'Bear ↘'}
-                                                </span>
-                                              )}
-                                            </div>
-                                          ) : (
-                                            '—'
-                                          )}
-                                        </td>
-                                      );
-                                    }
-
-                                    case 'dma50': {
-                                      const dma50Val = group.liveData?.dma50 ?? indicators[group.symbol]?.dma50;
-                                      const liveP = group.livePrice || 0;
-                                      const dma50Color = dma50Val == null
-                                        ? 'text-tertiary'
-                                        : liveP >= dma50Val
-                                          ? 'text-success'
-                                          : 'text-danger';
-                                      const diffPct50 = dma50Val && liveP ? ((liveP - dma50Val) / dma50Val) * 100 : 0;
-                                      const tooltip50 = dma50Val && liveP
-                                        ? `${diffPct50 >= 0 ? '+' : ''}${diffPct50.toFixed(2)}% ${liveP >= dma50Val ? 'above' : 'below'} 50 DMA (Live: ${fmtCurrency(liveP, group.liveData?.currency)})`
-                                        : undefined;
-
-                                      return (
-                                        <td
-                                          key="dma50"
-                                          className={`px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right font-medium truncate ${dma50Color}`}
-                                          title={tooltip50}
-                                        >
-                                          {indicatorsLoading && dma50Val == null ? (
-                                            <span className="text-tertiary animate-pulse">…</span>
-                                          ) : dma50Val != null ? (
-                                            <div className="flex items-center justify-end gap-1">
-                                              <span>{fmtCurrency(dma50Val, group.liveData?.currency)}</span>
-                                              {liveP > 0 && (
-                                                <span
-                                                  className={`text-[8px] font-sans px-1 rounded font-semibold ${
-                                                    liveP >= dma50Val ? 'bg-success/15 text-success' : 'bg-danger/15 text-danger'
-                                                  }`}
-                                                >
-                                                  {diffPct50 >= 0 ? '+' : ''}{diffPct50.toFixed(1)}%
-                                                </span>
-                                              )}
-                                            </div>
-                                          ) : (
-                                            '—'
-                                          )}
-                                        </td>
-                                      );
-                                    }
-
-                                    case 'dma200': {
-                                      const dma200Val = group.liveData?.dma200 ?? indicators[group.symbol]?.dma200;
-                                      const liveP2 = group.livePrice || 0;
-                                      const dma200Color = dma200Val == null
-                                        ? 'text-tertiary'
-                                        : liveP2 >= dma200Val
-                                          ? 'text-success'
-                                          : 'text-danger';
-                                      const diffPct200 = dma200Val && liveP2 ? ((liveP2 - dma200Val) / dma200Val) * 100 : 0;
-                                      const tooltip200 = dma200Val && liveP2
-                                        ? `${diffPct200 >= 0 ? '+' : ''}${diffPct200.toFixed(2)}% ${liveP2 >= dma200Val ? 'above' : 'below'} 200 DMA (Live: ${fmtCurrency(liveP2, group.liveData?.currency)})`
-                                        : undefined;
-
-                                      return (
-                                        <td
-                                          key="dma200"
-                                          className={`px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right font-medium truncate ${dma200Color}`}
-                                          title={tooltip200}
-                                        >
-                                          {indicatorsLoading && dma200Val == null ? (
-                                            <span className="text-tertiary animate-pulse">…</span>
-                                          ) : dma200Val != null ? (
-                                            <div className="flex items-center justify-end gap-1">
-                                              <span>{fmtCurrency(dma200Val, group.liveData?.currency)}</span>
-                                              {liveP2 > 0 && (
-                                                <span
-                                                  className={`text-[8px] font-sans px-1 rounded font-semibold ${
-                                                    liveP2 >= dma200Val ? 'bg-success/15 text-success' : 'bg-danger/15 text-danger'
-                                                  }`}
-                                                >
-                                                  {diffPct200 >= 0 ? '+' : ''}{diffPct200.toFixed(1)}%
-                                                </span>
-                                              )}
-                                            </div>
-                                          ) : (
-                                            '—'
-                                          )}
-                                        </td>
-                                      );
-                                    }
-
-                                    case 'ema20':
-                                    case 'ema50':
-                                    case 'ema200': {
-                                      const periodLabel = colId === 'ema20' ? '20 EMA' : colId === 'ema50' ? '50 EMA' : '200 EMA';
-                                      const emaVal = (indicators[group.symbol] as any)?.[colId];
-                                      const liveP = group.livePrice || 0;
-                                      const emaColor = emaVal == null
-                                        ? 'text-tertiary'
-                                        : liveP >= emaVal
-                                          ? 'text-success'
-                                          : 'text-danger';
-                                      const diffPct = emaVal && liveP ? ((liveP - emaVal) / emaVal) * 100 : 0;
-                                      const tooltip = emaVal && liveP
-                                        ? `${diffPct >= 0 ? '+' : ''}${diffPct.toFixed(2)}% ${liveP >= emaVal ? 'above' : 'below'} ${periodLabel} (Live: ${fmtCurrency(liveP, group.liveData?.currency)})`
-                                        : undefined;
-
-                                      return (
-                                        <td
-                                          key={colId}
-                                          className={`px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right font-medium truncate ${emaColor}`}
-                                          title={tooltip}
-                                        >
-                                          {indicatorsLoading && emaVal == null ? (
-                                            <span className="text-tertiary animate-pulse">…</span>
-                                          ) : emaVal != null ? (
-                                            <div className="flex items-center justify-end gap-1">
-                                              <span>{fmtCurrency(emaVal, group.liveData?.currency)}</span>
-                                              {liveP > 0 && (
-                                                <span
-                                                  className={`text-[8px] font-sans px-1 rounded font-semibold ${
-                                                    liveP >= emaVal ? 'bg-success/15 text-success' : 'bg-danger/15 text-danger'
-                                                  }`}
-                                                >
-                                                  {diffPct >= 0 ? '+' : ''}{diffPct.toFixed(1)}%
-                                                </span>
-                                              )}
-                                            </div>
-                                          ) : (
-                                            '—'
-                                          )}
-                                        </td>
-                                      );
-                                    }
-
-                                    case 'strategy': {
-                                      const stratStatus = getStockStrategyEvaluation(group.symbol);
-                                      const executedToday = todayExecutions[group.symbol];
-                                      return (
-                                        <td
-                                          key="strategy"
-                                          className="px-2 py-1 text-[9px] sm:text-[10px] border-r border-divider text-center align-middle"
-                                        >
-                                          <div className="grid grid-cols-2 divide-x divide-divider/70 items-center justify-center text-center h-full min-h-[24px]">
-                                            <div className="px-1.5 flex items-center justify-center">
-                                              {stratStatus.hasActiveStrategy ? (
-                                                <span
-                                                  className="inline-flex items-center justify-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 text-[8px] sm:text-[9px] font-semibold tracking-wide whitespace-nowrap"
-                                                  title={`Active Strategy: ${stratStatus.strategyName || 'Global Strategy'}`}
-                                                >
-                                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0 shadow-[0_0_4px_rgba(52,211,153,0.8)]"></span>
-                                                  Active
-                                                </span>
-                                              ) : (
-                                                <span className="text-tertiary font-mono text-xs">—</span>
-                                              )}
-                                            </div>
-                                            <div className="px-1.5 flex items-center justify-center">
-                                              {executedToday ? (
-                                                <span
-                                                  className="inline-flex items-center justify-center gap-1 px-2 py-0.5 rounded text-[8px] sm:text-[9px] font-medium bg-surface-hover text-secondary border border-divider cursor-default select-none tracking-normal whitespace-nowrap"
-                                                  title={`Executed today (${executedToday.action} ${executedToday.quantity || ''} shares @ ₹${executedToday.price || ''}) — 1 action per day limit`}
-                                                >
-                                                  <Check className="w-2.5 h-2.5 text-emerald-400 shrink-0" />
-                                                  Executed
-                                                </span>
-                                              ) : stratStatus.signal === 'BUY' ? (
-                                                <button
-                                                  type="button"
-                                                  disabled={executingSignalSymbol === group.symbol}
-                                                  onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    handleExecuteStrategySignal(group, 'BUY', stratStatus.matchedRule);
-                                                  }}
-                                                  className={`group/sig relative inline-flex items-center justify-center gap-1 px-2.5 py-0.5 rounded font-bold text-[8px] sm:text-[9px] bg-emerald-500/25 text-emerald-300 border border-emerald-500/60 uppercase tracking-wider transition-all cursor-pointer shadow-[0_0_10px_rgba(16,185,129,0.35)] hover:bg-emerald-500 hover:text-white hover:shadow-[0_0_14px_rgba(16,185,129,0.7)] active:scale-95 ${
-                                                    executingSignalSymbol === group.symbol ? 'opacity-60 cursor-wait' : 'animate-pulse'
-                                                  }`}
-                                                  title={`Click to automatically BUY ${stratStatus.matchedRule?.sizingValue ? `(${stratStatus.matchedRule.sizingType}: ${stratStatus.matchedRule.sizingValue})` : ''} via ${stratStatus.strategyName || 'strategy'}`}
-                                                >
-                                                  {executingSignalSymbol === group.symbol ? (
-                                                    <Loader2 className="w-2.5 h-2.5 animate-spin" />
-                                                  ) : (
-                                                    <>
-                                                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 group-hover/sig:bg-white animate-ping mr-0.5"></span>
-                                                      BUY
-                                                    </>
-                                                  )}
-                                                </button>
-                                              ) : stratStatus.signal === 'SELL' ? (
-                                                <button
-                                                  type="button"
-                                                  disabled={executingSignalSymbol === group.symbol}
-                                                  onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    handleExecuteStrategySignal(group, 'SELL', stratStatus.matchedRule);
-                                                  }}
-                                                  className={`group/sig relative inline-flex items-center justify-center gap-1 px-2.5 py-0.5 rounded font-bold text-[8px] sm:text-[9px] bg-rose-500/25 text-rose-300 border border-rose-500/60 uppercase tracking-wider transition-all cursor-pointer shadow-[0_0_10px_rgba(244,63,94,0.35)] hover:bg-rose-500 hover:text-white hover:shadow-[0_0_14px_rgba(244,63,94,0.7)] active:scale-95 ${
-                                                    executingSignalSymbol === group.symbol ? 'opacity-60 cursor-wait' : 'animate-pulse'
-                                                  }`}
-                                                  title={`Click to automatically SELL ${stratStatus.matchedRule?.sizingValue ? `(${stratStatus.matchedRule.sizingType}: ${stratStatus.matchedRule.sizingValue})` : ''} via ${stratStatus.strategyName || 'strategy'}`}
-                                                >
-                                                  {executingSignalSymbol === group.symbol ? (
-                                                    <Loader2 className="w-2.5 h-2.5 animate-spin" />
-                                                  ) : (
-                                                    <>
-                                                      <span className="w-1.5 h-1.5 rounded-full bg-rose-400 group-hover/sig:bg-white animate-ping mr-0.5"></span>
-                                                      SELL
-                                                    </>
-                                                  )}
-                                                </button>
-                                              ) : (
-                                                <span className="text-tertiary font-mono text-xs">—</span>
-                                              )}
-                                            </div>
-                                          </div>
-                                        </td>
-                                      );
-                                    }
-                                    default:
-                                      return null;
-                                  }
-                                })}
-                                <td className="px-2 py-1.5 text-[9px] sm:text-[10px] text-right">
-                                  <button onClick={(e) => { e.stopPropagation(); handleDeleteAsset(group.symbol); }} className="p-1 text-tertiary hover:text-danger rounded hover:bg-danger/10 transition-colors" title={`Delete ${group.symbol}`}>
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
-                                </td>
-                              </tr>
-
-                              {/* ── Expanded detail side-by-side FIFO section ── */}
-                              {isExpanded && (
-                                <tr className="border-t border-b border-divider bg-background/70">
-                                  <td colSpan={visibleColumns.size + 2} className="p-2">
-                                    <div className="space-y-2">
-                                      {group.fifoBuyLots.length === 0 ? (
-                                        <p className="text-[9px] sm:text-[10px] text-tertiary py-2 text-center">No buy entries found.</p>
-                                      ) : (
-                                        group.fifoBuyLots.map((lot: any, lotIdx: number) => (
-                                          <div key={`lot-${lot.buy.id}`} className="bg-surface border border-divider rounded-lg p-2 shadow-xs">
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                                              {/* Left Column: BUY Lot Details */}
-                                              <div className="pr-0 md:pr-2 border-b md:border-b-0 md:border-r border-divider pb-2 md:pb-0">
-                                                <div className="flex items-center justify-between pb-1.5 mb-1.5 border-b border-divider">
-                                                  <div className="flex items-center gap-1.5 font-semibold text-xs text-success">
-                                                    <ArrowUpCircle className="w-4 h-4 text-success" />
-                                                    <span>Buy Position{group.fifoBuyLots.length > 1 ? ` #${lotIdx + 1}` : ''}</span>
-                                                  </div>
-                                                  <div className="flex items-center gap-2">
-                                                    <span className={`px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-semibold ${lot.status === 'CLOSED'
-                                                        ? 'bg-surface-hover text-secondary'
-                                                        : lot.status === 'PARTIALLY_SOLD'
-                                                          ? 'bg-amber-100 text-amber-700'
-                                                          : 'bg-success/20 text-success'
-                                                      }`}>
-                                                      {lot.status === 'CLOSED'
-                                                        ? `CLOSED (${lot.buyQty}/${lot.buyQty} sold)`
-                                                        : lot.status === 'PARTIALLY_SOLD'
-                                                          ? `PARTIAL (${lot.soldQty}/${lot.buyQty} sold)`
-                                                          : `OPEN (${lot.remainingQty} held)`}
-                                                    </span>
-                                                  </div>
-                                                </div>
-
-                                                <table className="w-full text-left text-[9px] sm:text-[10px] whitespace-nowrap">
-                                                  <thead>
-                                                    <tr className="text-[9px] sm:text-[10px] text-tertiary uppercase border-b border-divider">
-                                                      <th className="pb-1 font-medium">Type</th>
-                                                      <th className="pb-1 font-medium">Date</th>
-                                                      <th className="pb-1 font-medium">Qty</th>
-                                                      <th className="pb-1 font-medium">Price</th>
-                                                      <th className="pb-1 font-medium">Value</th>
-                                                      <th className="pb-1 font-medium">Brokerage</th>
-                                                      <th className="pb-1 font-medium">Govt Tax</th>
-                                                      <th className="pb-1 font-medium">Unrealized PnL</th>
-                                                      <th className="pb-1 text-right font-medium">Actions</th>
-                                                    </tr>
-                                                  </thead>
-                                                  <tbody>
-                                                    {/* Current Combined State Row */}
-                                                    {lot.history && lot.history.length > 0 && (
-                                                      <tr className="bg-blue-500/10/30">
+                                            {lot.matchedSells.length === 0 ? (
+                                              <p className="text-[10px] text-tertiary py-2 text-center">No sell entries recorded yet.</p>
+                                            ) : (
+                                              <table className="w-full text-left text-[10px] whitespace-nowrap">
+                                                <thead>
+                                                  <tr className="text-[9px] text-tertiary uppercase border-b border-divider">
+                                                    <th className="pb-1 font-medium">Type</th>
+                                                    <th className="pb-1 font-medium">Date</th>
+                                                    <th className="pb-1 font-medium">Qty</th>
+                                                    <th className="pb-1 font-medium">Price</th>
+                                                    <th className="pb-1 font-medium">Value</th>
+                                                    <th className="pb-1 font-medium">Brokerage</th>
+                                                    <th className="pb-1 font-medium">Govt Tax</th>
+                                                    <th className="pb-1 font-medium">Realized PnL</th>
+                                                    <th className="pb-1 text-right font-medium">Actions</th>
+                                                  </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-gray-50">
+                                                  {lot.matchedSells.map((sellAlloc: any) => {
+                                                    const realPnlPct = lot.entryPrice > 0 ? ((sellAlloc.exit_price - lot.entryPrice) / lot.entryPrice) * 100 : 0;
+                                                    return (
+                                                      <tr key={`alloc-${sellAlloc.sellId}`} className="hover:bg-danger/10/40 transition-colors">
                                                         <td className="py-1">
-                                                          <span className="px-1.5 py-0.5 rounded text-[9px] sm:text-[10px] font-semibold bg-blue-500/20 text-blue-300">COMBINED</span>
-                                                        </td>
-                                                        <td className="py-1 text-secondary font-medium">
-                                                          {new Date(lot.history[lot.history.length - 1].date).toLocaleDateString()}
-                                                        </td>
-                                                        <td className="py-1 font-bold text-primary">{lot.buyQty.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 4 })}</td>
-                                                        <td className="py-1 text-secondary font-semibold">{fmtCurrency(lot.entryPrice, group.liveData?.currency)}</td>
-                                                        <td className="py-1 text-secondary font-medium">{fmtCurrency(lot.cost, group.liveData?.currency)}</td>
-                                                        <td></td>
-                                                        <td></td>
-                                                        <td className="py-1 font-medium">
-                                                          <span className={lot.unrealizedPnL >= 0 ? 'text-success' : 'text-danger'}>
-                                                            {lot.unrealizedPnL >= 0 ? '+' : ''}{fmtCurrency(lot.unrealizedPnL, group.liveData?.currency)}
-                                                          </span>
-                                                          <span className="text-[9px] sm:text-[10px] ml-1 text-tertiary">({lot.unrealizedPct >= 0 ? '+' : ''}{lot.unrealizedPct.toFixed(2)}%)</span>
-                                                        </td>
-                                                        <td className="py-1 text-right"></td>
-                                                      </tr>
-                                                    )}
-
-                                                    {/* History Events Rows */}
-                                                    {[...(lot.history || [])].reverse().map((ev: any, idx: number) => {
-                                                      const isBuy = ev.type === 'BUY';
-                                                      const eventCost = ev.qty * (ev.price || 0);
-                                                      const eventUnrealizedPnL = isBuy ? ev.qty * (group.livePrice - (ev.price || 0)) : 0;
-                                                      const eventUnrealizedPct = eventCost > 0 ? (eventUnrealizedPnL / eventCost) * 100 : 0;
-                                                      
-                                                      return (
-                                                        <tr key={`${ev.type}-${idx}`} className="border-t border-divider">
-                                                          <td className="py-1">
-                                                            {ev.type === 'BONUS' ? (
-                                                              <span className="px-1.5 py-0.5 rounded text-[9px] sm:text-[10px] font-semibold bg-purple-500/20 text-purple-300">BONUS</span>
-                                                            ) : ev.type === 'SPLIT' ? (
-                                                              <span className="px-1.5 py-0.5 rounded text-[9px] sm:text-[10px] font-semibold bg-amber-100 text-amber-700">SPLIT</span>
-                                                            ) : ev.type === 'DIVIDEND' ? (
-                                                              <span className="px-1.5 py-0.5 rounded text-[9px] sm:text-[10px] font-semibold bg-blue-500/20 text-blue-300">DIVIDEND</span>
-                                                            ) : (
-                                                              <span className="px-1.5 py-0.5 rounded text-[9px] sm:text-[10px] font-semibold bg-success/20 text-success">BUY</span>
-                                                            )}
-                                                          </td>
-                                                          <td className="py-1 text-tertiary">{new Date(ev.date).toLocaleDateString()}</td>
-                                                          <td className="py-1 font-medium text-secondary">
-                                                            {ev.type === 'SPLIT' 
-                                                              ? `x${ev.qty.toFixed(2)}` 
-                                                              : ev.qty.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 4 })}
-                                                          </td>
-                                                          <td className="py-1 text-tertiary">
-                                                            {ev.type === 'SPLIT' ? '—' : ev.type === 'DIVIDEND' ? `${currencySymbol}${fmt(ev.qty)}/sh` : (ev.price !== undefined ? `${currencySymbol}${fmt(ev.price)}` : `${currencySymbol}0.00`)}
-                                                          </td>
-                                                          <td className="py-1 text-secondary font-medium">{eventCost > 0 ? `${currencySymbol}${fmt(eventCost)}` : '—'}</td>
-                                                          <td className="py-1 text-secondary text-[9px] sm:text-[10px]">
-                                                            {ev.brokerage ? `${currencySymbol}${fmt(ev.brokerage)}` : '—'}
-                                                          </td>
-                                                          <td className="py-1 text-secondary text-[9px] sm:text-[10px]">
-                                                            {ev.govtTax ? `${currencySymbol}${fmt(ev.govtTax)}` : '—'}
-                                                          </td>
-                                                          <td className="py-1 font-medium">
-                                                            {isBuy ? (
-                                                              <>
-                                                                <span className={eventUnrealizedPnL >= 0 ? 'text-success' : 'text-danger'}>
-                                                                  {eventUnrealizedPnL >= 0 ? '+' : ''}{fmtCurrency(eventUnrealizedPnL, group.liveData?.currency)}
-                                                                </span>
-                                                                <span className="text-[9px] sm:text-[10px] ml-1 text-tertiary">({eventUnrealizedPct >= 0 ? '+' : ''}{eventUnrealizedPct.toFixed(2)}%)</span>
-                                                              </>
-                                                            ) : '—'}
-                                                          </td>
-                                                          <td className="py-1 text-right">
-                                                            {ev.id && (
-                                                              <div className="flex items-center justify-end gap-1">
-                                                                <button onClick={(e) => { e.stopPropagation(); setEditStockId(ev.id); }} className="p-1 text-secondary hover:text-primary rounded hover:bg-surface-hover transition-colors" title="Edit Entry">
-                                                                  <Pencil className="w-3.5 h-3.5" />
-                                                                </button>
-                                                                <button onClick={(e) => { e.stopPropagation(); handleDeleteStock(ev.id); }} className="p-1 text-secondary hover:text-danger rounded hover:bg-danger/10 transition-colors" title="Delete Entry">
-                                                                  <Trash2 className="w-3.5 h-3.5" />
-                                                                </button>
-                                                              </div>
-                                                            )}
-                                                          </td>
-                                                        </tr>
-                                                      );
-                                                    })}
-                                                    
-                                                    {/* If no history (fallback for older DB structures before refactor) */}
-                                                    {(!lot.history || lot.history.length === 0) && (
-                                                      <tr>
-                                                        <td className="py-1">
-                                                          {lot.entryPrice === 0 ? (
-                                                            <span className="px-1.5 py-0.5 rounded text-[9px] sm:text-[10px] font-semibold bg-purple-500/20 text-purple-300">BONUS</span>
+                                                          {sellAlloc.type === 'DIVIDEND' ? (
+                                                            <span className="px-1.5 py-0.5 rounded text-[9px] font-semibold bg-blue-500/20 text-blue-300">DIVIDEND</span>
                                                           ) : (
-                                                            <span className="px-1.5 py-0.5 rounded text-[9px] sm:text-[10px] font-semibold bg-success/20 text-success">BUY</span>
+                                                            <span className="px-1.5 py-0.5 rounded text-[9px] font-semibold bg-danger/20 text-danger">SELL</span>
                                                           )}
                                                         </td>
-                                                        <td className="py-1 text-secondary">{new Date(lot.buy.entry_date).toLocaleDateString()}</td>
-                                                        <td className="py-1 font-medium text-primary">{lot.buyQty.toLocaleString()}</td>
-                                                        <td className="py-1 text-secondary">{fmtCurrency(lot.entryPrice, group.liveData?.currency)}</td>
-                                                        <td className="py-1 text-secondary font-medium">{fmtCurrency(lot.cost, group.liveData?.currency)}</td>
+                                                        <td className="py-1 text-secondary">{new Date(sellAlloc.exit_date).toLocaleDateString()}</td>
+                                                        <td className="py-1 font-medium text-primary">{sellAlloc.quantity.toLocaleString()}</td>
+                                                        <td className="py-1 text-secondary">{fmtCurrency(sellAlloc.exit_price, group.liveData?.currency)}</td>
+                                                        <td className="py-1 text-secondary font-medium">{fmtCurrency(sellAlloc.proceeds, group.liveData?.currency)}</td>
+                                                        <td className="py-1 text-secondary text-[10px]">{sellAlloc.brokerage ? `${currencySymbol}${fmt(sellAlloc.brokerage)}` : '—'}</td>
+                                                        <td className="py-1 text-secondary text-[10px]">{sellAlloc.govtTax ? `${currencySymbol}${fmt(sellAlloc.govtTax)}` : '—'}</td>
                                                         <td className="py-1 font-medium">
-                                                          <span className={lot.unrealizedPnL >= 0 ? 'text-success' : 'text-danger'}>
-                                                            {lot.unrealizedPnL >= 0 ? '+' : ''}{fmtCurrency(lot.unrealizedPnL, group.liveData?.currency)}
+                                                          <span className={sellAlloc.realizedPnL >= 0 ? 'text-success' : 'text-danger'}>
+                                                            {sellAlloc.realizedPnL >= 0 ? '+' : ''}{fmtCurrency(sellAlloc.realizedPnL, group.liveData?.currency)}
                                                           </span>
-                                                          <span className="text-[9px] sm:text-[10px] ml-1 text-tertiary">({lot.unrealizedPct >= 0 ? '+' : ''}{lot.unrealizedPct.toFixed(2)}%)</span>
+                                                          {sellAlloc.type !== 'DIVIDEND' && (
+                                                            <span className="text-[9px] ml-1 text-tertiary">({realPnlPct >= 0 ? '+' : ''}{realPnlPct.toFixed(2)}%)</span>
+                                                          )}
                                                         </td>
                                                         <td className="py-1 text-right">
                                                           <div className="flex items-center justify-end gap-1">
-                                                            <button onClick={(e) => { e.stopPropagation(); setEditStockId(lot.buy.id); }} className="p-1 text-secondary hover:text-primary rounded hover:bg-surface-hover transition-colors" title="Edit Buy">
+                                                            <button onClick={(e) => { e.stopPropagation(); sellAlloc.type === 'DIVIDEND' ? setEditStockId(sellAlloc.sellId) : setEditSoldStockId(sellAlloc.sellId); }} className="p-1 text-secondary hover:text-primary rounded hover:bg-surface-hover transition-colors" title={sellAlloc.type === 'DIVIDEND' ? "Edit Dividend" : "Edit Sell"}>
                                                               <Pencil className="w-3.5 h-3.5" />
                                                             </button>
-                                                            <button onClick={(e) => { e.stopPropagation(); handleDeleteStock(lot.buy.id); }} className="p-1 text-secondary hover:text-danger rounded hover:bg-danger/10 transition-colors" title="Delete Buy">
+                                                            <button onClick={(e) => { e.stopPropagation(); sellAlloc.type === 'DIVIDEND' ? handleDeleteStock(sellAlloc.sellId) : handleDeleteSoldStock(sellAlloc.sellId); }} className="p-1 text-secondary hover:text-danger rounded hover:bg-danger/10 transition-colors" title={sellAlloc.type === 'DIVIDEND' ? "Delete Dividend" : "Delete Sell"}>
                                                               <Trash2 className="w-3.5 h-3.5" />
                                                             </button>
                                                           </div>
                                                         </td>
                                                       </tr>
-                                                    )}
-                                                  </tbody>
-                                                </table>
-                                              </div>
-
-                                              {/* Right Column: Sell Positions */}
-                                              <div>
-                                                <div className="flex items-center justify-between pb-1.5 mb-1.5 border-b border-divider">
-                                                  <div className="flex items-center gap-1.5 font-semibold text-[10px] text-danger">
-                                                    <ArrowDownCircle className="w-4 h-4 text-danger" />
-                                                    <span>Sell Positions</span>
-                                                  </div>
-                                                  <div className="flex items-center gap-2">
-                                                    <span className="text-[10px] text-secondary font-medium">
-                                                      {lot.soldQty.toLocaleString()} / {lot.buyQty.toLocaleString()} sold
-                                                    </span>
-                                                    {lot.matchedSells.length > 0 && (
-                                                      <span className={`text-[10px] font-semibold ${lot.realizedPnL >= 0 ? 'text-success' : 'text-danger'}`}>
-                                                        (Realized: {lot.realizedPnL >= 0 ? '+' : ''}{fmtCurrency(lot.realizedPnL, group.liveData?.currency)})
-                                                      </span>
-                                                    )}
-                                                  </div>
-                                                </div>
-
-                                                {lot.matchedSells.length === 0 ? (
-                                                  <p className="text-[10px] text-tertiary py-2 text-center">No sell entries recorded yet.</p>
-                                                ) : (
-                                                  <table className="w-full text-left text-[10px] whitespace-nowrap">
-                                                    <thead>
-                                                      <tr className="text-[9px] text-tertiary uppercase border-b border-divider">
-                                                        <th className="pb-1 font-medium">Type</th>
-                                                        <th className="pb-1 font-medium">Date</th>
-                                                        <th className="pb-1 font-medium">Qty</th>
-                                                        <th className="pb-1 font-medium">Price</th>
-                                                        <th className="pb-1 font-medium">Value</th>
-                                                        <th className="pb-1 font-medium">Brokerage</th>
-                                                        <th className="pb-1 font-medium">Govt Tax</th>
-                                                        <th className="pb-1 font-medium">Realized PnL</th>
-                                                        <th className="pb-1 text-right font-medium">Actions</th>
-                                                      </tr>
-                                                    </thead>
-                                                    <tbody className="divide-y divide-gray-50">
-                                                      {lot.matchedSells.map((sellAlloc: any) => {
-                                                        const realPnlPct = lot.entryPrice > 0 ? ((sellAlloc.exit_price - lot.entryPrice) / lot.entryPrice) * 100 : 0;
-                                                        return (
-                                                          <tr key={`alloc-${sellAlloc.sellId}`} className="hover:bg-danger/10/40 transition-colors">
-                                                            <td className="py-1">
-                                                              {sellAlloc.type === 'DIVIDEND' ? (
-                                                                <span className="px-1.5 py-0.5 rounded text-[9px] font-semibold bg-blue-500/20 text-blue-300">DIVIDEND</span>
-                                                              ) : (
-                                                                <span className="px-1.5 py-0.5 rounded text-[9px] font-semibold bg-danger/20 text-danger">SELL</span>
-                                                              )}
-                                                            </td>
-                                                            <td className="py-1 text-secondary">{new Date(sellAlloc.exit_date).toLocaleDateString()}</td>
-                                                            <td className="py-1 font-medium text-primary">{sellAlloc.quantity.toLocaleString()}</td>
-                                                            <td className="py-1 text-secondary">{fmtCurrency(sellAlloc.exit_price, group.liveData?.currency)}</td>
-                                                            <td className="py-1 text-secondary font-medium">{fmtCurrency(sellAlloc.proceeds, group.liveData?.currency)}</td>
-                                                            <td className="py-1 text-secondary text-[10px]">{sellAlloc.brokerage ? `${currencySymbol}${fmt(sellAlloc.brokerage)}` : '—'}</td>
-                                                            <td className="py-1 text-secondary text-[10px]">{sellAlloc.govtTax ? `${currencySymbol}${fmt(sellAlloc.govtTax)}` : '—'}</td>
-                                                            <td className="py-1 font-medium">
-                                                              <span className={sellAlloc.realizedPnL >= 0 ? 'text-success' : 'text-danger'}>
-                                                                {sellAlloc.realizedPnL >= 0 ? '+' : ''}{fmtCurrency(sellAlloc.realizedPnL, group.liveData?.currency)}
-                                                              </span>
-                                                              {sellAlloc.type !== 'DIVIDEND' && (
-                                                                <span className="text-[9px] ml-1 text-tertiary">({realPnlPct >= 0 ? '+' : ''}{realPnlPct.toFixed(2)}%)</span>
-                                                              )}
-                                                            </td>
-                                                            <td className="py-1 text-right">
-                                                              <div className="flex items-center justify-end gap-1">
-                                                                <button onClick={(e) => { e.stopPropagation(); sellAlloc.type === 'DIVIDEND' ? setEditStockId(sellAlloc.sellId) : setEditSoldStockId(sellAlloc.sellId); }} className="p-1 text-secondary hover:text-primary rounded hover:bg-surface-hover transition-colors" title={sellAlloc.type === 'DIVIDEND' ? "Edit Dividend" : "Edit Sell"}>
-                                                                  <Pencil className="w-3.5 h-3.5" />
-                                                                </button>
-                                                                <button onClick={(e) => { e.stopPropagation(); sellAlloc.type === 'DIVIDEND' ? handleDeleteStock(sellAlloc.sellId) : handleDeleteSoldStock(sellAlloc.sellId); }} className="p-1 text-secondary hover:text-danger rounded hover:bg-danger/10 transition-colors" title={sellAlloc.type === 'DIVIDEND' ? "Delete Dividend" : "Delete Sell"}>
-                                                                  <Trash2 className="w-3.5 h-3.5" />
-                                                                </button>
-                                                              </div>
-                                                            </td>
-                                                          </tr>
-                                                        );
-                                                      })}
-                                                    </tbody>
-                                                  </table>
-                                                )}
-                                              </div>
-                                            </div>
+                                                    );
+                                                  })}
+                                                </tbody>
+                                              </table>
+                                            )}
                                           </div>
-                                        ))
-                                      )}
-                                    </div>
-                                  </td>
-                                </tr>
-                              )}
-                            </React.Fragment>
-                          );
-                        })
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </DndContext>
-
-                {symbolGroups.length > 0 && (
-                  <div className="px-4 py-2 border-t border-divider bg-background/50 text-[10px] text-secondary flex justify-between items-center">
-                    <span>Click a row to expand transactions</span>
-                  </div>
-                )}
-              </div>
+                                        </div>
+                                      </div>
+                                    ))
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
             </div>
+          </DndContext>
+
+          {symbolGroups.length > 0 && (
+            <div className="px-4 py-2 border-t border-divider bg-background/50 text-[10px] text-secondary flex justify-between items-center">
+              <span>Click a row to expand transactions</span>
+            </div>
+          )}
+        </div>
+      </div>
 
       <AddStockModal
         isOpen={!!addStockPortfolioId}
@@ -3341,8 +3387,8 @@ export function PortfolioDashboard() {
         portfolioId={activePortfolioId || ''}
         onSuccess={fetchData}
         existingEvents={
-          viewCorporateActionsSymbol 
-            ? symbolGroups.find(g => g.symbol === viewCorporateActionsSymbol)?.events || [] 
+          viewCorporateActionsSymbol
+            ? symbolGroups.find(g => g.symbol === viewCorporateActionsSymbol)?.events || []
             : []
         }
       />
@@ -3387,12 +3433,19 @@ export function PortfolioDashboard() {
         onClose={() => setIsAddIndicatorsModalOpen(false)}
         visibleColumns={visibleColumns}
         symbols={activeSymbols}
+        config={indicatorConfig}
         onIndicatorsUpdated={(data) => setIndicators(prev => ({ ...prev, ...data }))}
-        onApplyIndicators={(selectedIds) => {
+        onApplyIndicators={(selectedIds, newConfig) => {
+          if (newConfig) {
+            setIndicatorConfig(newConfig);
+            try {
+              localStorage.setItem('portfolio_indicator_config', JSON.stringify(newConfig));
+            } catch { }
+          }
           if (!activePortfolioId) return;
           setPortfolioVisibleColumns(prev => {
-            const current = prev[activePortfolioId] 
-              ? new Set(prev[activePortfolioId]) 
+            const current = prev[activePortfolioId]
+              ? new Set(prev[activePortfolioId])
               : new Set(DEFAULT_VISIBLE_COLUMNS);
             ['dma50', 'dma200', 'ema20', 'ema50', 'ema200', 'rsi', 'macd', 'bollinger', 'vwap', 'obv'].forEach(ind => {
               if (selectedIds.includes(ind)) current.add(ind);

@@ -25,6 +25,7 @@ import {
   computeOBVSeries,
   OBVResult,
   OBVSeriesResult,
+  IndicatorCalculationOptions,
 } from './data-storage.service';
 
 export interface IndicatorResult {
@@ -80,11 +81,12 @@ export async function fetchIndicators(
     'obv',
     'obvSignal',
   ],
-  force: boolean = false
+  force: boolean = false,
+  options: IndicatorCalculationOptions = {}
 ): Promise<Record<string, IndicatorResult>> {
   if (!symbols || symbols.length === 0) return {};
 
-  const synced = await syncMultipleStocks(symbols, force);
+  const synced = await syncMultipleStocks(symbols, force, undefined, 'day', options);
   const result: Record<string, IndicatorResult> = {};
 
   for (const [sym, data] of Object.entries(synced)) {

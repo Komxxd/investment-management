@@ -30,6 +30,7 @@ export interface StockIndicatorResult {
   macd?: number | null;
   macdSignal?: number | null;
   macdHist?: number | null;
+  macdHistogram?: number | null;
   bbUpper?: number | null;
   bbMiddle?: number | null;
   bbLower?: number | null;
@@ -931,33 +932,72 @@ export async function ensureHistoricalCandles(
   return readLocalCandles(symbol, timeframe);
 }
 
+export interface IndicatorCalculationOptions {
+  rsiPeriod?: number;
+  macdFastPeriod?: number;
+  macdSlowPeriod?: number;
+  macdSignalPeriod?: number;
+  bbPeriod?: number;
+  bbStdDev?: number;
+}
+
 /**
  * Sync stock data incrementally:
  * 1. Read existing candles from local disk.
  * 2. If recent candle exists (today or yesterday/weekend), use local cache.
  * 3. Otherwise, fetch missing delta from Yahoo Finance and append to disk.
- * 4. Compute RSI(14), DMA50, DMA200.
+ * 4. Compute RSI, DMA50, DMA200, MACD, Bollinger Bands, VWAP, OBV.
  */
 export async function syncStockData(
   symbol: string,
   force: boolean = false,
-  lookbackDays: number = 550,
-  timeframe: CandleTimeframe = 'day'
+  lookbackDaysOrTimeframeOrOptions: number | CandleTimeframe | IndicatorCalculationOptions = 550,
+  timeframeOrOptions: CandleTimeframe | IndicatorCalculationOptions = 'day',
+  maybeOptions: IndicatorCalculationOptions = {}
 ): Promise<StockIndicatorResult> {
+  let lookbackDays = 550;
+  let timeframe: CandleTimeframe = 'day';
+  let options: IndicatorCalculationOptions = {};
+
+  if (typeof lookbackDaysOrTimeframeOrOptions === 'number') {
+    lookbackDays = lookbackDaysOrTimeframeOrOptions;
+  } else if (typeof lookbackDaysOrTimeframeOrOptions === 'string') {
+    timeframe = lookbackDaysOrTimeframeOrOptions;
+  } else if (typeof lookbackDaysOrTimeframeOrOptions === 'object' && lookbackDaysOrTimeframeOrOptions !== null) {
+    options = { ...options, ...lookbackDaysOrTimeframeOrOptions };
+  }
+
+  if (typeof timeframeOrOptions === 'string') {
+    timeframe = timeframeOrOptions;
+  } else if (typeof timeframeOrOptions === 'object' && timeframeOrOptions !== null) {
+    options = { ...options, ...timeframeOrOptions };
+  }
+
+  if (typeof maybeOptions === 'object' && maybeOptions !== null) {
+    options = { ...options, ...maybeOptions };
+  }
+
+  const rsiPeriod = options.rsiPeriod ?? 14;
+  const macdFast = options.macdFastPeriod ?? 12;
+  const macdSlow = options.macdSlowPeriod ?? 26;
+  const macdSignal = options.macdSignalPeriod ?? 9;
+  const bbPeriod = options.bbPeriod ?? 20;
+  const bbStdDev = options.bbStdDev ?? 2;
+
   const years = Math.max(1.5, parseFloat((lookbackDays / 365).toFixed(1)));
   const candles = await ensureHistoricalCandles(symbol, { years, force, timeframe });
   const closes = candles.map((c) => c.close);
-  const rsiSeries = computeRSISeries(closes, 14);
+  const rsiSeries = computeRSISeries(closes, rsiPeriod);
   const divSeries = detectRSIDivergenceSeries(candles, rsiSeries);
   const lastIdx = candles.length - 1;
   const currentDiv = lastIdx >= 0 ? divSeries[lastIdx] : null;
-  const macdRes = computeMACD(closes, 12, 26, 9);
-  const bbRes = computeBollingerBands(closes, 20, 2);
+  const macdRes = computeMACD(closes, macdFast, macdSlow, macdSignal);
+  const bbRes = computeBollingerBands(closes, bbPeriod, bbStdDev);
   const vwapRes = computeVWAP(candles, 20);
   const obvRes = computeOBV(candles, 20);
 
   return {
-    rsi: computeWildersRSI(closes, 14),
+    rsi: computeWildersRSI(closes, rsiPeriod),
     dma50: computeSMA(closes, 50),
     dma200: computeSMA(closes, 200),
     ema20: computeEMA(closes, 20),
@@ -969,6 +1009,7 @@ export async function syncStockData(
     macd: macdRes.macd,
     macdSignal: macdRes.signal,
     macdHist: macdRes.histogram,
+    macdHistogram: macdRes.histogram,
     bbUpper: bbRes.upper,
     bbMiddle: bbRes.middle,
     bbLower: bbRes.lower,
@@ -993,7 +1034,8 @@ export async function syncMultipleStocks(
   symbols: string[],
   force: boolean = false,
   onProgress?: (info: { current: number; total: number; symbol: string; percent: number }) => void,
-  timeframe: CandleTimeframe = 'day'
+  timeframe: CandleTimeframe = 'day',
+  options: IndicatorCalculationOptions = {}
 ): Promise<Record<string, StockIndicatorResult>> {
   const result: Record<string, StockIndicatorResult> = {};
   const total = symbols.length;
@@ -1010,7 +1052,7 @@ export async function syncMultipleStocks(
     }
 
     try {
-      result[sym] = await syncStockData(sym, force, 550, timeframe);
+      result[sym] = await syncStockData(sym, force, 550, timeframe, options);
     } catch (err) {
       console.error(`[DataStorage] Error syncing ${sym}:`, err);
       result[sym] = { rsi: null, dma50: null, dma200: null };
