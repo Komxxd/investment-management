@@ -1214,13 +1214,18 @@ export function PortfolioDashboard() {
     entry: StrategyLogEntry
   ) => {
     setLocalStrategyLogs((prev) => {
-      const exists = prev.some(
-        (item) =>
-          item.symbol === entry.symbol &&
-          item.eventType === entry.eventType &&
-          (item.signal || null) === (entry.signal || null) &&
-          (item.eventDate || null) === (entry.eventDate || null)
-      );
+      const exists = prev.some((item) => {
+        if (item.id === entry.id) return true;
+        if (entry.eventType === 'SIGNAL_TRIGGERED' || entry.eventType === 'ACTION_EXECUTED') {
+          return (
+            item.symbol === entry.symbol &&
+            item.eventType === entry.eventType &&
+            (item.signal || null) === (entry.signal || null) &&
+            (item.eventDate || null) === (entry.eventDate || null)
+          );
+        }
+        return false;
+      });
       if (exists) return prev;
       const next = [...prev, entry];
       try {
@@ -3672,6 +3677,9 @@ export function PortfolioDashboard() {
         indicators={indicators}
         livePrices={livePrices}
         currencySymbol={currencySymbol}
+        onLifecycleLog={(entry) =>
+          appendLocalStrategyLog(activePortfolioId, entry.eventDate || getTodayDateKey(), entry)
+        }
       />
 
       <StrategyLogsModal

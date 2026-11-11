@@ -1,10 +1,25 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { X, History, RefreshCw, Loader2, PlayCircle, Zap, CheckCircle2 } from 'lucide-react';
+import {
+  X,
+  History,
+  RefreshCw,
+  Loader2,
+  PlayCircle,
+  PauseCircle,
+  RotateCcw,
+  Zap,
+  CheckCircle2,
+} from 'lucide-react';
 import { api } from '../../../services/api/client';
 import type { StrategyRule } from './StrategyBuilderModal';
 
-export type StrategyLogEventType = 'STRATEGY_STARTED' | 'SIGNAL_TRIGGERED' | 'ACTION_EXECUTED';
+export type StrategyLogEventType =
+  | 'STRATEGY_STARTED'
+  | 'STRATEGY_PAUSED'
+  | 'STRATEGY_RESUMED'
+  | 'SIGNAL_TRIGGERED'
+  | 'ACTION_EXECUTED';
 
 export interface StrategyLogEntry {
   id: string;
@@ -95,10 +110,15 @@ export const StrategyLogsModal: React.FC<StrategyLogsModalProps> = ({
     if (!symbol) return [];
     const items = [...logs];
 
-    // Ensure applicable strategies without a DB log still display when started (e.g. local fallback)
+    // Ensure applicable strategies without a DB log still display when started or paused (e.g. legacy / local fallback)
     const seenStartIds = new Set(
       items
         .filter((item) => item.eventType === 'STRATEGY_STARTED' && item.strategyId)
+        .map((item) => String(item.strategyId))
+    );
+    const seenPausedIds = new Set(
+      items
+        .filter((item) => item.eventType === 'STRATEGY_PAUSED' && item.strategyId)
         .map((item) => String(item.strategyId))
     );
 
@@ -108,10 +128,10 @@ export const StrategyLogsModal: React.FC<StrategyLogsModalProps> = ({
         strat.scope === 'global' ||
         strat.targetSymbol === 'ALL' ||
         strat.targetSymbol === symbol;
-      if (!applies || seenStartIds.has(String(strat.id))) continue;
+      if (!applies) continue;
 
       const createdAt = (strat as any).createdAt || (strat as any).created_at;
-      if (createdAt) {
+      if (createdAt && !seenStartIds.has(String(strat.id))) {
         items.push({
           id: `local-start-${strat.id}`,
           portfolioId,
@@ -124,9 +144,25 @@ export const StrategyLogsModal: React.FC<StrategyLogsModalProps> = ({
           source: 'local',
         });
       }
+
+      const updatedAt = (strat as any).updatedAt || (strat as any).updated_at;
+      if (strat.enabled === false && updatedAt && !seenPausedIds.has(String(strat.id))) {
+        items.push({
+          id: `local-pause-${strat.id}`,
+          portfolioId,
+          strategyId: strat.id,
+          strategyName: strat.name,
+          symbol: strat.targetSymbol || symbol,
+          eventType: 'STRATEGY_PAUSED',
+          actionText: `Strategy "${strat.name || 'Untitled Strategy'}" paused`,
+          loggedAt: updatedAt,
+          source: 'local',
+        });
+      }
     }
 
-    // Merge local session signal/execution fallback logs when not yet present in DB results
+    // Merge local session signal/execution/lifecycle fallback logs when not yet present in DB results
+    const seenIds = new Set(items.map((item) => item.id));
     const seenSignals = new Set(
       items
         .filter((item) => item.eventType === 'SIGNAL_TRIGGERED')
@@ -139,10 +175,25 @@ export const StrategyLogsModal: React.FC<StrategyLogsModalProps> = ({
     );
 
     for (const localItem of fallbackLocalLogs) {
-      if (localItem.symbol !== symbol) continue;
+      if (localItem.symbol !== symbol && localItem.symbol !== 'ALL') continue;
+      if (seenIds.has(localItem.id)) continue;
+
       const key = `${localItem.eventDate || ''}:${localItem.signal || ''}`;
       if (localItem.eventType === 'SIGNAL_TRIGGERED' && seenSignals.has(key)) continue;
       if (localItem.eventType === 'ACTION_EXECUTED' && seenExecutions.has(key)) continue;
+
+      if (localItem.eventType === 'STRATEGY_PAUSED' || localItem.eventType === 'STRATEGY_RESUMED') {
+        const localTs = localItem.loggedAt ? new Date(localItem.loggedAt).getTime() : 0;
+        const alreadyInDb = items.some(
+          (item) =>
+            item.source === 'db' &&
+            item.eventType === localItem.eventType &&
+            item.strategyId === localItem.strategyId &&
+            Math.abs(new Date(item.loggedAt).getTime() - localTs) < 10000
+        );
+        if (alreadyInDb) continue;
+      }
+
       items.push(localItem);
     }
 
@@ -150,6 +201,8 @@ export const StrategyLogsModal: React.FC<StrategyLogsModalProps> = ({
       STRATEGY_STARTED: 0,
       SIGNAL_TRIGGERED: 1,
       ACTION_EXECUTED: 2,
+      STRATEGY_PAUSED: 3,
+      STRATEGY_RESUMED: 4,
     };
 
     items.sort((a, b) => {
@@ -184,6 +237,24 @@ export const StrategyLogsModal: React.FC<StrategyLogsModalProps> = ({
         <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-indigo-500/15 text-indigo-400 border border-indigo-500/30 text-[10px] font-semibold uppercase tracking-wide shrink-0">
           <PlayCircle className="w-3 h-3" />
           Started
+        </span>
+      );
+    }
+
+    if (entry.eventType === 'STRATEGY_PAUSED') {
+      return (
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-orange-500/15 text-orange-400 border border-orange-500/30 text-[10px] font-semibold uppercase tracking-wide shrink-0">
+          <PauseCircle className="w-3 h-3" />
+          Paused
+        </span>
+      );
+    }
+
+    if (entry.eventType === 'STRATEGY_RESUMED') {
+      return (
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-400 border border-sky-500/30 text-[10px] font-semibold uppercase tracking-wide shrink-0">
+          <RotateCcw className="w-3 h-3" />
+          Resumed
         </span>
       );
     }
@@ -260,7 +331,7 @@ export const StrategyLogsModal: React.FC<StrategyLogsModalProps> = ({
                 </span>
               </div>
               <p className="text-[11px] text-tertiary truncate">
-                Strategy start time, signal arrival, and executed trade actions
+                Strategy start, pause/resume, signal arrival, and executed trade actions
               </p>
             </div>
           </div>

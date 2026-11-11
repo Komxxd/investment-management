@@ -38,11 +38,16 @@ function formatExecution(row: any) {
   };
 }
 
-type StrategyLogEventType = 'STRATEGY_STARTED' | 'SIGNAL_TRIGGERED' | 'ACTION_EXECUTED';
+type StrategyLogEventType =
+  | 'STRATEGY_STARTED'
+  | 'STRATEGY_PAUSED'
+  | 'STRATEGY_RESUMED'
+  | 'SIGNAL_TRIGGERED'
+  | 'ACTION_EXECUTED';
 
 interface StrategyLogInput {
   userId: string;
-  portfolioId: string;
+  portfolioId?: string | null;
   strategyId?: string | null;
   strategyName?: string | null;
   symbol: string;
@@ -57,7 +62,7 @@ function formatStrategyLog(row: any) {
   if (!row) return null;
   return {
     id: row.id,
-    portfolioId: row.portfolio_id,
+    portfolioId: row.portfolio_id || null,
     strategyId: row.strategy_id || null,
     strategyName: row.strategy_name || null,
     symbol: row.symbol,
@@ -74,15 +79,20 @@ function formatStrategyLog(row: any) {
 async function writeStrategyLog(
   supabase: any,
   input: StrategyLogInput
-): Promise<{ row: any; missingTable: boolean; alreadyRecorded?: boolean }> {
+): Promise<{ row: any; missingTable: boolean; alreadyRecorded?: boolean; needsSchemaUpdate?: boolean }> {
   const validStrategyId =
     input.strategyId && UUID_REGEX.test(String(input.strategyId))
       ? String(input.strategyId)
       : null;
 
+  const validPortfolioId =
+    input.portfolioId && UUID_REGEX.test(String(input.portfolioId))
+      ? String(input.portfolioId)
+      : null;
+
   const payload = {
     user_id: input.userId,
-    portfolio_id: input.portfolioId,
+    portfolio_id: validPortfolioId,
     strategy_id: validStrategyId,
     strategy_name: input.strategyName || null,
     symbol: input.symbol,
@@ -113,6 +123,9 @@ async function writeStrategyLog(
     if (error.code === '23505') {
       return { row: null, missingTable: false, alreadyRecorded: true };
     }
+    if (error.code === '23502' || error.code === '23514') {
+      return { row: null, missingTable: true, needsSchemaUpdate: true };
+    }
     if (isMissingTableError(error)) {
       return { row: null, missingTable: true };
     }
@@ -120,6 +133,91 @@ async function writeStrategyLog(
   }
 
   return { row: data, missingTable: false };
+}
+
+async function recordStrategyToggleLog(
+  supabase: any,
+  userId: string,
+  strategyRow: any,
+  previousEnabled: boolean,
+  nextEnabled: boolean,
+  fallbackPortfolioId?: string | null
+): Promise<{ lifecycleLog: any; lifecycleLogPersisted: boolean }> {
+  if (!strategyRow || previousEnabled === nextEnabled) {
+    return { lifecycleLog: null, lifecycleLogPersisted: true };
+  }
+
+  const eventType: StrategyLogEventType = nextEnabled ? 'STRATEGY_RESUMED' : 'STRATEGY_PAUSED';
+  const strategyName = strategyRow.name || 'Untitled Strategy';
+  const symbol = strategyRow.target_symbol || 'ALL';
+  const actionText = nextEnabled
+    ? `Strategy "${strategyName}" resumed`
+    : `Strategy "${strategyName}" paused`;
+  const metadata = {
+    scope: strategyRow.scope || 'global',
+    enabled: nextEnabled,
+  };
+
+  const buildFallbackLog = (pid: string | null) => ({
+    id: `local-${eventType.toLowerCase()}-${strategyRow.id}-${Date.now()}`,
+    portfolioId: pid,
+    strategyId: strategyRow.id,
+    strategyName,
+    symbol,
+    eventType,
+    actionText,
+    signal: null,
+    eventDate: getTodayUtcDate(),
+    loggedAt: new Date().toISOString(),
+    metadata,
+    source: 'local',
+  });
+
+  try {
+    let result = await writeStrategyLog(supabase, {
+      userId,
+      portfolioId: strategyRow.portfolio_id || null,
+      strategyId: strategyRow.id,
+      strategyName,
+      symbol,
+      eventType,
+      actionText,
+      metadata,
+    });
+
+    if (
+      result.needsSchemaUpdate &&
+      !strategyRow.portfolio_id &&
+      fallbackPortfolioId &&
+      UUID_REGEX.test(String(fallbackPortfolioId))
+    ) {
+      result = await writeStrategyLog(supabase, {
+        userId,
+        portfolioId: String(fallbackPortfolioId),
+        strategyId: strategyRow.id,
+        strategyName,
+        symbol,
+        eventType,
+        actionText,
+        metadata,
+      });
+    }
+
+    if (result.row) {
+      return { lifecycleLog: formatStrategyLog(result.row), lifecycleLogPersisted: true };
+    }
+
+    return {
+      lifecycleLog: buildFallbackLog(strategyRow.portfolio_id || fallbackPortfolioId || null),
+      lifecycleLogPersisted: false,
+    };
+  } catch (logErr) {
+    console.warn('Non-fatal strategy_logs toggle write error:', logErr);
+    return {
+      lifecycleLog: buildFallbackLog(strategyRow.portfolio_id || fallbackPortfolioId || null),
+      lifecycleLogPersisted: false,
+    };
+  }
 }
 
 // Helper to normalize DB row into client-friendly model
@@ -298,23 +396,17 @@ router.post('/', authMiddleware, async (req: any, res: any) => {
       return res.status(500).json({ error: error.message });
     }
 
-    if (
-      finalPortfolioId &&
-      UUID_REGEX.test(String(finalPortfolioId)) &&
-      data?.id &&
-      insertPayload.enabled &&
-      finalTargetSymbol !== 'ALL'
-    ) {
+    if (data?.id && insertPayload.enabled) {
       try {
         await writeStrategyLog(req.supabase, {
           userId: req.user.id,
-          portfolioId: String(finalPortfolioId),
+          portfolioId: finalPortfolioId && UUID_REGEX.test(String(finalPortfolioId)) ? String(finalPortfolioId) : null,
           strategyId: data.id,
           strategyName: data.name,
-          symbol: finalTargetSymbol,
+          symbol: finalTargetSymbol || 'ALL',
           eventType: 'STRATEGY_STARTED',
           actionText: `Strategy "${data.name}" started`,
-          metadata: { scope: data.scope || 'specific' },
+          metadata: { scope: data.scope || 'global' },
         });
       } catch (logErr) {
         console.warn('Non-fatal strategy_logs start write error:', logErr);
@@ -544,12 +636,12 @@ router.get('/logs', authMiddleware, async (req: any, res: any) => {
       req.supabase
         .from('strategy_logs')
         .select('*')
-        .eq('portfolio_id', portfolioId)
-        .eq('symbol', symbol)
+        .or(`portfolio_id.eq.${portfolioId},portfolio_id.is.null`)
+        .in('symbol', [symbol, 'ALL'])
         .order('logged_at', { ascending: true }),
       req.supabase
         .from('portfolio_strategies')
-        .select('id, name, scope, target_symbol, enabled, created_at')
+        .select('id, name, scope, target_symbol, enabled, created_at, updated_at')
         .or(`portfolio_id.eq.${portfolioId},portfolio_id.is.null`)
         .order('created_at', { ascending: true }),
       req.supabase
@@ -582,6 +674,12 @@ router.get('/logs', authMiddleware, async (req: any, res: any) => {
         .map((l) => String(l.strategyId))
     );
 
+    const recordedPausedStrategyIds = new Set(
+      logs
+        .filter((l) => l.eventType === 'STRATEGY_PAUSED' && l.strategyId)
+        .map((l) => String(l.strategyId))
+    );
+
     const recordedExecutionKeys = new Set(
       logs
         .filter((l) => l.eventType === 'ACTION_EXECUTED' && l.eventDate)
@@ -596,27 +694,53 @@ router.get('/logs', authMiddleware, async (req: any, res: any) => {
           strat.target_symbol === 'ALL' ||
           strat.target_symbol === symbol;
 
-        if (!appliesToStock || recordedStartedStrategyIds.has(String(strat.id))) {
+        if (!appliesToStock) {
           continue;
         }
 
-        logs.push({
-          id: `start-${strat.id}`,
-          portfolioId,
-          strategyId: strat.id,
-          strategyName: strat.name || 'Strategy',
-          symbol,
-          eventType: 'STRATEGY_STARTED',
-          actionText: `Strategy "${strat.name || 'Untitled Strategy'}" started`,
-          signal: null,
-          eventDate: strat.created_at ? String(strat.created_at).split('T')[0] : null,
-          loggedAt: strat.created_at,
-          metadata: {
-            scope: strat.scope || 'global',
-            enabled: strat.enabled !== false,
-          },
-          source: 'strategy',
-        });
+        if (!recordedStartedStrategyIds.has(String(strat.id))) {
+          logs.push({
+            id: `start-${strat.id}`,
+            portfolioId,
+            strategyId: strat.id,
+            strategyName: strat.name || 'Strategy',
+            symbol,
+            eventType: 'STRATEGY_STARTED',
+            actionText: `Strategy "${strat.name || 'Untitled Strategy'}" started`,
+            signal: null,
+            eventDate: strat.created_at ? String(strat.created_at).split('T')[0] : null,
+            loggedAt: strat.created_at,
+            metadata: {
+              scope: strat.scope || 'global',
+              enabled: strat.enabled !== false,
+            },
+            source: 'strategy',
+          });
+        }
+
+        if (
+          strat.enabled === false &&
+          !recordedPausedStrategyIds.has(String(strat.id)) &&
+          strat.updated_at
+        ) {
+          logs.push({
+            id: `pause-${strat.id}`,
+            portfolioId,
+            strategyId: strat.id,
+            strategyName: strat.name || 'Strategy',
+            symbol: strat.target_symbol || symbol,
+            eventType: 'STRATEGY_PAUSED',
+            actionText: `Strategy "${strat.name || 'Untitled Strategy'}" paused`,
+            signal: null,
+            eventDate: String(strat.updated_at).split('T')[0],
+            loggedAt: strat.updated_at,
+            metadata: {
+              scope: strat.scope || 'global',
+              enabled: false,
+            },
+            source: 'strategy',
+          });
+        }
       }
     } else if (!isMissingTableError(strategiesRes.error)) {
       console.warn('Non-fatal strategy_logs portfolio_strategies lookup error:', strategiesRes.error);
@@ -652,6 +776,8 @@ router.get('/logs', authMiddleware, async (req: any, res: any) => {
       STRATEGY_STARTED: 0,
       SIGNAL_TRIGGERED: 1,
       ACTION_EXECUTED: 2,
+      STRATEGY_PAUSED: 3,
+      STRATEGY_RESUMED: 4,
     };
 
     logs.sort((a, b) => {
@@ -816,6 +942,18 @@ router.put('/:id', authMiddleware, async (req: any, res: any) => {
       updatePayload.portfolio_id = portfolio_id || portfolioId || null;
     }
 
+    let previousEnabled: boolean | null = null;
+    if (enabled !== undefined) {
+      const { data: existingRow } = await req.supabase
+        .from('portfolio_strategies')
+        .select('enabled')
+        .eq('id', id)
+        .single();
+      if (existingRow && existingRow.enabled !== undefined) {
+        previousEnabled = Boolean(existingRow.enabled);
+      }
+    }
+
     const { data, error } = await req.supabase
       .from('portfolio_strategies')
       .update(updatePayload)
@@ -827,7 +965,31 @@ router.put('/:id', authMiddleware, async (req: any, res: any) => {
       return res.status(500).json({ error: error.message });
     }
 
-    res.json(formatStrategy(data));
+    let toggleResult: { lifecycleLog: any; lifecycleLogPersisted: boolean } = {
+      lifecycleLog: null,
+      lifecycleLogPersisted: true,
+    };
+    if (
+      enabled !== undefined &&
+      previousEnabled !== null &&
+      previousEnabled !== Boolean(data?.enabled)
+    ) {
+      const contextPortfolioId =
+        req.body?.portfolio_id_context || req.body?.portfolio_id || req.body?.portfolioId || null;
+      toggleResult = await recordStrategyToggleLog(
+        req.supabase,
+        req.user.id,
+        data,
+        previousEnabled,
+        Boolean(data?.enabled),
+        contextPortfolioId
+      );
+    }
+
+    res.json({
+      ...formatStrategy(data),
+      ...(toggleResult.lifecycleLog ? toggleResult : {}),
+    });
   } catch (err: any) {
     res.status(500).json({ error: err.message || 'Failed to update strategy' });
   }
@@ -880,7 +1042,21 @@ router.patch('/:id/toggle', authMiddleware, async (req: any, res: any) => {
       return res.status(500).json({ error: error.message });
     }
 
-    res.json(formatStrategy(data));
+    const contextPortfolioId =
+      req.body?.portfolio_id_context || req.body?.portfolio_id || req.body?.portfolioId || null;
+    const toggleResult = await recordStrategyToggleLog(
+      req.supabase,
+      req.user.id,
+      data,
+      Boolean(current.enabled),
+      Boolean(data?.enabled),
+      contextPortfolioId
+    );
+
+    res.json({
+      ...formatStrategy(data),
+      ...(toggleResult.lifecycleLog ? toggleResult : {}),
+    });
   } catch (err: any) {
     res.status(500).json({ error: err.message || 'Failed to toggle strategy' });
   }

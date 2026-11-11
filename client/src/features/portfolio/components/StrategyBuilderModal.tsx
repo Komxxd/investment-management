@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { api } from '../../../services/api/client';
 import { BacktestModal } from './BacktestModal';
+import type { StrategyLogEntry } from './StrategyLogsModal';
 
 export type SizingType = 'QTY' | 'VALUE' | 'INCREASE_PCT' | 'DECREASE_PCT';
 export type ActionType = 'BUY' | 'SELL' | 'ALERT';
@@ -120,6 +121,7 @@ interface StrategyBuilderModalProps {
   >;
   livePrices?: Record<string, { currentPrice?: number; changePercent?: number; name?: string }>;
   currencySymbol?: string;
+  onLifecycleLog?: (entry: StrategyLogEntry) => void;
 }
 
 export const BLANK_RULE: StrategyRule = {
@@ -322,7 +324,8 @@ export function StrategyBuilderModal({
   stocks = [],
   indicators = {},
   livePrices = {},
-  currencySymbol = '₹'
+  currencySymbol = '₹',
+  onLifecycleLog,
 }: StrategyBuilderModalProps) {
   const [activeTab, setActiveTab] = useState<string>('builder');
   const [actionTab, setActionTab] = useState<'entry' | 'exit'>('entry');
@@ -444,6 +447,7 @@ export function StrategyBuilderModal({
 
     const payload = {
       portfolio_id: isGlobal ? null : portfolioId,
+      portfolio_id_context: portfolioId,
       name: currentRule.name.trim() || 'Untitled Strategy',
       scope: currentRule.scope || 'global',
       target_symbol: currentRule.targetSymbol || 'ALL',
@@ -463,11 +467,14 @@ export function StrategyBuilderModal({
       frequency: currentRule.frequency || 'daily'
     };
 
-    let savedRule: StrategyRule | null = null;
+    let savedRule: any = null;
     try {
       const isExisting = currentRule.id && savedRules.some(r => r.id === currentRule.id);
       if (isExisting && !currentRule.id.startsWith('local-')) {
         savedRule = await api.put(`/api/strategies/${currentRule.id}`, payload);
+        if (savedRule?.lifecycleLog && savedRule?.lifecycleLogPersisted === false && onLifecycleLog) {
+          onLifecycleLog(savedRule.lifecycleLog);
+        }
       } else {
         savedRule = await api.post('/api/strategies', payload);
       }
@@ -606,12 +613,45 @@ export function StrategyBuilderModal({
 
     setSavedRules(prev => prev.map(r => r.id === id ? { ...r, enabled: newStatus } : r));
 
+    const buildLocalToggleEntry = (): StrategyLogEntry => {
+      const eventType = newStatus ? 'STRATEGY_RESUMED' : 'STRATEGY_PAUSED';
+      const now = new Date();
+      const y = now.getFullYear();
+      const m = String(now.getMonth() + 1).padStart(2, '0');
+      const d = String(now.getDate()).padStart(2, '0');
+      return {
+        id: `local-${eventType.toLowerCase()}-${id}-${Date.now()}`,
+        portfolioId,
+        strategyId: id,
+        strategyName: target.name || 'Untitled Strategy',
+        symbol: target.targetSymbol || 'ALL',
+        eventType,
+        actionText: newStatus
+          ? `Strategy "${target.name || 'Untitled Strategy'}" resumed`
+          : `Strategy "${target.name || 'Untitled Strategy'}" paused`,
+        eventDate: `${y}-${m}-${d}`,
+        loggedAt: now.toISOString(),
+        source: 'local',
+      };
+    };
+
     try {
       if (!id.startsWith('local-')) {
-        await api.put(`/api/strategies/${id}`, { enabled: newStatus });
+        const updated = await api.put(`/api/strategies/${id}`, {
+          enabled: newStatus,
+          portfolio_id_context: portfolioId,
+        });
+        if (updated?.lifecycleLog && updated?.lifecycleLogPersisted === false && onLifecycleLog) {
+          onLifecycleLog(updated.lifecycleLog);
+        }
+      } else if (onLifecycleLog) {
+        onLifecycleLog(buildLocalToggleEntry());
       }
     } catch (err) {
       console.error('Failed to toggle strategy on server', err);
+      if (onLifecycleLog) {
+        onLifecycleLog(buildLocalToggleEntry());
+      }
     }
   };
 
