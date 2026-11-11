@@ -7,6 +7,7 @@ import { AuthForm } from '../features/auth/components/AuthForm';
 import { StockDetails } from '../features/stocks/pages/StockDetails';
 import { BacktestResultsPage } from '../features/portfolio/pages/BacktestResultsPage';
 import { BacktestPage } from '../features/portfolio/pages/BacktestPage';
+import { StrategyPage } from '../features/portfolio/pages/StrategyPage';
 
 export const router = createBrowserRouter([
   {
@@ -31,6 +32,14 @@ export const router = createBrowserRouter([
       {
         path: '/stocks/:symbol',
         element: <StockDetails />,
+      },
+      {
+        path: '/strategy',
+        element: <StrategyPage />,
+      },
+      {
+        path: '/portfolio/:portfolioId/strategy',
+        element: <StrategyPage />,
       },
       {
         path: '/backtest',

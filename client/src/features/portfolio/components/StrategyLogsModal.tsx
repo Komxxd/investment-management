@@ -46,6 +46,95 @@ interface StrategyLogsModalProps {
   fallbackLocalLogs?: StrategyLogEntry[];
 }
 
+export function formatStrategyLogDatetime(isoString: string): string {
+  if (!isoString) return '—';
+  const d = new Date(isoString);
+  if (Number.isNaN(d.getTime())) return isoString;
+  return d.toLocaleString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+}
+
+export function renderStrategyLogBadge(entry: StrategyLogEntry) {
+  if (entry.eventType === 'STRATEGY_STARTED') {
+    return (
+      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-indigo-500/15 text-indigo-400 border border-indigo-500/30 text-[10px] font-semibold uppercase tracking-wide shrink-0">
+        <PlayCircle className="w-3 h-3" />
+        Started
+      </span>
+    );
+  }
+
+  if (entry.eventType === 'STRATEGY_PAUSED') {
+    return (
+      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-orange-500/15 text-orange-400 border border-orange-500/30 text-[10px] font-semibold uppercase tracking-wide shrink-0">
+        <PauseCircle className="w-3 h-3" />
+        Paused
+      </span>
+    );
+  }
+
+  if (entry.eventType === 'STRATEGY_RESUMED') {
+    return (
+      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-400 border border-sky-500/30 text-[10px] font-semibold uppercase tracking-wide shrink-0">
+        <RotateCcw className="w-3 h-3" />
+        Resumed
+      </span>
+    );
+  }
+
+  if (entry.eventType === 'SIGNAL_TRIGGERED') {
+    const isSell = entry.signal === 'SELL';
+    return (
+      <span
+        className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-semibold uppercase tracking-wide shrink-0 ${
+          isSell
+            ? 'bg-rose-500/15 text-rose-400 border-rose-500/30'
+            : 'bg-amber-500/15 text-amber-400 border-amber-500/30'
+        }`}
+      >
+        <Zap className="w-3 h-3" />
+        Signal
+      </span>
+    );
+  }
+
+  const isSellAction = entry.signal === 'SELL' || entry.metadata?.action === 'SELL';
+  return (
+    <span
+      className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-semibold uppercase tracking-wide shrink-0 ${
+        isSellAction
+          ? 'bg-rose-500/15 text-rose-400 border-rose-500/30'
+          : 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+      }`}
+    >
+      <CheckCircle2 className="w-3 h-3" />
+      Action
+    </span>
+  );
+}
+
+export function formatStrategyLogAction(entry: StrategyLogEntry, currencySymbol: string): string {
+  const price = Number(entry.metadata?.price);
+  if (
+    (entry.eventType === 'SIGNAL_TRIGGERED' || entry.eventType === 'ACTION_EXECUTED') &&
+    Number.isFinite(price) &&
+    price > 0
+  ) {
+    const formattedPrice = price.toLocaleString(undefined, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+    return `${entry.actionText} @ ${currencySymbol}${formattedPrice}`;
+  }
+  return entry.actionText;
+}
+
 export const StrategyLogsModal: React.FC<StrategyLogsModalProps> = ({
   isOpen,
   onClose,
@@ -217,95 +306,6 @@ export const StrategyLogsModal: React.FC<StrategyLogsModalProps> = ({
 
   if (!isOpen || !symbol) return null;
 
-  const formatDatetime = (isoString: string) => {
-    if (!isoString) return '—';
-    const d = new Date(isoString);
-    if (Number.isNaN(d.getTime())) return isoString;
-    return d.toLocaleString(undefined, {
-      year: 'numeric',
-      month: 'short',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-    });
-  };
-
-  const renderEventBadge = (entry: StrategyLogEntry) => {
-    if (entry.eventType === 'STRATEGY_STARTED') {
-      return (
-        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-indigo-500/15 text-indigo-400 border border-indigo-500/30 text-[10px] font-semibold uppercase tracking-wide shrink-0">
-          <PlayCircle className="w-3 h-3" />
-          Started
-        </span>
-      );
-    }
-
-    if (entry.eventType === 'STRATEGY_PAUSED') {
-      return (
-        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-orange-500/15 text-orange-400 border border-orange-500/30 text-[10px] font-semibold uppercase tracking-wide shrink-0">
-          <PauseCircle className="w-3 h-3" />
-          Paused
-        </span>
-      );
-    }
-
-    if (entry.eventType === 'STRATEGY_RESUMED') {
-      return (
-        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-400 border border-sky-500/30 text-[10px] font-semibold uppercase tracking-wide shrink-0">
-          <RotateCcw className="w-3 h-3" />
-          Resumed
-        </span>
-      );
-    }
-
-    if (entry.eventType === 'SIGNAL_TRIGGERED') {
-      const isSell = entry.signal === 'SELL';
-      return (
-        <span
-          className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-semibold uppercase tracking-wide shrink-0 ${
-            isSell
-              ? 'bg-rose-500/15 text-rose-400 border-rose-500/30'
-              : 'bg-amber-500/15 text-amber-400 border-amber-500/30'
-          }`}
-        >
-          <Zap className="w-3 h-3" />
-          Signal
-        </span>
-      );
-    }
-
-    const isSellAction = entry.signal === 'SELL' || entry.metadata?.action === 'SELL';
-    return (
-      <span
-        className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-semibold uppercase tracking-wide shrink-0 ${
-          isSellAction
-            ? 'bg-rose-500/15 text-rose-400 border-rose-500/30'
-            : 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
-        }`}
-      >
-        <CheckCircle2 className="w-3 h-3" />
-        Action
-      </span>
-    );
-  };
-
-  const formatActionDescription = (entry: StrategyLogEntry) => {
-    const price = Number(entry.metadata?.price);
-    if (
-      (entry.eventType === 'SIGNAL_TRIGGERED' || entry.eventType === 'ACTION_EXECUTED') &&
-      Number.isFinite(price) &&
-      price > 0
-    ) {
-      const formattedPrice = price.toLocaleString(undefined, {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      });
-      return `${entry.actionText} @ ${currencySymbol}${formattedPrice}`;
-    }
-    return entry.actionText;
-  };
-
   return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-3 sm:p-4"
@@ -406,13 +406,13 @@ export const StrategyLogsModal: React.FC<StrategyLogsModalProps> = ({
                     className="hover:bg-surface-hover/50 transition-colors"
                   >
                     <td className="py-2.5 px-4 font-mono text-[11px] text-secondary whitespace-nowrap border-r border-divider/60 align-top">
-                      {formatDatetime(entry.loggedAt)}
+                      {formatStrategyLogDatetime(entry.loggedAt)}
                     </td>
                     <td className="py-2.5 px-4 text-primary align-top">
                       <div className="flex items-start gap-2 flex-wrap sm:flex-nowrap">
-                        {renderEventBadge(entry)}
+                        {renderStrategyLogBadge(entry)}
                         <span className="text-xs text-primary leading-relaxed">
-                          {formatActionDescription(entry)}
+                          {formatStrategyLogAction(entry, currencySymbol)}
                         </span>
                       </div>
                     </td>

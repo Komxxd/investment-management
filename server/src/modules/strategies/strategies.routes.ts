@@ -619,37 +619,50 @@ router.post('/executions', authMiddleware, async (req: any, res: any) => {
   }
 });
 
-// GET /api/strategies/logs - Fetch chronological strategy execution logs for a stock
+// GET /api/strategies/logs - Fetch chronological strategy execution logs (optionally scoped by portfolio_id and/or symbol)
 router.get('/logs', authMiddleware, async (req: any, res: any) => {
   try {
     const portfolioId = typeof req.query?.portfolio_id === 'string' ? req.query.portfolio_id.trim() : '';
     const symbol = typeof req.query?.symbol === 'string' ? req.query.symbol.trim() : '';
 
-    if (!portfolioId || !UUID_REGEX.test(portfolioId)) {
-      return res.status(400).json({ error: 'Valid portfolio_id is required.' });
+    if (portfolioId && !UUID_REGEX.test(portfolioId)) {
+      return res.status(400).json({ error: 'Invalid portfolio_id format.' });
     }
-    if (!symbol) {
-      return res.status(400).json({ error: 'Stock symbol is required.' });
+
+    let logsQuery = req.supabase
+      .from('strategy_logs')
+      .select('*')
+      .order('logged_at', { ascending: true });
+    if (portfolioId) {
+      logsQuery = logsQuery.or(`portfolio_id.eq.${portfolioId},portfolio_id.is.null`);
+    }
+    if (symbol && symbol !== 'ALL') {
+      logsQuery = logsQuery.in('symbol', [symbol, 'ALL']);
+    }
+
+    let strategiesQuery = req.supabase
+      .from('portfolio_strategies')
+      .select('id, portfolio_id, name, scope, target_symbol, enabled, created_at, updated_at')
+      .order('created_at', { ascending: true });
+    if (portfolioId) {
+      strategiesQuery = strategiesQuery.or(`portfolio_id.eq.${portfolioId},portfolio_id.is.null`);
+    }
+
+    let executionsQuery = req.supabase
+      .from('strategy_executions')
+      .select('*')
+      .order('executed_at', { ascending: true });
+    if (portfolioId) {
+      executionsQuery = executionsQuery.eq('portfolio_id', portfolioId);
+    }
+    if (symbol && symbol !== 'ALL') {
+      executionsQuery = executionsQuery.eq('symbol', symbol);
     }
 
     const [logsRes, strategiesRes, executionsRes] = await Promise.all([
-      req.supabase
-        .from('strategy_logs')
-        .select('*')
-        .or(`portfolio_id.eq.${portfolioId},portfolio_id.is.null`)
-        .in('symbol', [symbol, 'ALL'])
-        .order('logged_at', { ascending: true }),
-      req.supabase
-        .from('portfolio_strategies')
-        .select('id, name, scope, target_symbol, enabled, created_at, updated_at')
-        .or(`portfolio_id.eq.${portfolioId},portfolio_id.is.null`)
-        .order('created_at', { ascending: true }),
-      req.supabase
-        .from('strategy_executions')
-        .select('*')
-        .eq('portfolio_id', portfolioId)
-        .eq('symbol', symbol)
-        .order('executed_at', { ascending: true }),
+      logsQuery,
+      strategiesQuery,
+      executionsQuery,
     ]);
 
     let missingTable = false;
@@ -683,28 +696,33 @@ router.get('/logs', authMiddleware, async (req: any, res: any) => {
     const recordedExecutionKeys = new Set(
       logs
         .filter((l) => l.eventType === 'ACTION_EXECUTED' && l.eventDate)
-        .map((l) => `${l.eventDate}:${l.signal || ''}`)
+        .map((l) => `${l.portfolioId || ''}:${l.symbol || ''}:${l.eventDate}:${l.signal || ''}`)
     );
 
     if (!strategiesRes.error) {
       for (const strat of strategiesRes.data || []) {
         if (!strat || strat.id === 'rule-default') continue;
-        const appliesToStock =
-          strat.scope === 'global' ||
-          strat.target_symbol === 'ALL' ||
-          strat.target_symbol === symbol;
+        const hasSpecificSymbol = Boolean(symbol && symbol !== 'ALL');
+        const appliesToStock = !hasSpecificSymbol
+          ? true
+          : strat.scope === 'global' ||
+            strat.target_symbol === 'ALL' ||
+            strat.target_symbol === symbol;
 
         if (!appliesToStock) {
           continue;
         }
 
+        const resolvedSymbol = hasSpecificSymbol ? symbol : (strat.target_symbol || 'ALL');
+        const resolvedPortfolioId = strat.portfolio_id || portfolioId || null;
+
         if (!recordedStartedStrategyIds.has(String(strat.id))) {
           logs.push({
             id: `start-${strat.id}`,
-            portfolioId,
+            portfolioId: resolvedPortfolioId,
             strategyId: strat.id,
             strategyName: strat.name || 'Strategy',
-            symbol,
+            symbol: resolvedSymbol,
             eventType: 'STRATEGY_STARTED',
             actionText: `Strategy "${strat.name || 'Untitled Strategy'}" started`,
             signal: null,
@@ -725,10 +743,10 @@ router.get('/logs', authMiddleware, async (req: any, res: any) => {
         ) {
           logs.push({
             id: `pause-${strat.id}`,
-            portfolioId,
+            portfolioId: resolvedPortfolioId,
             strategyId: strat.id,
             strategyName: strat.name || 'Strategy',
-            symbol: strat.target_symbol || symbol,
+            symbol: strat.target_symbol || resolvedSymbol,
             eventType: 'STRATEGY_PAUSED',
             actionText: `Strategy "${strat.name || 'Untitled Strategy'}" paused`,
             signal: null,
@@ -748,17 +766,17 @@ router.get('/logs', authMiddleware, async (req: any, res: any) => {
 
     if (!executionsRes.error) {
       for (const exec of executionsRes.data || []) {
-        const execKey = `${exec.execution_date}:${exec.action || ''}`;
+        const execKey = `${exec.portfolio_id || ''}:${exec.symbol || ''}:${exec.execution_date}:${exec.action || ''}`;
         if (recordedExecutionKeys.has(execKey)) continue;
 
         const qty = Number(exec.quantity) || 0;
         const price = Number(exec.price) || 0;
         logs.push({
           id: `exec-${exec.id}`,
-          portfolioId,
+          portfolioId: exec.portfolio_id || portfolioId || null,
           strategyId: exec.strategy_id || null,
           strategyName: exec.strategy_name || null,
-          symbol,
+          symbol: exec.symbol || symbol || 'ALL',
           eventType: 'ACTION_EXECUTED',
           actionText: `Executed ${exec.action} ${qty} ${qty === 1 ? 'share' : 'shares'}${exec.strategy_name ? ` (${exec.strategy_name})` : ''}`,
           signal: exec.action || null,

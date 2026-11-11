@@ -36,9 +36,10 @@ export function AppLayout() {
   const isPortfolioPage = location.pathname.startsWith('/portfolio/');
   const portfolioId = isPortfolioPage ? location.pathname.split('/')[2] : null;
   const portfolioName = portfolioId ? portfolios.find(p => p.id === portfolioId)?.name : null;
+  const isStrategyPage = location.pathname === '/strategy' || location.pathname.endsWith('/strategy');
   const isBacktestPage = location.pathname.includes('/backtest');
   const isBacktestResultPage = location.pathname.includes('/backtest/results');
-  const isFixedScreenPage = isPortfolioPage || isBacktestResultPage;
+  const isFixedScreenPage = (isPortfolioPage && !isBacktestPage && !isStrategyPage) || isBacktestResultPage;
 
   const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
@@ -90,7 +91,7 @@ export function AppLayout() {
             <img src="/favicon.svg" alt="Prism" className="w-8 h-8 rounded-lg" />
           </div>
 
-          {(isPortfolioPage || isBacktestPage) ? (
+          {(isPortfolioPage || isBacktestPage || isStrategyPage) ? (
             <div className="relative flex items-center" ref={portfolioMenuRef}>
               <button
                 onClick={() => setIsPortfolioMenuOpen(!isPortfolioMenuOpen)}
@@ -142,31 +143,43 @@ export function AppLayout() {
             <GlobalSearch />
           </div>
 
-          {/* Backtest Navbar Item */}
-          {isBacktestResultPage ? (
-            <div className="flex items-center gap-1 sm:gap-1.5 shrink-0 text-xs font-semibold">
-              <button
-                onClick={() => navigate(portfolioId ? `/portfolio/${portfolioId}/backtest` : '/backtest')}
-                className="px-1 pb-0.5 text-secondary hover:text-primary transition-colors cursor-pointer"
-              >
-                Backtest
-              </button>
-              <ChevronRight className="w-3.5 h-3.5 text-secondary shrink-0" />
-              <span className="px-1 pb-0.5 text-primary">
-                Result
-              </span>
-            </div>
-          ) : (
+          {/* Strategy & Backtest Navbar Items */}
+          <div className="flex items-center gap-3 sm:gap-4 shrink-0">
             <button
-              onClick={() => navigate(portfolioId ? `/portfolio/${portfolioId}/backtest` : '/backtest')}
-              className={`px-1 pb-0.5 text-xs font-semibold cursor-pointer shrink-0 border-b-2 transition-colors ${isBacktestPage
+              onClick={() => navigate(portfolioId ? `/portfolio/${portfolioId}/strategy` : '/strategy')}
+              className={`px-1 pb-0.5 text-xs font-semibold cursor-pointer shrink-0 border-b-2 transition-colors ${isStrategyPage
                   ? 'text-primary border-primary'
                   : 'text-secondary hover:text-primary border-transparent'
                 }`}
             >
-              Backtest
+              Strategy
             </button>
-          )}
+
+            {isBacktestResultPage ? (
+              <div className="flex items-center gap-1 sm:gap-1.5 shrink-0 text-xs font-semibold">
+                <button
+                  onClick={() => navigate(portfolioId ? `/portfolio/${portfolioId}/backtest` : '/backtest')}
+                  className="px-1 pb-0.5 text-secondary hover:text-primary transition-colors cursor-pointer"
+                >
+                  Backtest
+                </button>
+                <ChevronRight className="w-3.5 h-3.5 text-secondary shrink-0" />
+                <span className="px-1 pb-0.5 text-primary">
+                  Result
+                </span>
+              </div>
+            ) : (
+              <button
+                onClick={() => navigate(portfolioId ? `/portfolio/${portfolioId}/backtest` : '/backtest')}
+                className={`px-1 pb-0.5 text-xs font-semibold cursor-pointer shrink-0 border-b-2 transition-colors ${isBacktestPage
+                    ? 'text-primary border-primary'
+                    : 'text-secondary hover:text-primary border-transparent'
+                  }`}
+              >
+                Backtest
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="flex items-center gap-1 sm:gap-2">

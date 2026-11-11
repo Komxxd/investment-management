@@ -122,6 +122,9 @@ interface StrategyBuilderModalProps {
   livePrices?: Record<string, { currentPrice?: number; changePercent?: number; name?: string }>;
   currencySymbol?: string;
   onLifecycleLog?: (entry: StrategyLogEntry) => void;
+  initialRule?: StrategyRule | null;
+  initialTab?: 'builder' | 'active';
+  onStrategiesChanged?: () => void;
 }
 
 export const BLANK_RULE: StrategyRule = {
@@ -326,6 +329,9 @@ export function StrategyBuilderModal({
   livePrices = {},
   currencySymbol = '₹',
   onLifecycleLog,
+  initialRule,
+  initialTab,
+  onStrategiesChanged,
 }: StrategyBuilderModalProps) {
   const [activeTab, setActiveTab] = useState<string>('builder');
   const [actionTab, setActionTab] = useState<'entry' | 'exit'>('entry');
@@ -398,8 +404,15 @@ export function StrategyBuilderModal({
   useEffect(() => {
     if (isOpen) {
       loadStrategies();
+      if (initialTab) {
+        setActiveTab(initialTab);
+      }
+      if (initialRule !== undefined) {
+        setCurrentRule(initialRule ? normalizeRule(initialRule) : BLANK_RULE);
+        setActionTab('entry');
+      }
     }
-  }, [isOpen, portfolioId]);
+  }, [isOpen, portfolioId, initialRule, initialTab]);
 
   useEffect(() => {
     try {
@@ -512,6 +525,7 @@ export function StrategyBuilderModal({
 
       setCurrentRule(finalRule);
       setSaveSuccess(true);
+      onStrategiesChanged?.();
       setTimeout(() => {
         setSaveSuccess(false);
         setActiveTab('active');
@@ -601,6 +615,7 @@ export function StrategyBuilderModal({
       if (!id.startsWith('local-')) {
         await api.delete(`/api/strategies/${id}`);
       }
+      onStrategiesChanged?.();
     } catch (err) {
       console.error('Failed to delete strategy on server', err);
     }
@@ -644,8 +659,12 @@ export function StrategyBuilderModal({
         if (updated?.lifecycleLog && updated?.lifecycleLogPersisted === false && onLifecycleLog) {
           onLifecycleLog(updated.lifecycleLog);
         }
-      } else if (onLifecycleLog) {
-        onLifecycleLog(buildLocalToggleEntry());
+        onStrategiesChanged?.();
+      } else {
+        if (onLifecycleLog) {
+          onLifecycleLog(buildLocalToggleEntry());
+        }
+        onStrategiesChanged?.();
       }
     } catch (err) {
       console.error('Failed to toggle strategy on server', err);
