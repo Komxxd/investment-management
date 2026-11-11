@@ -88,7 +88,7 @@ export function AppLayout() {
             onClick={() => navigate('/portfolios')}
             title="Prism Workspace"
           >
-            <img src="/favicon.svg" alt="Prism" className="w-8 h-8 rounded-lg" />
+            <img src="/favicon.svg" alt="Prism" className="w-8 h-8 rounded-full shadow-xs" />
           </div>
 
           {(isPortfolioPage || isBacktestPage || isStrategyPage) ? (

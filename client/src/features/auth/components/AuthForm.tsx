@@ -262,7 +262,7 @@ export function AuthForm() {
 
         <div className="w-full bg-surface border border-divider rounded-2xl shadow-lg px-5 py-7 sm:px-6 sm:py-8">
           <div className="flex flex-col items-center mb-6 space-y-3">
-            <img src="/favicon.svg" alt="Prism" className="w-10 h-10 rounded-xl shadow-xs" />
+            <img src="/favicon.svg" alt="Prism" className="w-10 h-10 rounded-full shadow-xs" />
             <div className="text-center space-y-0.5">
               <div className="text-[11px] font-mono uppercase tracking-[0.2em] text-secondary">
                 Prism

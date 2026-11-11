@@ -1,7 +1,7 @@
 import React from 'react';
 
 interface BrandMarkProps {
-  /** 'badge' renders the rounded dark plate + white P matching favicon.svg; 'glyph' renders just the crisp P in currentColor. */
+  /** 'badge' renders the circular white plate + dark P matching the landing navbar and favicon.svg; 'glyph' renders just the crisp P in currentColor. */
   variant?: 'badge' | 'glyph';
   className?: string;
   label?: string;
@@ -29,17 +29,17 @@ export function BrandMark({
         role="img"
         aria-label={label}
       >
-        <rect
-          x="1"
-          y="1"
-          width="30"
-          height="30"
-          rx="8"
-          fill="#111827"
-          stroke="#27272A"
-          strokeWidth="1.5"
+        <circle
+          cx="16"
+          cy="16"
+          r="15"
+          fill="#FFFFFF"
+          stroke="#E4E4E7"
+          strokeWidth="1"
         />
-        <path fillRule="evenodd" clipRule="evenodd" d={P_PATH} fill="#FFFFFF" />
+        <g transform="translate(16 16) scale(0.92) translate(-16.15 -16)">
+          <path fillRule="evenodd" clipRule="evenodd" d={P_PATH} fill="#111827" />
+        </g>
       </svg>
     );
   }

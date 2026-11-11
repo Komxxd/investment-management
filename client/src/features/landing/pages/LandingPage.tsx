@@ -490,7 +490,7 @@ export function LandingPage() {
       <footer className="border-t border-divider bg-surface/40 py-8 px-4 sm:px-6">
         <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div className="flex items-center gap-2.5">
-            <img src="/favicon.svg" alt="Prism Logo" className="w-6 h-6 rounded-md" />
+            <img src="/favicon.svg" alt="Prism Logo" className="w-6 h-6 rounded-full" />
             <div>
               <div className="text-xs font-semibold text-primary">Prism</div>
               <div className="text-[11px] text-secondary">
