@@ -8,7 +8,7 @@ import {
   AlertCircle,
   Layers,
 } from 'lucide-react';
-import { type StrategyRule, normalizeRule } from './StrategyBuilderModal';
+import { type StrategyRule, normalizeRule } from '../utils/strategyConfig';
 import {
   runBacktest,
   type BacktestResponse,

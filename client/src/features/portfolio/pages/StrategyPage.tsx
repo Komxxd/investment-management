@@ -25,12 +25,12 @@ import { usePortfolioContext } from '../hooks/PortfolioContext';
 import { useCurrency } from '../../../app/providers/CurrencyProvider';
 import { ConfirmationModal } from '../../../components/ui/ConfirmationModal';
 import { BacktestModal } from '../components/BacktestModal';
+import { StrategyBuilderModal } from '../components/StrategyBuilderModal';
 import {
-  StrategyBuilderModal,
   formatRuleFormula,
   normalizeRule,
   type StrategyRule,
-} from '../components/StrategyBuilderModal';
+} from '../utils/strategyConfig';
 import {
   formatStrategyLogAction,
   formatStrategyLogDatetime,
