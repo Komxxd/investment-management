@@ -1,306 +1,376 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { Briefcase, Layers, Search } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import {
+  ArrowRight,
+  FlaskConical,
+  History,
+  Search,
+  SlidersHorizontal,
+  X,
+} from 'lucide-react';
 import { usePortfolioContext } from '../hooks/PortfolioContext';
 import type { Portfolio } from '../hooks/usePortfolioData';
 import { useCurrency } from '../../../app/providers/CurrencyProvider';
 import { BacktestModal } from '../components/BacktestModal';
 import { PortfolioBacktestModal } from '../components/PortfolioBacktestModal';
-import {
-  formatRuleFormula,
-  normalizeRule,
-  type StrategyRule,
-} from '../utils/strategyConfig';
-import {
-  loadAllBacktestStrategies,
-  seedSampleBacktestStrategies,
-  type StrategyWithLegacyPortfolio,
-} from '../components/backtest/backtestPresets';
 import { BacktestPortfoliosTab } from '../components/backtest/BacktestPortfoliosTab';
+import { BacktestStrategyLauncher } from '../components/backtest/BacktestStrategyLauncher';
+import { BacktestHistoryTab } from '../components/backtest/BacktestHistoryTab';
 import {
-  BacktestStrategiesTab,
-  type BacktestStrategyGroup,
-} from '../components/backtest/BacktestStrategiesTab';
+  activateBacktestHistorySession,
+  clearBacktestHistory,
+  deleteBacktestHistoryEntry,
+  loadBacktestHistory,
+  type BacktestHistoryEntry,
+} from '../components/backtest/backtestSessionStorage';
+import type { StrategyRule } from '../utils/strategyConfig';
+import { loadSavedStrategies } from '../utils/strategyStorage';
+
+type BacktestPageTab = 'simulations' | 'results';
 
 export function BacktestPage() {
+  const { portfolioId: urlPortfolioId } = useParams<{ portfolioId?: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { portfolios = [], stocks = [], setIsCreateModalOpen } = usePortfolioContext();
-  const { currencySymbol = '₹' } = useCurrency();
+  const navigate = useNavigate();
 
-  const currentTabParam = searchParams.get('tab');
-  const activeMainTab: 'portfolios' | 'strategies' =
-    currentTabParam === 'strategies' ? 'strategies' : 'portfolios';
+  const { portfolios, stocks, setIsCreateModalOpen } = usePortfolioContext();
+  const { currencySymbol } = useCurrency();
 
-  const handleTabChange = (tab: 'portfolios' | 'strategies') => {
-    setSearchParams(prev => {
+  const tabParam = searchParams.get('tab');
+  const activeMainTab: BacktestPageTab =
+    tabParam === 'results' ? 'results' : 'simulations';
+
+  const [selectedPortfolioId, setSelectedPortfolioId] = useState<string>(
+    urlPortfolioId || 'ALL'
+  );
+  useEffect(() => {
+    let cancelled = false;
+    Promise.resolve().then(() => {
+      if (!cancelled) {
+        setSelectedPortfolioId(urlPortfolioId || 'ALL');
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [urlPortfolioId]);
+
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const [strategies, setStrategies] = useState<StrategyRule[]>([]);
+  const [loadingStrategies, setLoadingStrategies] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.resolve()
+      .then(() => {
+        if (!cancelled) setLoadingStrategies(true);
+        return loadSavedStrategies(portfolios);
+      })
+      .then((loaded) => {
+        if (!cancelled) {
+          setStrategies(loaded);
+          setLoadingStrategies(false);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setLoadingStrategies(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [portfolios]);
+
+  const [historyEntries, setHistoryEntries] = useState<BacktestHistoryEntry[]>(() =>
+    loadBacktestHistory()
+  );
+
+  const refreshHistory = useCallback(() => {
+    setHistoryEntries(loadBacktestHistory());
+  }, []);
+
+  // Strategy simulation modal state
+  const [activeRuleForBacktest, setActiveRuleForBacktest] =
+    useState<StrategyRule | null>(null);
+  const [activeBacktestPortfolioId, setActiveBacktestPortfolioId] = useState<
+    string | null
+  >(null);
+
+  // Portfolio simulation modal state
+  const [portfolioBacktestTarget, setPortfolioBacktestTarget] = useState<{
+    portfolio: Portfolio;
+    mode: 'SIP' | 'ONE_TIME';
+  } | null>(null);
+
+  const handleTabChange = (tab: BacktestPageTab) => {
+    setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
       next.set('tab', tab);
       return next;
     });
   };
 
-  const [strategies, setStrategies] = useState<StrategyRule[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [selectedPortfolioId, setSelectedPortfolioId] = useState<string>('ALL');
-  const [searchQuery, setSearchQuery] = useState<string>('');
-
-  const [isBacktestModalOpen, setIsBacktestModalOpen] = useState<boolean>(false);
-  const [activeStrategyToTest, setActiveStrategyToTest] = useState<StrategyRule | null>(null);
-
-  const [portfolioBacktestConfig, setPortfolioBacktestConfig] = useState<{
-    portfolio: Portfolio;
-    mode: 'SIP' | 'ONE_TIME';
-  } | null>(null);
-
-  const refreshStrategies = useCallback(async () => {
-    setLoading(true);
-    try {
-      const loaded = await loadAllBacktestStrategies(portfolios, stocks);
-      setStrategies(loaded);
-    } finally {
-      setLoading(false);
-    }
-  }, [portfolios, stocks]);
-
-  useEffect(() => {
-    let cancelled = false;
-    loadAllBacktestStrategies(portfolios, stocks)
-      .then(loaded => {
-        if (!cancelled) {
-          setStrategies(loaded);
-          setLoading(false);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [portfolios, stocks]);
-
-  const portfolioNameMap = useMemo(() => {
-    const map = new Map<string, string>();
-    portfolios.forEach(p => map.set(p.id, p.name));
-    return map;
-  }, [portfolios]);
+  const handleSelectPortfolio = (id: string) => {
+    setSelectedPortfolioId(id);
+  };
 
   const filteredPortfolios = useMemo(() => {
-    if (!searchQuery.trim()) return portfolios;
-    const q = searchQuery.toLowerCase();
-    return portfolios.filter(p => p.name.toLowerCase().includes(q));
-  }, [portfolios, searchQuery]);
-
-  const filteredStrategies = useMemo(() => {
-    return strategies.filter(strat => {
-      const stratPortId =
-        strat.portfolioId || (strat as StrategyWithLegacyPortfolio).portfolio_id || null;
-      if (selectedPortfolioId !== 'ALL' && stratPortId !== selectedPortfolioId) {
-        return false;
-      }
-
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase();
-        const nameMatch = strat.name?.toLowerCase().includes(q);
-        const symbolMatch = strat.targetSymbol?.toLowerCase().includes(q);
-        const formulaMatch = formatRuleFormula(strat).toLowerCase().includes(q);
-        const portfolioMatch = (portfolioNameMap.get(stratPortId || '') || '')
-          .toLowerCase()
-          .includes(q);
-        return nameMatch || symbolMatch || formulaMatch || portfolioMatch;
-      }
-
-      return true;
+    const query = searchQuery.trim().toLowerCase();
+    return portfolios.filter((p) => {
+      const matchesScope =
+        selectedPortfolioId === 'ALL' || p.id === selectedPortfolioId;
+      if (!matchesScope) return false;
+      if (!query) return true;
+      return p.name.toLowerCase().includes(query);
     });
-  }, [strategies, selectedPortfolioId, searchQuery, portfolioNameMap]);
+  }, [portfolios, selectedPortfolioId, searchQuery]);
 
-  const groupedStrategies = useMemo(() => {
-    const groups: BacktestStrategyGroup[] = [];
-
-    portfolios.forEach(p => {
-      const items = filteredStrategies.filter(
-        s => (s.portfolioId || (s as StrategyWithLegacyPortfolio).portfolio_id) === p.id
-      );
-      if (items.length > 0 || selectedPortfolioId === p.id) {
-        groups.push({
-          portfolioId: p.id,
-          portfolioName: p.name,
-          items,
-        });
-      }
-    });
-
-    if (groups.length === 0 && filteredStrategies.length > 0) {
-      groups.push({
-        portfolioId: null,
-        portfolioName: 'General Strategies',
-        items: filteredStrategies,
-      });
-    }
-
-    return groups;
-  }, [filteredStrategies, portfolios, selectedPortfolioId]);
-
-  const handleOpenBacktest = (rule: StrategyRule) => {
-    setActiveStrategyToTest(normalizeRule(rule));
-    setIsBacktestModalOpen(true);
+  const handleOpenStrategyBacktest = (
+    rule: StrategyRule,
+    ownerPortfolioId: string | null
+  ) => {
+    const effectivePortfolioId =
+      ownerPortfolioId ||
+      (selectedPortfolioId !== 'ALL' ? selectedPortfolioId : null);
+    setActiveBacktestPortfolioId(effectivePortfolioId);
+    setActiveRuleForBacktest(rule);
   };
 
   const handleOpenPortfolioBacktest = (
     portfolio: Portfolio,
-    mode: 'SIP' | 'ONE_TIME' = 'SIP'
+    mode: 'SIP' | 'ONE_TIME'
   ) => {
-    setPortfolioBacktestConfig({ portfolio, mode });
+    setPortfolioBacktestTarget({ portfolio, mode });
   };
 
-  const targetPortfolioStocks = useMemo(() => {
-    if (!activeStrategyToTest) return stocks;
-    const rulePortId =
-      activeStrategyToTest.portfolioId ||
-      (activeStrategyToTest as StrategyWithLegacyPortfolio).portfolio_id;
-    if (rulePortId) {
-      const portStocks = stocks.filter(s => s.portfolio_id === rulePortId);
-      if (portStocks.length > 0) return portStocks;
-    }
-    return stocks;
-  }, [activeStrategyToTest, stocks]);
-
-  const handleLoadSampleStrategies = async () => {
-    const targetPortId = portfolios[0]?.id || null;
-    await seedSampleBacktestStrategies(targetPortId, stocks);
-    await refreshStrategies();
+  const handleOpenHistoryEntry = (entry: BacktestHistoryEntry) => {
+    activateBacktestHistorySession(entry);
+    const resultsPath = entry.portfolioId
+      ? `/portfolio/${entry.portfolioId}/backtest/results`
+      : '/backtest/results';
+    navigate(resultsPath, { state: entry.session });
   };
+
+  const handleDeleteHistoryEntry = (id: string) => {
+    setHistoryEntries(deleteBacktestHistoryEntry(id));
+  };
+
+  const handleClearHistory = () => {
+    clearBacktestHistory();
+    setHistoryEntries([]);
+  };
+
+  const manageStrategiesHref =
+    selectedPortfolioId !== 'ALL'
+      ? `/portfolio/${selectedPortfolioId}/strategy`
+      : '/strategy';
+
+  const modalStocks = useMemo(() => {
+    if (!activeBacktestPortfolioId) return stocks;
+    const scoped = stocks.filter(
+      (s) => s.portfolio_id === activeBacktestPortfolioId
+    );
+    return scoped.length > 0 ? scoped : stocks;
+  }, [activeBacktestPortfolioId, stocks]);
+
+  const portfolioBacktestStocks = useMemo(() => {
+    if (!portfolioBacktestTarget) return stocks;
+    return stocks.filter(
+      (s) => s.portfolio_id === portfolioBacktestTarget.portfolio.id
+    );
+  }, [portfolioBacktestTarget, stocks]);
 
   return (
-    <div className="flex-1 w-full bg-background text-primary py-4 sm:py-6 space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-divider">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6">
+      {/* Header */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-3">
-            <h1 className="text-lg sm:text-xl font-bold text-primary">
-              {activeMainTab === 'portfolios' ? 'Portfolios' : 'Saved Strategies'}
-            </h1>
-            <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-medium bg-surface-hover text-secondary border border-divider">
-              {activeMainTab === 'portfolios'
-                ? `${portfolios.length} ${portfolios.length === 1 ? 'Portfolio' : 'Portfolios'}`
-                : `${strategies.length} ${strategies.length === 1 ? 'Strategy' : 'Strategies'}`}
-            </span>
-          </div>
-          <p className="text-xs text-secondary mt-1">
-            {activeMainTab === 'portfolios'
-              ? 'Select any portfolio to launch a historical backtest.'
-              : 'View saved strategies grouped by portfolio and execute historical simulation backtests.'}
+          <h1 className="text-xl sm:text-2xl font-bold text-primary tracking-tight">
+            Backtest Studio
+          </h1>
+          <p className="text-xs sm:text-sm text-secondary mt-1">
+            Run historical SIP, one-time allocation, and indicator strategy simulations, then inspect saved result reports.
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center p-1 bg-surface border border-divider rounded-xl">
+        <div className="flex flex-wrap items-center gap-2">
+          {historyEntries.length > 0 && (
             <button
-              onClick={() => handleTabChange('portfolios')}
-              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                activeMainTab === 'portfolios'
-                  ? 'bg-primary text-background shadow-xs'
-                  : 'text-secondary hover:text-primary hover:bg-surface-hover'
-              }`}
+              type="button"
+              onClick={() => handleOpenHistoryEntry(historyEntries[0])}
+              className="px-3.5 py-2 rounded-xl border border-divider bg-surface hover:bg-surface-hover text-xs font-semibold text-primary transition-colors inline-flex items-center gap-1.5 cursor-pointer"
             >
-              <Briefcase className="w-3.5 h-3.5" />
-              <span>Portfolio</span>
-              <span
-                className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
-                  activeMainTab === 'portfolios'
-                    ? 'bg-background/25 text-background font-bold'
-                    : 'bg-surface-hover text-secondary border border-divider'
-                }`}
-              >
-                {portfolios.length}
-              </span>
+              <History className="w-3.5 h-3.5 text-secondary" />
+              <span>Latest Report</span>
             </button>
-
-            <button
-              onClick={() => handleTabChange('strategies')}
-              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                activeMainTab === 'strategies'
-                  ? 'bg-primary text-background shadow-xs'
-                  : 'text-secondary hover:text-primary hover:bg-surface-hover'
-              }`}
-            >
-              <Layers className="w-3.5 h-3.5" />
-              <span>Strategies</span>
-              <span
-                className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
-                  activeMainTab === 'strategies'
-                    ? 'bg-background/25 text-background font-bold'
-                    : 'bg-surface-hover text-secondary border border-divider'
-                }`}
-              >
-                {strategies.length}
-              </span>
-            </button>
-          </div>
-
-          <div className="relative w-full sm:w-60">
-            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-secondary" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              placeholder={
-                activeMainTab === 'portfolios' ? 'Filter portfolios...' : 'Filter strategies...'
-              }
-              className="w-full pl-9 pr-3 py-1.5 bg-surface border border-divider rounded-lg text-xs text-primary focus:outline-none focus:border-primary transition-colors"
-            />
-          </div>
+          )}
+          <Link
+            to={manageStrategiesHref}
+            className="px-3.5 py-2 rounded-xl bg-primary text-background hover:opacity-90 text-xs font-semibold transition-opacity inline-flex items-center gap-1.5"
+          >
+            <SlidersHorizontal className="w-3.5 h-3.5" />
+            <span>Strategy Manager</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </Link>
         </div>
       </div>
 
-      {activeMainTab === 'portfolios' && (
-        <BacktestPortfoliosTab
-          portfolios={portfolios}
-          filteredPortfolios={filteredPortfolios}
-          onOpenCreatePortfolio={() => setIsCreateModalOpen(true)}
-          onOpenPortfolioBacktest={handleOpenPortfolioBacktest}
-        />
-      )}
+      {/* Navigation Tabs & Search/Filter Controls */}
+      <div className="rounded-2xl border border-divider bg-surface p-3 sm:p-4 space-y-3">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+          {/* Segmented Page Tabs */}
+          <div className="inline-flex items-center p-1 rounded-xl bg-background border border-divider self-start">
+            <button
+              type="button"
+              onClick={() => handleTabChange('simulations')}
+              className={`px-3.5 py-2 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
+                activeMainTab === 'simulations'
+                  ? 'bg-primary text-background shadow-xs'
+                  : 'text-secondary hover:text-primary'
+              }`}
+            >
+              <FlaskConical className="w-3.5 h-3.5" />
+              <span>Run Simulations</span>
+            </button>
 
-      {activeMainTab === 'strategies' && (
-        <BacktestStrategiesTab
-          portfolios={portfolios}
-          strategies={strategies}
-          filteredStrategies={filteredStrategies}
-          groupedStrategies={groupedStrategies}
+            <button
+              type="button"
+              onClick={() => handleTabChange('results')}
+              className={`px-3.5 py-2 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
+                activeMainTab === 'results'
+                  ? 'bg-primary text-background shadow-xs'
+                  : 'text-secondary hover:text-primary'
+              }`}
+            >
+              <History className="w-3.5 h-3.5" />
+              <span>Recent Results ({historyEntries.length})</span>
+            </button>
+          </div>
+
+          {/* Search input */}
+          <div className="relative w-full lg:w-80">
+            <Search className="w-3.5 h-3.5 text-secondary absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder={
+                activeMainTab === 'simulations'
+                  ? 'Search portfolios, strategies, or symbols...'
+                  : 'Search simulation history...'
+              }
+              className="w-full pl-9 pr-8 py-2 rounded-xl bg-background border border-divider text-xs text-primary placeholder:text-secondary focus:outline-none focus:border-primary transition-colors"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                aria-label="Clear search"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-secondary hover:text-primary cursor-pointer"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Portfolio Scope Pills */}
+        {portfolios.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t border-divider">
+            <span className="text-[11px] font-medium text-secondary mr-1">
+              Scope:
+            </span>
+            <button
+              type="button"
+              onClick={() => handleSelectPortfolio('ALL')}
+              className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
+                selectedPortfolioId === 'ALL'
+                  ? 'bg-primary text-background'
+                  : 'bg-background border border-divider text-secondary hover:text-primary'
+              }`}
+            >
+              All Portfolios
+            </button>
+            {portfolios.map((portfolio) => (
+              <button
+                key={portfolio.id}
+                type="button"
+                onClick={() => handleSelectPortfolio(portfolio.id)}
+                className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
+                  selectedPortfolioId === portfolio.id
+                    ? 'bg-primary text-background'
+                    : 'bg-background border border-divider text-secondary hover:text-primary'
+                }`}
+              >
+                {portfolio.name}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Main Content */}
+      {activeMainTab === 'simulations' ? (
+        <div className="space-y-8">
+          <BacktestPortfoliosTab
+            portfolios={portfolios}
+            filteredPortfolios={filteredPortfolios}
+            onOpenCreatePortfolio={() => setIsCreateModalOpen(true)}
+            onOpenPortfolioBacktest={handleOpenPortfolioBacktest}
+          />
+
+          <BacktestStrategyLauncher
+            portfolios={portfolios}
+            stocks={stocks}
+            strategies={strategies}
+            loadingStrategies={loadingStrategies}
+            selectedPortfolioId={selectedPortfolioId}
+            searchQuery={searchQuery}
+            onRunStrategyBacktest={handleOpenStrategyBacktest}
+          />
+        </div>
+      ) : (
+        <BacktestHistoryTab
+          entries={historyEntries}
           selectedPortfolioId={selectedPortfolioId}
-          onSelectPortfolioId={setSelectedPortfolioId}
-          loading={loading}
-          onLoadSampleStrategies={handleLoadSampleStrategies}
-          onOpenBacktest={handleOpenBacktest}
-        />
-      )}
-
-      {portfolioBacktestConfig && (
-        <PortfolioBacktestModal
-          isOpen={Boolean(portfolioBacktestConfig)}
-          onClose={() => setPortfolioBacktestConfig(null)}
-          portfolio={portfolioBacktestConfig.portfolio}
-          initialMode={portfolioBacktestConfig.mode}
-          stocks={stocks}
+          searchQuery={searchQuery}
           currencySymbol={currencySymbol}
+          onOpenEntry={handleOpenHistoryEntry}
+          onDeleteEntry={handleDeleteHistoryEntry}
+          onClearHistory={handleClearHistory}
+          onSwitchToSimulations={() => handleTabChange('simulations')}
         />
       )}
 
-      {isBacktestModalOpen && activeStrategyToTest && (
+      {/* Strategy Backtest Modal */}
+      {activeRuleForBacktest && (
         <BacktestModal
-          isOpen={isBacktestModalOpen}
-          onClose={() => setIsBacktestModalOpen(false)}
-          rule={activeStrategyToTest}
-          stocks={targetPortfolioStocks}
-          currencySymbol={currencySymbol}
-          portfolioId={
-            activeStrategyToTest.portfolioId ||
-            (activeStrategyToTest as StrategyWithLegacyPortfolio).portfolio_id
-          }
-          onBacktestCompleted={() => {
-            setIsBacktestModalOpen(false);
+          isOpen={Boolean(activeRuleForBacktest)}
+          onClose={() => {
+            setActiveRuleForBacktest(null);
+            setActiveBacktestPortfolioId(null);
           }}
+          rule={activeRuleForBacktest}
+          stocks={modalStocks}
+          currencySymbol={currencySymbol}
+          portfolioId={activeBacktestPortfolioId || undefined}
+          onBacktestCompleted={refreshHistory}
+        />
+      )}
+
+      {/* Portfolio Backtest Modal */}
+      {portfolioBacktestTarget && (
+        <PortfolioBacktestModal
+          isOpen={Boolean(portfolioBacktestTarget)}
+          onClose={() => setPortfolioBacktestTarget(null)}
+          portfolio={portfolioBacktestTarget.portfolio}
+          initialMode={portfolioBacktestTarget.mode}
+          stocks={portfolioBacktestStocks}
+          currencySymbol={currencySymbol}
+          onBacktestCompleted={refreshHistory}
         />
       )}
     </div>

@@ -1,127 +1,92 @@
-import { api } from '../../../../services/api/client';
-import { normalizeRule, type StrategyRule } from '../../utils/strategyConfig';
-import type { Portfolio, Stock } from '../../hooks/usePortfolioData';
+import { api } from '../../../services/api/client';
+import { normalizeRule, type StrategyRule } from './strategyConfig';
+import type { Portfolio, Stock } from '../hooks/usePortfolioData';
 
-export interface StrategyWithLegacyPortfolio extends StrategyRule {
-  portfolio_id?: string;
+export type StrategyWithLegacyPortfolio = Omit<StrategyRule, 'portfolio_id'> & {
+  portfolio_id?: string | null;
+};
+
+/**
+ * Resolves the owning portfolio ID when it exists in the user's known portfolio set; otherwise null (global).
+ */
+export function resolveStrategyPortfolioId(
+  rule: StrategyRule,
+  knownPortfolioIds: Set<string>
+): string | null {
+  const pid = rule.portfolioId || (rule as StrategyWithLegacyPortfolio).portfolio_id || null;
+  return pid && knownPortfolioIds.has(pid) ? pid : null;
 }
 
 /**
- * Resolves the owning portfolio ID for a strategy using explicit ID, target symbol lookup, or fallback.
+ * Canonical loader for saved strategies across the backend API and localStorage caches.
  */
-function resolveStrategyPortfolioId(
-  strat: StrategyWithLegacyPortfolio,
-  portfolios: Portfolio[],
-  stocks: Stock[]
-): string | undefined {
-  const directId = strat.portfolioId || strat.portfolio_id;
-  if (directId && portfolios.some(p => p.id === directId)) {
-    return directId;
-  }
-  if (strat.targetSymbol && stocks.length > 0) {
-    const matchedStock = stocks.find(st => st.symbol === strat.targetSymbol);
-    if (matchedStock && matchedStock.portfolio_id) {
-      return matchedStock.portfolio_id;
-    }
-  }
-  return portfolios[0]?.id || undefined;
-}
+export async function loadSavedStrategies(portfolios: Portfolio[]): Promise<StrategyRule[]> {
+  const map = new Map<string, StrategyRule>();
 
-/**
- * Loads saved strategies from the backend API merged with any localStorage fallbacks.
- */
-export async function loadAllBacktestStrategies(
-  portfolios: Portfolio[],
-  stocks: Stock[]
-): Promise<StrategyRule[]> {
-  let serverStrategies: StrategyWithLegacyPortfolio[] = [];
   try {
     const data = await api.get('/api/strategies');
     if (Array.isArray(data)) {
-      serverStrategies = data.filter(
-        (s): s is StrategyWithLegacyPortfolio => Boolean(s && s.id !== 'rule-default')
-      );
+      for (const raw of data) {
+        if (!raw || raw.id === 'rule-default') continue;
+        const norm = normalizeRule(raw);
+        map.set(norm.id, norm);
+      }
     }
   } catch (err) {
-    console.warn('Could not fetch strategies from server, reading local storage', err);
+    console.warn('Could not load strategies from API, falling back to local cache:', err);
   }
 
-  const strategiesMap = new Map<string, StrategyRule>();
-  serverStrategies.forEach(s => {
-    if (s && s.id) {
-      strategiesMap.set(s.id, {
-        ...normalizeRule(s),
-        portfolioId: resolveStrategyPortfolioId(s, portfolios, stocks),
-      });
-    }
-  });
-
-  portfolios.forEach(p => {
+  const localKeys = ['global', ...portfolios.map(p => p.id)];
+  for (const suffix of localKeys) {
     try {
-      const raw = localStorage.getItem(`portfolio_strategies_${p.id}`);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) {
-          parsed.forEach((s: StrategyWithLegacyPortfolio) => {
-            if (s && s.id && s.id !== 'rule-default' && !strategiesMap.has(s.id)) {
-              strategiesMap.set(s.id, {
-                ...normalizeRule(s),
-                portfolioId: s.portfolioId || s.portfolio_id || p.id,
-              });
-            }
-          });
+      const raw = localStorage.getItem(`portfolio_strategies_${suffix}`);
+      if (!raw) continue;
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) continue;
+      for (const item of parsed) {
+        if (!item || item.id === 'rule-default' || !item.id || map.has(item.id)) continue;
+        const norm = normalizeRule(item);
+        if (!norm.portfolioId && suffix !== 'global') {
+          norm.portfolioId = suffix;
         }
+        map.set(norm.id, norm);
       }
     } catch {
       // Ignore malformed localStorage cache entries
     }
-  });
-
-  try {
-    const raw = localStorage.getItem('portfolio_strategies_global');
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
-        parsed.forEach((s: StrategyWithLegacyPortfolio) => {
-          if (s && s.id && s.id !== 'rule-default' && !strategiesMap.has(s.id)) {
-            strategiesMap.set(s.id, {
-              ...normalizeRule(s),
-              portfolioId: resolveStrategyPortfolioId(s, portfolios, stocks),
-            });
-          }
-        });
-      }
-    }
-  } catch {
-    // Ignore malformed global cache entries
   }
 
-  return Array.from(strategiesMap.values());
+  return Array.from(map.values());
 }
 
 /**
- * Builds preset sample strategies seeded on demand when a user has no saved strategies.
+ * Builds preset strategy templates used either as in-memory backtest templates or paused starter rules.
  */
-export function buildSampleBacktestStrategies(
+export function buildStarterSampleStrategies(
   targetPortId: string | null,
-  stocks: Stock[]
+  stocks: Stock[],
+  options: { enabled?: boolean; idPrefix?: string } = {}
 ): StrategyRule[] {
-  const primarySymbol = stocks[0]?.symbol || 'RELIANCE.NS';
-  const secondarySymbol = stocks[1]?.symbol || 'TCS.NS';
-  const now = Date.now();
+  const { enabled = false, idPrefix = `rule-sample-${Date.now()}` } = options;
+  const scopedStocks = targetPortId
+    ? stocks.filter(s => s.portfolio_id === targetPortId)
+    : stocks;
+  const stockPool = scopedStocks.length > 0 ? scopedStocks : stocks;
+  const primarySymbol = stockPool[0]?.symbol || 'RELIANCE.NS';
+  const secondarySymbol = stockPool[1]?.symbol || primarySymbol || 'TCS.NS';
   const createdAt = new Date().toISOString();
   const portfolioId = targetPortId || undefined;
 
   return [
     {
-      id: `rule-sample-rsi-${now}`,
+      id: `${idPrefix}-rsi`,
       name: 'RSI Divergence & Oversold Reversal (14-period)',
       scope: 'stock',
       targetSymbol: primarySymbol,
       action: 'BUY',
       sizingType: 'QTY',
       sizingValue: 10,
-      enabled: true,
+      enabled,
       frequency: 'daily',
       createdAt,
       conditions: [
@@ -170,14 +135,14 @@ export function buildSampleBacktestStrategies(
       portfolioId,
     },
     {
-      id: `rule-sample-golden-${now + 1}`,
+      id: `${idPrefix}-golden-dma`,
       name: 'Golden Cross (50/200 DMA)',
       scope: 'stock',
       targetSymbol: secondarySymbol,
       action: 'BUY',
       sizingType: 'QTY',
       sizingValue: 15,
-      enabled: true,
+      enabled,
       frequency: 'daily',
       createdAt,
       conditions: [
@@ -192,14 +157,14 @@ export function buildSampleBacktestStrategies(
       portfolioId,
     },
     {
-      id: `rule-sample-ema-golden-${now + 2}`,
+      id: `${idPrefix}-golden-ema`,
       name: 'EMA Golden / Death Cross (50/200 EMA)',
       scope: 'stock',
       targetSymbol: primarySymbol,
       action: 'BUY',
       sizingType: 'QTY',
       sizingValue: 10,
-      enabled: true,
+      enabled,
       frequency: 'daily',
       createdAt,
       conditions: [
@@ -234,14 +199,14 @@ export function buildSampleBacktestStrategies(
       portfolioId,
     },
     {
-      id: `rule-sample-macd-${now + 3}`,
+      id: `${idPrefix}-macd`,
       name: 'MACD Momentum Crossover (12, 26, 9)',
       scope: 'stock',
       targetSymbol: primarySymbol,
       action: 'BUY',
       sizingType: 'QTY',
       sizingValue: 10,
-      enabled: true,
+      enabled,
       frequency: 'daily',
       createdAt,
       conditions: [
@@ -316,14 +281,14 @@ export function buildSampleBacktestStrategies(
       portfolioId,
     },
     {
-      id: `rule-sample-bb-${now + 4}`,
+      id: `${idPrefix}-bb`,
       name: 'Bollinger Band Mean Reversion (20, 2)',
       scope: 'stock',
       targetSymbol: secondarySymbol,
       action: 'BUY',
       sizingType: 'QTY',
       sizingValue: 10,
-      enabled: true,
+      enabled,
       frequency: 'daily',
       createdAt,
       conditions: [
@@ -366,14 +331,14 @@ export function buildSampleBacktestStrategies(
       portfolioId,
     },
     {
-      id: `rule-sample-vwap-${now + 5}`,
+      id: `${idPrefix}-vwap`,
       name: 'VWAP Institutional Breakout',
       scope: 'stock',
       targetSymbol: primarySymbol,
       action: 'BUY',
       sizingType: 'QTY',
       sizingValue: 10,
-      enabled: true,
+      enabled,
       frequency: 'daily',
       createdAt,
       conditions: [
@@ -424,14 +389,14 @@ export function buildSampleBacktestStrategies(
       portfolioId,
     },
     {
-      id: `rule-sample-obv-${now + 6}`,
+      id: `${idPrefix}-obv`,
       name: 'OBV & Volume Breakout Confirmation',
       scope: 'stock',
       targetSymbol: primarySymbol,
       action: 'BUY',
       sizingType: 'QTY',
       sizingValue: 10,
-      enabled: true,
+      enabled,
       frequency: 'daily',
       createdAt,
       conditions: [
@@ -485,13 +450,13 @@ export function buildSampleBacktestStrategies(
 }
 
 /**
- * Seeds preset sample strategies via API with localStorage fallback.
+ * Seeds paused starter strategy templates via API with localStorage fallback on StrategyPage.
  */
-export async function seedSampleBacktestStrategies(
+export async function seedStarterStrategies(
   targetPortId: string | null,
   stocks: Stock[]
 ): Promise<void> {
-  const samples = buildSampleBacktestStrategies(targetPortId, stocks);
+  const samples = buildStarterSampleStrategies(targetPortId, stocks, { enabled: false });
   try {
     for (const s of samples) {
       await api.post('/api/strategies', {
@@ -503,7 +468,11 @@ export async function seedSampleBacktestStrategies(
         sizing_type: s.sizingType,
         sizing_value: s.sizingValue,
         conditions: s.conditions,
-        enabled: s.enabled,
+        entryConditions: s.entryConditions,
+        exitConditions: s.exitConditions,
+        exitSizingType: s.exitSizingType,
+        exitSizingValue: s.exitSizingValue,
+        enabled: false,
         frequency: s.frequency,
       });
     }
@@ -516,4 +485,3 @@ export async function seedSampleBacktestStrategies(
     }
   }
 }
-

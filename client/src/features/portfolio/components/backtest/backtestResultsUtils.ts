@@ -108,9 +108,10 @@ export interface BacktestSessionState {
   result?: BacktestResponse | null;
   rule?: StrategyRule | null;
   rules?: StrategyRule[];
-  portfolioId?: string;
+  portfolioId?: string | null;
   portfolioConfig?: PortfolioBacktestConfigSummary | null;
   mode?: string;
+  timestamp?: number;
 }
 
 const MONTH_ABBRS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];

@@ -14,6 +14,7 @@ import {
   type BacktestResponse,
 } from '../services/backtestService';
 import { BacktestDateRangePicker } from './BacktestDateRangePicker';
+import { saveBacktestSession } from './backtest/backtestSessionStorage';
 
 interface BacktestModalProps {
   isOpen: boolean;
@@ -105,14 +106,14 @@ export function BacktestModal({
         feePct: 0,
       });
 
-      // Save latest session so the Backtest Results page can load smoothly on refresh
+      // Save latest session and record run in backtest history
       const backtestSession = {
         result: res,
         rule: normalizedRule,
         portfolioId: portfolioId || null,
         timestamp: Date.now(),
       };
-      localStorage.setItem('latest_backtest_session', JSON.stringify(backtestSession));
+      saveBacktestSession(backtestSession);
 
       if (onBacktestCompleted) {
         onBacktestCompleted(res);

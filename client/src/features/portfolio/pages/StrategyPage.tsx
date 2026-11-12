@@ -20,6 +20,7 @@ import {
   ArrowUpDown,
   X,
 } from 'lucide-react';
+import { Sparkles as SeedTemplateIcon } from 'lucide-react';
 import { api } from '../../../services/api/client';
 import { usePortfolioContext } from '../hooks/PortfolioContext';
 import { useCurrency } from '../../../app/providers/CurrencyProvider';
@@ -31,6 +32,11 @@ import {
   normalizeRule,
   type StrategyRule,
 } from '../utils/strategyConfig';
+import {
+  loadSavedStrategies,
+  resolveStrategyPortfolioId,
+  seedStarterStrategies,
+} from '../utils/strategyStorage';
 import {
   formatStrategyLogAction,
   formatStrategyLogDatetime,
@@ -51,16 +57,9 @@ export function StrategyPage() {
   const { currencySymbol = '₹' } = useCurrency();
 
   const tabParam = searchParams.get('tab');
-  const [activeTab, setActiveTab] = useState<PageTab>(tabParam === 'logs' ? 'logs' : 'strategies');
-
-  useEffect(() => {
-    if (tabParam === 'logs' || tabParam === 'strategies') {
-      setActiveTab(tabParam);
-    }
-  }, [tabParam]);
+  const activeTab: PageTab = tabParam === 'logs' ? 'logs' : 'strategies';
 
   const handleTabChange = (tab: PageTab) => {
-    setActiveTab(tab);
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
       next.set('tab', tab);
@@ -70,8 +69,18 @@ export function StrategyPage() {
 
   const [selectedPortfolioId, setSelectedPortfolioId] = useState<string>(urlPortfolioId || 'ALL');
   useEffect(() => {
-    setSelectedPortfolioId(urlPortfolioId || 'ALL');
+    let cancelled = false;
+    Promise.resolve().then(() => {
+      if (!cancelled) {
+        setSelectedPortfolioId(urlPortfolioId || 'ALL');
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [urlPortfolioId]);
+
+  const [seedingTemplates, setSeedingTemplates] = useState(false);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
@@ -136,7 +145,7 @@ export function StrategyPage() {
       const key = `portfolio_strategy_logs_${entry.portfolioId || 'global'}_${dateKey}`;
       const existing = JSON.parse(localStorage.getItem(key) || '[]');
       const next = Array.isArray(existing) ? existing : [];
-      if (!next.some((item: any) => item?.id === entry.id)) {
+      if (!next.some((item: { id?: string }) => item?.id === entry.id)) {
         next.push(entry);
         localStorage.setItem(key, JSON.stringify(next));
       }
@@ -148,37 +157,8 @@ export function StrategyPage() {
   const loadStrategies = useCallback(async () => {
     setLoadingStrategies(true);
     try {
-      const map = new Map<string, StrategyRule>();
-      try {
-        const data = await api.get('/api/strategies');
-        if (Array.isArray(data)) {
-          for (const raw of data) {
-            if (!raw || raw.id === 'rule-default') continue;
-            const norm = normalizeRule(raw);
-            map.set(norm.id, norm);
-          }
-        }
-      } catch (err) {
-        console.warn('Could not load strategies from API, falling back to local cache:', err);
-      }
-
-      const localKeys = ['global', ...portfolios.map((p) => p.id)];
-      for (const suffix of localKeys) {
-        try {
-          const raw = localStorage.getItem(`portfolio_strategies_${suffix}`);
-          if (!raw) continue;
-          const parsed = JSON.parse(raw);
-          if (!Array.isArray(parsed)) continue;
-          for (const item of parsed) {
-            if (!item || item.id === 'rule-default' || !item.id || map.has(item.id)) continue;
-            map.set(item.id, normalizeRule(item));
-          }
-        } catch {
-          // ignore
-        }
-      }
-
-      setStrategies(Array.from(map.values()));
+      const loaded = await loadSavedStrategies(portfolios);
+      setStrategies(loaded);
     } finally {
       setLoadingStrategies(false);
     }
@@ -209,11 +189,27 @@ export function StrategyPage() {
   }, [selectedPortfolioId, collectLocalStrategyLogs]);
 
   useEffect(() => {
-    loadStrategies();
+    let cancelled = false;
+    Promise.resolve().then(() => {
+      if (!cancelled) {
+        void loadStrategies();
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [loadStrategies]);
 
   useEffect(() => {
-    loadLogs();
+    let cancelled = false;
+    Promise.resolve().then(() => {
+      if (!cancelled) {
+        void loadLogs();
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [loadLogs]);
 
   const portfolioNameMap = useMemo(() => {
@@ -224,10 +220,16 @@ export function StrategyPage() {
     return map;
   }, [portfolios]);
 
-  const getRulePortfolioId = (rule: StrategyRule): string | null => {
-    const pid = rule.portfolioId || (rule as any).portfolio_id;
-    return pid && portfolioNameMap.has(pid) ? pid : null;
-  };
+  const knownPortfolioIds = useMemo(
+    () => new Set(portfolios.map((p) => p.id)),
+    [portfolios]
+  );
+
+  const getRulePortfolioId = useCallback(
+    (rule: StrategyRule): string | null =>
+      resolveStrategyPortfolioId(rule, knownPortfolioIds),
+    [knownPortfolioIds]
+  );
 
   const handleToggleRule = async (rule: StrategyRule) => {
     if (togglingStrategyId) return;
@@ -299,7 +301,7 @@ export function StrategyPage() {
           if (Array.isArray(parsed)) {
             localStorage.setItem(
               key,
-              JSON.stringify(parsed.filter((r: any) => r?.id !== deleteTarget.id))
+              JSON.stringify(parsed.filter((r: { id?: string }) => r?.id !== deleteTarget.id))
             );
           }
         } catch {
@@ -361,7 +363,7 @@ export function StrategyPage() {
         portName.includes(q)
       );
     });
-  }, [strategies, selectedPortfolioId, statusFilter, searchQuery, portfolioNameMap]);
+  }, [strategies, selectedPortfolioId, statusFilter, searchQuery, portfolioNameMap, getRulePortfolioId]);
 
   const groupedStrategies = useMemo(() => {
     const groups: { portfolioId: string | null; label: string; items: StrategyRule[] }[] = [];
@@ -378,7 +380,7 @@ export function StrategyPage() {
       }
     }
     return groups;
-  }, [filteredStrategies, portfolios, selectedPortfolioId]);
+  }, [filteredStrategies, portfolios, selectedPortfolioId, getRulePortfolioId]);
 
   const mergedLogs = useMemo(() => {
     const items = [...logs];
@@ -447,7 +449,7 @@ export function StrategyPage() {
       if (scoped.length > 0) return scoped;
     }
     return stocks;
-  }, [backtestTarget, stocks]);
+  }, [backtestTarget, stocks, getRulePortfolioId]);
 
   return (
     <div className="flex-1 w-full bg-background text-primary py-4 sm:py-6 space-y-5">
@@ -665,14 +667,37 @@ export function StrategyPage() {
                 Build your first dual-action BUY/SELL indicator strategy to generate live signals, execute daily trades, and inspect lifecycle logs.
               </p>
             </div>
-            <button
-              type="button"
-              onClick={handleOpenCreateModal}
-              className="px-4 py-2 rounded-xl bg-primary text-background hover:opacity-90 text-xs font-semibold shadow-xs transition-opacity inline-flex items-center gap-1.5 cursor-pointer"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Create Strategy</span>
-            </button>
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <button
+                type="button"
+                onClick={handleOpenCreateModal}
+                className="px-4 py-2 rounded-xl bg-primary text-background hover:opacity-90 text-xs font-semibold shadow-xs transition-opacity inline-flex items-center gap-1.5 cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Create Strategy</span>
+              </button>
+              <button
+                type="button"
+                disabled={seedingTemplates}
+                onClick={async () => {
+                  setSeedingTemplates(true);
+                  try {
+                    const targetPortId =
+                      selectedPortfolioId !== 'ALL'
+                        ? selectedPortfolioId
+                        : portfolios[0]?.id || null;
+                    await seedStarterStrategies(targetPortId, stocks);
+                    await loadStrategies();
+                  } finally {
+                    setSeedingTemplates(false);
+                  }
+                }}
+                className="px-4 py-2 rounded-xl border border-divider bg-background hover:bg-surface-hover text-primary text-xs font-semibold transition-colors inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                <SeedTemplateIcon className="w-3.5 h-3.5" />
+                <span>{seedingTemplates ? 'Loading Templates...' : 'Load Starter Templates'}</span>
+              </button>
+            </div>
           </div>
         ) : groupedStrategies.length === 0 ? (
           <div className="p-12 text-center rounded-2xl border border-divider bg-surface space-y-2">

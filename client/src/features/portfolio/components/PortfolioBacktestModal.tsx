@@ -20,6 +20,7 @@ import {
 import { runPortfolioBacktest } from '../services/backtestService';
 import type { StrategyRule } from './StrategyBuilderModal';
 import { BacktestDateRangePicker } from './BacktestDateRangePicker';
+import { saveBacktestSession } from './backtest/backtestSessionStorage';
 
 interface PortfolioBacktestModalProps {
   isOpen: boolean;
@@ -228,7 +229,7 @@ export function PortfolioBacktestModal({
         timestamp: Date.now(),
       };
 
-      localStorage.setItem('latest_backtest_session', JSON.stringify(backtestSession));
+      saveBacktestSession(backtestSession);
 
       if (onBacktestCompleted) {
         onBacktestCompleted();
