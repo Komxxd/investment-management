@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, Suspense } from 'react'
 import { Plus, Briefcase, Trash2, Pencil, ChevronRight, ChevronDown, Info, User, LogOut, Folder, Home, Sun, Moon, Check, Settings, Columns } from 'lucide-react'
 import { api } from '../../services/api/client'
 import { usePortfolioContext } from '../../features/portfolio/hooks/PortfolioContext'
@@ -8,11 +8,20 @@ import { useAuth } from '../../app/providers/AuthProvider'
 import { useNavigate, useLocation, useParams, Outlet } from 'react-router-dom'
 import { GlobalSearch } from './GlobalSearch'
 import { MarketTicker } from './MarketTicker'
+import { lazyNamed } from '../../utils/lazyNamed'
 
-import { CreatePortfolioModal } from '../../features/portfolio/components/CreatePortfolioModal'
-import { ConfirmationModal } from '../ui/ConfirmationModal'
-import { RecycleBinModal } from '../../features/portfolio/components/RecycleBinModal'
-import { SettingsModal } from '../../features/settings/components/SettingsModal'
+const CreatePortfolioModal = lazyNamed(
+  () => import('../../features/portfolio/components/CreatePortfolioModal'),
+  'CreatePortfolioModal'
+);
+const RecycleBinModal = lazyNamed(
+  () => import('../../features/portfolio/components/RecycleBinModal'),
+  'RecycleBinModal'
+);
+const SettingsModal = lazyNamed(
+  () => import('../../features/settings/components/SettingsModal'),
+  'SettingsModal'
+);
 
 export function AppLayout() {
   const { session, loading } = useAuth();
@@ -295,29 +304,47 @@ export function AppLayout() {
         <div className={`flex flex-col flex-1 w-full ${isBacktestResultPage ? 'max-w-none' : 'max-w-[1600px] mx-auto'} bg-background ${isFixedScreenPage ? 'min-h-0' : ''}`}>
           <main className={`flex-1 flex flex-col min-w-0 bg-background relative z-0 ${isFixedScreenPage ? 'min-h-0' : ''}`}>
             <div className={`flex-1 ${isBacktestResultPage ? 'p-0' : 'px-2 md:px-4 pt-2 md:pt-3 pb-2 md:pb-4'} flex flex-col ${isFixedScreenPage ? 'min-h-0' : ''}`}>
-              <Outlet />
+              <Suspense
+                fallback={
+                  <div className="flex flex-1 items-center justify-center py-20">
+                    <div className="w-7 h-7 border-2 border-divider border-t-zinc-900 dark:border-t-zinc-100 rounded-full animate-spin" />
+                  </div>
+                }
+              >
+                <Outlet />
+              </Suspense>
             </div>
           </main>
         </div>
       </div>
 
-      <RecycleBinModal
-        isOpen={isRecycleBinModalOpen}
-        onClose={() => setIsRecycleBinModalOpen(false)}
-        onRestore={() => fetchData()}
-      />
-      <SettingsModal
-        isOpen={isSettingsModalOpen}
-        onClose={() => setIsSettingsModalOpen(false)}
-      />
-      {isBacktestPage && (
-        <CreatePortfolioModal
-          isOpen={isCreateModalOpen}
-          onClose={() => setIsCreateModalOpen(false)}
-          onCreated={() => {
-            fetchData();
-          }}
-        />
+      {isRecycleBinModalOpen && (
+        <Suspense fallback={null}>
+          <RecycleBinModal
+            isOpen={isRecycleBinModalOpen}
+            onClose={() => setIsRecycleBinModalOpen(false)}
+            onRestore={() => fetchData()}
+          />
+        </Suspense>
+      )}
+      {isSettingsModalOpen && (
+        <Suspense fallback={null}>
+          <SettingsModal
+            isOpen={isSettingsModalOpen}
+            onClose={() => setIsSettingsModalOpen(false)}
+          />
+        </Suspense>
+      )}
+      {isBacktestPage && isCreateModalOpen && (
+        <Suspense fallback={null}>
+          <CreatePortfolioModal
+            isOpen={isCreateModalOpen}
+            onClose={() => setIsCreateModalOpen(false)}
+            onCreated={() => {
+              fetchData();
+            }}
+          />
+        </Suspense>
       )}
     </div>
   );

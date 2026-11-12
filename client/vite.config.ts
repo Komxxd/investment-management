@@ -13,5 +13,35 @@ export default defineConfig({
       },
     },
   },
+  build: {
+    rolldownOptions: {
+      output: {
+        codeSplitting: {
+          groups: [
+            {
+              name: 'react-vendor',
+              test: /node_modules\/(react|react-dom|react-router-dom|scheduler)\//,
+              priority: 30,
+            },
+            {
+              name: 'charts-vendor',
+              test: /node_modules\/(recharts|d3-.*|victory-vendor)\//,
+              priority: 25,
+            },
+            {
+              name: 'dnd-vendor',
+              test: /node_modules\/@dnd-kit\//,
+              priority: 25,
+            },
+            {
+              name: 'supabase-vendor',
+              test: /node_modules\/@supabase\//,
+              priority: 25,
+            },
+          ],
+        },
+      },
+    },
+  },
 })
 

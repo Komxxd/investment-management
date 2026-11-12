@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { RefreshCw, Info, X, Download } from 'lucide-react';
-import * as XLSX from 'xlsx';
 import { api } from '../../../services/api/client';
 import { useCurrency } from '../../../app/providers/CurrencyProvider';
 import { Plus, Check } from 'lucide-react';
@@ -295,7 +294,7 @@ export function PortfolioInfoModal({ symbols, isOpen, onClose, portfolioId, onSu
     }
   };
 
-  const exportCorporateActions = () => {
+  const exportCorporateActions = async () => {
     if (displayEvents.length === 0) return;
     
     const data = displayEvents.map(event => {
@@ -313,6 +312,7 @@ export function PortfolioInfoModal({ symbols, isOpen, onClose, portfolioId, onSu
       };
     });
 
+    const XLSX = await import('xlsx');
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.json_to_sheet(data);
     XLSX.utils.book_append_sheet(wb, ws, 'Corporate Actions');

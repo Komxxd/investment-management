@@ -1,22 +1,39 @@
+import { Suspense, type ReactNode } from 'react';
 import { createBrowserRouter } from 'react-router-dom';
 import { AppLayout } from '../components/layout/AppLayout';
-import { LandingPage } from '../features/landing/pages/LandingPage';
-import { HomeDashboard } from '../features/portfolio/pages/HomeDashboard';
-import { PortfolioDashboard } from '../features/portfolio/pages/PortfolioDashboard';
-import { AuthForm } from '../features/auth/components/AuthForm';
-import { StockDetails } from '../features/stocks/pages/StockDetails';
-import { BacktestResultsPage } from '../features/portfolio/pages/BacktestResultsPage';
-import { BacktestPage } from '../features/portfolio/pages/BacktestPage';
-import { StrategyPage } from '../features/portfolio/pages/StrategyPage';
+import { lazyNamed } from '../utils/lazyNamed';
+
+const LandingPage = lazyNamed(() => import('../features/landing/pages/LandingPage'), 'LandingPage');
+const AuthForm = lazyNamed(() => import('../features/auth/components/AuthForm'), 'AuthForm');
+const HomeDashboard = lazyNamed(() => import('../features/portfolio/pages/HomeDashboard'), 'HomeDashboard');
+const PortfolioDashboard = lazyNamed(() => import('../features/portfolio/pages/PortfolioDashboard'), 'PortfolioDashboard');
+const StockDetails = lazyNamed(() => import('../features/stocks/pages/StockDetails'), 'StockDetails');
+const StrategyPage = lazyNamed(() => import('../features/portfolio/pages/StrategyPage'), 'StrategyPage');
+const BacktestPage = lazyNamed(() => import('../features/portfolio/pages/BacktestPage'), 'BacktestPage');
+const BacktestResultsPage = lazyNamed(() => import('../features/portfolio/pages/BacktestResultsPage'), 'BacktestResultsPage');
+
+function withFullScreenSuspense(element: ReactNode) {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center bg-background">
+          <div className="w-8 h-8 border-2 border-divider border-t-zinc-900 dark:border-t-zinc-100 rounded-full animate-spin" />
+        </div>
+      }
+    >
+      {element}
+    </Suspense>
+  );
+}
 
 export const router = createBrowserRouter([
   {
     path: '/',
-    element: <LandingPage />
+    element: withFullScreenSuspense(<LandingPage />)
   },
   {
     path: '/login',
-    element: <AuthForm />
+    element: withFullScreenSuspense(<AuthForm />)
   },
   {
     element: <AppLayout />,

@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react'
-import * as XLSX from 'xlsx'
+import React, { useState, useEffect, useRef, useMemo, Suspense } from 'react'
 import { calculateXIRR } from '../../../utils/xirr'
+import { lazyNamed } from '../../../utils/lazyNamed'
 import { Plus, Briefcase, Trash2, Pencil, ChevronDown, ChevronRight, ChevronUp, ArrowUpCircle, ArrowDownCircle, PanelLeftClose, PanelLeftOpen, Copy, FilterX, ArrowUpDown, Columns, Check, Info, User, LogOut, Folder, Download, Upload, Home, LayoutDashboard, RefreshCw, Sun, Moon, GripVertical, MoreVertical, Activity, Sliders, Loader2, TrendingUp, History } from 'lucide-react'
 import {
   DndContext,
@@ -32,16 +32,33 @@ import { EditStockModal } from '../../stocks/components/EditStockModal'
 import { EditSoldStockModal } from '../../stocks/components/EditSoldStockModal'
 import { RenamePortfolioModal } from '../components/RenamePortfolioModal'
 import { CorporateActionModal } from '../../stocks/components/CorporateActionModal'
-import { CorporateActionsViewerModal } from '../../stocks/components/CorporateActionsViewerModal'
 import { AssetSearch } from '../../stocks/components/AssetSearch'
-import { PortfolioInfoModal } from '../components/PortfolioInfoModal'
-import { RebalanceModal } from '../../stocks/components/RebalanceModal'
 import { ConfirmationModal } from '../../../components/ui/ConfirmationModal'
 import { AddIndicatorsModal, DEFAULT_INDICATOR_CONFIG, type IndicatorConfig } from '../components/AddIndicatorsModal'
-import { StrategyBuilderModal } from '../components/StrategyBuilderModal'
 import type { StrategyRule } from '../components/StrategyBuilderModal'
 import { evaluateStockStrategies } from '../utils/strategyEvaluator'
-import { StrategyLogsModal, type StrategyLogEntry } from '../components/StrategyLogsModal'
+import type { StrategyLogEntry } from '../components/StrategyLogsModal'
+
+const CorporateActionsViewerModal = lazyNamed(
+  () => import('../../stocks/components/CorporateActionsViewerModal'),
+  'CorporateActionsViewerModal'
+);
+const PortfolioInfoModal = lazyNamed(
+  () => import('../components/PortfolioInfoModal'),
+  'PortfolioInfoModal'
+);
+const RebalanceModal = lazyNamed(
+  () => import('../../stocks/components/RebalanceModal'),
+  'RebalanceModal'
+);
+const StrategyBuilderModal = lazyNamed(
+  () => import('../components/StrategyBuilderModal'),
+  'StrategyBuilderModal'
+);
+const StrategyLogsModal = lazyNamed(
+  () => import('../components/StrategyLogsModal'),
+  'StrategyLogsModal'
+);
 
 const ALL_SUMMARY_STATS = [
   { id: 'totalStocks', label: 'Total Stocks' },
@@ -1707,7 +1724,7 @@ export function PortfolioDashboard() {
   const portfolioPreviousValue = totalCurrentValue - portfolioTotalDayGain;
   const portfolioDayGainPct = portfolioPreviousValue > 0 ? (portfolioTotalDayGain / portfolioPreviousValue) * 100 : 0;
 
-  const exportToExcel = () => {
+  const exportToExcel = async () => {
     if (!activePortfolio || filteredSymbolGroups.length === 0) return;
 
     // 1. Create Summary Sheet Data
@@ -1787,6 +1804,7 @@ export function PortfolioDashboard() {
     });
 
     // 3. Create Workbook
+    const XLSX = await import('xlsx');
     const wb = XLSX.utils.book_new();
     const wsSummary = XLSX.utils.json_to_sheet(summaryData);
     const wsDetails = XLSX.utils.json_to_sheet(detailsData);
@@ -1803,6 +1821,7 @@ export function PortfolioDashboard() {
 
     const reader = new FileReader();
     reader.onload = async (evt) => {
+      const XLSX = await import('xlsx');
       const bstr = evt.target?.result;
       const wb = XLSX.read(bstr, { type: 'binary' });
 
@@ -3565,29 +3584,35 @@ export function PortfolioDashboard() {
         onSuccess={fetchData}
       />
 
-      <CorporateActionsViewerModal
-        isOpen={viewCorporateActionsSymbol !== null}
-        onClose={() => setViewCorporateActionsSymbol(null)}
-        symbol={viewCorporateActionsSymbol || ''}
-        portfolioId={activePortfolioId || ''}
-        onSuccess={fetchData}
-        existingEvents={
-          viewCorporateActionsSymbol
-            ? symbolGroups.find(g => g.symbol === viewCorporateActionsSymbol)?.events || []
-            : []
-        }
-      />
+      {viewCorporateActionsSymbol !== null && (
+        <Suspense fallback={null}>
+          <CorporateActionsViewerModal
+            isOpen={viewCorporateActionsSymbol !== null}
+            onClose={() => setViewCorporateActionsSymbol(null)}
+            symbol={viewCorporateActionsSymbol || ''}
+            portfolioId={activePortfolioId || ''}
+            onSuccess={fetchData}
+            existingEvents={
+              viewCorporateActionsSymbol
+                ? symbolGroups.find(g => g.symbol === viewCorporateActionsSymbol)?.events || []
+                : []
+            }
+          />
+        </Suspense>
+      )}
 
-      <PortfolioInfoModal
-        isOpen={isPortfolioInfoModalOpen}
-        onClose={() => setIsPortfolioInfoModalOpen(false)}
-        symbols={allSymbols.map(sym => ({ symbol: sym, name: livePrices[sym]?.name || '' }))}
-        portfolioId={activePortfolioId || ''}
-        onSuccess={fetchData}
-        existingEvents={symbolGroups.flatMap(g => g.events.map((e: any) => ({ ...e, symbol: g.symbol })))}
-      />
-
-
+      {isPortfolioInfoModalOpen && (
+        <Suspense fallback={null}>
+          <PortfolioInfoModal
+            isOpen={isPortfolioInfoModalOpen}
+            onClose={() => setIsPortfolioInfoModalOpen(false)}
+            symbols={allSymbols.map(sym => ({ symbol: sym, name: livePrices[sym]?.name || '' }))}
+            portfolioId={activePortfolioId || ''}
+            onSuccess={fetchData}
+            existingEvents={symbolGroups.flatMap(g => g.events.map((e: any) => ({ ...e, symbol: g.symbol })))}
+          />
+        </Suspense>
+      )}
 
       {confirmationConfig && (
         <ConfirmationModal
@@ -3602,16 +3627,20 @@ export function PortfolioDashboard() {
         />
       )}
 
-      <RebalanceModal
-        isOpen={isRebalanceModalOpen}
-        onClose={() => setIsRebalanceModalOpen(false)}
-        portfolioId={activePortfolioId || ''}
-        symbolGroups={filteredSymbolGroups}
-        totalCurrentValue={totalCurrentValue}
-        onSuccess={() => {
-          fetchData();
-        }}
-      />
+      {isRebalanceModalOpen && (
+        <Suspense fallback={null}>
+          <RebalanceModal
+            isOpen={isRebalanceModalOpen}
+            onClose={() => setIsRebalanceModalOpen(false)}
+            portfolioId={activePortfolioId || ''}
+            symbolGroups={filteredSymbolGroups}
+            totalCurrentValue={totalCurrentValue}
+            onSuccess={() => {
+              fetchData();
+            }}
+          />
+        </Suspense>
+      )}
 
       <AddIndicatorsModal
         isOpen={isAddIndicatorsModalOpen}
@@ -3641,29 +3670,37 @@ export function PortfolioDashboard() {
         }}
       />
 
-      <StrategyBuilderModal
-        isOpen={isStrategyBuilderModalOpen}
-        onClose={() => setIsStrategyBuilderModalOpen(false)}
-        portfolioId={activePortfolioId || ''}
-        portfolioName={activePortfolio?.name || 'Portfolio'}
-        stocks={openPortfolioStocks}
-        indicators={indicators}
-        livePrices={livePrices}
-        currencySymbol={currencySymbol}
-        onLifecycleLog={(entry) =>
-          appendLocalStrategyLog(activePortfolioId, entry.eventDate || getTodayDateKey(), entry)
-        }
-      />
+      {isStrategyBuilderModalOpen && (
+        <Suspense fallback={null}>
+          <StrategyBuilderModal
+            isOpen={isStrategyBuilderModalOpen}
+            onClose={() => setIsStrategyBuilderModalOpen(false)}
+            portfolioId={activePortfolioId || ''}
+            portfolioName={activePortfolio?.name || 'Portfolio'}
+            stocks={openPortfolioStocks}
+            indicators={indicators}
+            livePrices={livePrices}
+            currencySymbol={currencySymbol}
+            onLifecycleLog={(entry) =>
+              appendLocalStrategyLog(activePortfolioId, entry.eventDate || getTodayDateKey(), entry)
+            }
+          />
+        </Suspense>
+      )}
 
-      <StrategyLogsModal
-        isOpen={Boolean(logsModalSymbol)}
-        onClose={() => setLogsModalSymbol(null)}
-        portfolioId={activePortfolioId || ''}
-        symbol={logsModalSymbol}
-        currencySymbol={currencySymbol}
-        strategies={portfolioStrategies}
-        fallbackLocalLogs={localStrategyLogs}
-      />
+      {Boolean(logsModalSymbol) && (
+        <Suspense fallback={null}>
+          <StrategyLogsModal
+            isOpen={Boolean(logsModalSymbol)}
+            onClose={() => setLogsModalSymbol(null)}
+            portfolioId={activePortfolioId || ''}
+            symbol={logsModalSymbol}
+            currencySymbol={currencySymbol}
+            strategies={portfolioStrategies}
+            fallbackLocalLogs={localStrategyLogs}
+          />
+        </Suspense>
+      )}
     </>
   )
 }

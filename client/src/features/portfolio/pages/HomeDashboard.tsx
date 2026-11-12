@@ -5,7 +5,7 @@ import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from 
 import type { DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, Suspense } from 'react';
 import { api } from '../../../services/api/client';
 import { usePortfolioContext } from '../hooks/PortfolioContext';
 import { useCurrency } from '../../../app/providers/CurrencyProvider';
@@ -14,7 +14,12 @@ import { CreatePortfolioModal } from '../components/CreatePortfolioModal';
 import { RenamePortfolioModal } from '../components/RenamePortfolioModal';
 
 import { ConfirmationModal } from '../../../components/ui/ConfirmationModal';
-import { PerformanceChart } from '../components/PerformanceChart';
+import { lazyNamed } from '../../../utils/lazyNamed';
+
+const PerformanceChart = lazyNamed(
+  () => import('../components/PerformanceChart'),
+  'PerformanceChart'
+);
 
 const SUMMARY_STATS = [
   { id: 'totalStocks', label: 'Total Stocks' },
@@ -804,7 +809,11 @@ export function HomeDashboard() {
             navbarPortalElement
           )}
       
-      {isChartVisible && <PerformanceChart selectedPortfolioId={selectedSummaryPortfolioIds?.length ? selectedSummaryPortfolioIds.join(',') : 'NONE'} />}
+      {isChartVisible && (
+        <Suspense fallback={null}>
+          <PerformanceChart selectedPortfolioId={selectedSummaryPortfolioIds?.length ? selectedSummaryPortfolioIds.join(',') : 'NONE'} />
+        </Suspense>
+      )}
 
       {/* Portfolio List */}
       <div className="flex flex-col mt-4 mb-4">
