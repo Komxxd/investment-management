@@ -4,7 +4,7 @@ async function fetchWithAuth(endpoint: string, options: RequestInit = {}) {
   const token = localStorage.getItem('auth_token');
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    ...(options.headers as any || {}),
+    ...((options.headers as Record<string, string>) || {}),
   };
 
   if (token) {
@@ -41,13 +41,17 @@ async function fetchWithAuth(endpoint: string, options: RequestInit = {}) {
 
 export const api = {
   get: (endpoint: string) => fetchWithAuth(endpoint),
-  post: (endpoint: string, body: any) => fetchWithAuth(endpoint, {
+  post: (endpoint: string, body: unknown) => fetchWithAuth(endpoint, {
     method: 'POST',
     body: JSON.stringify(body),
   }),
-  put: (endpoint: string, body: any) => fetchWithAuth(endpoint, {
+  put: (endpoint: string, body: unknown) => fetchWithAuth(endpoint, {
     method: 'PUT',
     body: JSON.stringify(body),
+  }),
+  patch: (endpoint: string, body?: unknown) => fetchWithAuth(endpoint, {
+    method: 'PATCH',
+    ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
   }),
   delete: (endpoint: string) => fetchWithAuth(endpoint, {
     method: 'DELETE',

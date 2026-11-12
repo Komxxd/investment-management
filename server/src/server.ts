@@ -6,6 +6,7 @@ import cookieParser from 'cookie-parser';
 import morgan from 'morgan';
 import rateLimit from 'express-rate-limit';
 
+import { corsOptions } from './config/cors';
 import portfoliosRoutes from './modules/portfolios/portfolios.routes';
 import stocksRoutes from './modules/stocks/stocks.routes';
 import soldStocksRoutes from './modules/sold-stocks/sold-stocks.routes';
@@ -18,57 +19,67 @@ import authRoutes from './modules/auth/auth.routes';
 import settingsRoutes from './modules/settings/settings.routes';
 import strategiesRoutes from './modules/strategies/strategies.routes';
 import backtestRoutes from './modules/backtest/backtest.routes';
+import calculationsRoutes from './modules/calculations/calculations.routes';
+import { initCronJobs } from './cron';
 
 const app = express();
 
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // Limit each IP to 100 requests per `window` (here, per 15 minutes)
+// Trust single reverse proxy hop (e.g., Vercel) so rate limiting resolves real client IPs
+app.set('trust proxy', 1);
+
+// Tiered rate limiters sized for live ticker/strategy polling while protecting sensitive endpoints
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 600,
   standardHeaders: true,
   legacyHeaders: false,
+  message: { error: 'Too many requests, please try again later.' },
+  skip: (req) =>
+    req.path === '/health' ||
+    req.path.startsWith('/cron/') ||
+    req.path.startsWith('/auth') ||
+    req.path.startsWith('/backtest') ||
+    req.path.startsWith('/strategies/evaluate') ||
+    req.path.startsWith('/strategies/backtest'),
 });
 
-const clientUrl = process.env.CLIENT_URL;
-const allowedOrigins = clientUrl
-  ? clientUrl.split(',').map((url: string) => url.trim().replace(/\/$/, ''))
-  : ['http://localhost:5173'];
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many authentication attempts, please try again later.' },
+  skip: (req) => req.method === 'GET' && req.path === '/me',
+});
 
-app.use(cors({
-    origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
-      if (!origin) return callback(null, true);
-      const cleanOrigin = origin.replace(/\/$/, '');
-      if (
-        allowedOrigins.includes(cleanOrigin) ||
-        cleanOrigin.endsWith('.vercel.app') ||
-        cleanOrigin === 'http://localhost:5173' ||
-        cleanOrigin === 'http://localhost:3000'
-      ) {
-        return callback(null, true);
-      }
-      return callback(null, true);
-    },
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-    credentials: true,
-}));
+const simulationLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many simulation requests, please try again shortly.' },
+});
+
+app.use(cors(corsOptions));
 app.use(express.json());
 app.use(cookieParser());
 app.use(morgan('dev'));
-// app.use(limiter); // Temporarily removed rate limiting for dev
 
-app.get("/", (req: any, res: any) => {
-    res.send("Portfolio Management API is running. Access endpoints via /api");
+app.use('/api', apiLimiter);
+app.use('/api/auth', authLimiter);
+app.use('/api/backtest', simulationLimiter);
+app.use('/api/strategies/evaluate', simulationLimiter);
+app.use('/api/strategies/backtest', simulationLimiter);
+
+app.get('/', (req: any, res: any) => {
+  res.send('Portfolio Management API is running. Access endpoints via /api');
 });
 
-app.get("/api/health", (req: any, res: any) => {
-    res.json({ status: "OK", uptime: process.uptime() });
+app.get('/api/health', (req: any, res: any) => {
+  res.json({ status: 'OK', uptime: process.uptime() });
 });
 
 app.use('/api/auth', authRoutes);
-
-import calculationsRoutes from './modules/calculations/calculations.routes';
-
-// Register routes
 app.use('/api/portfolios', portfoliosRoutes);
 app.use('/api/stocks', stocksRoutes);
 app.use('/api/sold-stocks', soldStocksRoutes);
@@ -81,29 +92,20 @@ app.use('/api/settings', settingsRoutes);
 app.use('/api/strategies', strategiesRoutes);
 app.use('/api/backtest', backtestRoutes);
 
-// The corporate-actions router internally defines `/`, `/bulk`, and `/cron/sync-corp-actions`
-// but the client expects `/api/corporate-actions`, `/api/bulk-corporate-actions`, and `/api/cron/sync-corp-actions`.
-// A simple way to solve this is to mount it multiple times or refactor it into separate routers.
-// Let's just mount it at `/api` and adjust the paths inside the router. Wait, the paths inside the router are `/`, `/bulk`, `/cron/sync-corp-actions`.
-// If I mount it at `/api`, then it becomes `/api/`, `/api/bulk`, `/api/cron/sync-corp-actions`.
-// Let's create an `index.routes.ts` or just map them properly.
-
-import { initCronJobs } from './cron';
-
-// Let's mount corporateActionsRoutes at `/api` and I will fix the router.
+// Mount corporate actions routes under /api (/corporate-actions, /bulk-corporate-actions, /cron/sync-corp-actions)
 app.use('/api', corporateActionsRoutes);
 
 if (!process.env.VERCEL) {
-    // Initialize background cron tasks only if not on Vercel
-    initCronJobs();
+  // Initialize background cron tasks only if not running serverless on Vercel
+  initCronJobs();
 }
 
 const PORT = process.env.PORT || 5001;
 
 if (require.main === module) {
-    app.listen(PORT, () => {
-        console.log(`Server running on ${PORT}`);
-    });
+  app.listen(PORT, () => {
+    console.log(`Server running on ${PORT}`);
+  });
 }
 
 export default app;

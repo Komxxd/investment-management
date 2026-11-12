@@ -1,8 +1,9 @@
-import { Request, Router } from 'express';
+import { Router } from 'express';
 import {
   createStatelessAnonClient,
   getSupabaseConfig,
 } from '../../config/supabase';
+import { resolveSafeClientOrigin } from '../../config/cors';
 import { validateStrongPassword } from './passwordPolicy';
 
 const router = Router();
@@ -16,32 +17,6 @@ const cookieOptions = {
   sameSite: isProduction ? ('none' as const) : ('lax' as const),
   maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
 };
-
-/**
- * Resolves a safe client origin for password recovery & confirmation redirects
- * using the request origin only when it matches configured or local origins.
- */
-function resolveClientOrigin(req: Request): string {
-  const configured = (process.env.CLIENT_URL || 'http://localhost:5173')
-    .split(',')
-    .map((u) => u.trim().replace(/\/$/, ''))
-    .filter(Boolean);
-
-  const fallback = configured[0] || 'http://localhost:5173';
-  const reqOrigin = typeof req.headers.origin === 'string'
-    ? req.headers.origin.trim().replace(/\/$/, '')
-    : '';
-
-  if (!reqOrigin) return fallback;
-
-  const isAllowed =
-    configured.includes(reqOrigin) ||
-    reqOrigin === 'http://localhost:5173' ||
-    reqOrigin === 'http://localhost:3000' ||
-    reqOrigin.endsWith('.vercel.app');
-
-  return isAllowed ? reqOrigin : fallback;
-}
 
 router.post('/signup', async (req, res) => {
   const rawEmail = typeof req.body?.email === 'string' ? req.body.email.trim() : '';
@@ -61,7 +36,7 @@ router.post('/signup', async (req, res) => {
 
   try {
     const supabase = createStatelessAnonClient();
-    const redirectTo = `${resolveClientOrigin(req)}/login`;
+    const redirectTo = `${resolveSafeClientOrigin(req.headers.origin)}/login`;
     const { data, error } = await supabase.auth.signUp({
       email: rawEmail,
       password,
@@ -108,7 +83,7 @@ router.post('/forgot-password', async (req, res) => {
 
   try {
     const supabase = createStatelessAnonClient();
-    const redirectTo = `${resolveClientOrigin(req)}/login?mode=reset`;
+    const redirectTo = `${resolveSafeClientOrigin(req.headers.origin)}/login?mode=reset`;
     const { error } = await supabase.auth.resetPasswordForEmail(rawEmail, { redirectTo });
 
     if (error) {
