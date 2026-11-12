@@ -1,42 +1,15 @@
 import { Router } from 'express';
 import { authMiddleware } from '../../middleware/auth';
+import {
+  UUID_REGEX,
+  DATE_REGEX,
+  isMissingTableError,
+  getTodayUtcDate,
+  formatExecution,
+} from './strategy-execution.service';
+import { evaluateAndExecuteActiveStrategies } from './strategy-monitor.service';
 
 const router = Router();
-
-const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
-
-function isMissingTableError(error: any): boolean {
-  const msg = String(error?.message || '').toLowerCase();
-  return (
-    error?.code === '42P01' ||
-    error?.code === 'PGRST205' ||
-    msg.includes('does not exist') ||
-    msg.includes('could not find the table')
-  );
-}
-
-function getTodayUtcDate(): string {
-  return new Date().toISOString().split('T')[0];
-}
-
-function formatExecution(row: any) {
-  if (!row) return null;
-  return {
-    id: row.id,
-    portfolioId: row.portfolio_id,
-    portfolio_id: row.portfolio_id,
-    strategyId: row.strategy_id,
-    strategyName: row.strategy_name,
-    symbol: row.symbol,
-    action: row.action,
-    quantity: Number(row.quantity),
-    price: Number(row.price),
-    executionDate: row.execution_date,
-    executedAt: row.executed_at,
-    timestamp: row.executed_at ? new Date(row.executed_at).getTime() : Date.now(),
-  };
-}
 
 type StrategyLogEventType =
   | 'STRATEGY_STARTED'
@@ -1077,6 +1050,18 @@ router.patch('/:id/toggle', authMiddleware, async (req: any, res: any) => {
     });
   } catch (err: any) {
     res.status(500).json({ error: err.message || 'Failed to toggle strategy' });
+  }
+});
+
+// POST /api/strategies/evaluate - Trigger server-side evaluation for the authenticated user's active strategies
+router.post('/evaluate', authMiddleware, async (req: any, res: any) => {
+  try {
+    const summary = await evaluateAndExecuteActiveStrategies({
+      userId: req.user.id,
+    });
+    res.json(summary);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Failed to evaluate active strategies' });
   }
 });
 

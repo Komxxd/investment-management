@@ -1150,15 +1150,20 @@ export function PortfolioDashboard() {
     }
   };
 
-  const [todayExecutions, setTodayExecutions] = useState<Record<string, DailyExecutionEntry>>(() =>
-    getLocalExecutions(portfolioId || null, getTodayDateKey())
-  );
+  const getTodayUtcDateKey = () => new Date().toISOString().split('T')[0];
 
-  const syncTodayExecutions = async (pid: string | null) => {
-    const today = getTodayDateKey();
+  const [todayExecutions, setTodayExecutions] = useState<Record<string, DailyExecutionEntry>>(() =>
+    getLocalExecutions(portfolioId || null, getTodayUtcDateKey())
+  );
+  const todayExecutionsRef = useRef<Record<string, DailyExecutionEntry>>({});
+  const loadedExecutionsPortfolioRef = useRef<string | null>(null);
+
+  const syncTodayExecutions = async (pid: string | null): Promise<boolean> => {
+    const today = getTodayUtcDateKey();
     if (!pid) {
-      setTodayExecutions(getLocalExecutions(null, today));
-      return;
+      todayExecutionsRef.current = getLocalExecutions(null, today);
+      setTodayExecutions(todayExecutionsRef.current);
+      return false;
     }
 
     try {
@@ -1178,15 +1183,33 @@ export function PortfolioDashboard() {
             };
           }
         }
+
+        let hasNewExecution = false;
+        if (loadedExecutionsPortfolioRef.current === pid) {
+          for (const [sym, entry] of Object.entries(dbMap)) {
+            const prev = todayExecutionsRef.current[sym];
+            if (!prev || prev.timestamp !== entry.timestamp || prev.action !== entry.action) {
+              hasNewExecution = true;
+              break;
+            }
+          }
+        } else {
+          loadedExecutionsPortfolioRef.current = pid;
+        }
+
+        todayExecutionsRef.current = dbMap;
         setTodayExecutions(dbMap);
         setLocalExecutions(pid, today, dbMap);
-        return;
+        return hasNewExecution;
       }
     } catch {
       // Fallback to localStorage if endpoint unreachable
     }
 
-    setTodayExecutions(getLocalExecutions(pid, today));
+    const fallback = getLocalExecutions(pid, today);
+    todayExecutionsRef.current = fallback;
+    setTodayExecutions(fallback);
+    return false;
   };
 
   const [logsModalSymbol, setLogsModalSymbol] = useState<string | null>(null);
@@ -1235,10 +1258,9 @@ export function PortfolioDashboard() {
     });
   };
 
-  const recordedSignalsRef = useRef<Set<string>>(new Set());
-
   useEffect(() => {
     let isMounted = true;
+    loadedExecutionsPortfolioRef.current = null;
     const loadExecutions = async () => {
       if (!isMounted) return;
       setLocalStrategyLogs(getLocalStrategyLogs(activePortfolioId, getTodayDateKey()));
@@ -1250,82 +1272,20 @@ export function PortfolioDashboard() {
     };
   }, [activePortfolioId]);
 
-  // Capture first BUY/SELL signal timestamp per stock per day when live price & indicators are ready
-  const activeSymbolsKey = activeSymbols.join('|');
+  // Poll server-side strategy executions every 60s so cron auto-executed trades update live
   useEffect(() => {
-    if (!activePortfolioId || indicatorsLoading || activeSymbols.length === 0 || portfolioStrategies.length === 0) {
-      return;
-    }
-
-    const today = getTodayDateKey();
-    const existingLocal = getLocalStrategyLogs(activePortfolioId, today);
-
-    for (const sym of activeSymbols) {
-      const livePrice = livePrices[sym]?.price || 0;
-      if (livePrice <= 0) continue;
-
-      const stratStatus = evaluateStockStrategies(portfolioStrategies, sym, {
-        livePrice,
-        changePercent: livePrices[sym]?.changePercent || 0,
-        indicators: indicators[sym] || {},
-      });
-
-      if (stratStatus.signal !== 'BUY' && stratStatus.signal !== 'SELL') continue;
-
-      const dedupeKey = `${activePortfolioId}:${today}:${sym}:${stratStatus.signal}`;
-      if (recordedSignalsRef.current.has(dedupeKey)) continue;
-
-      const alreadySavedLocally = existingLocal.some(
-        (item) =>
-          item.symbol === sym &&
-          item.eventType === 'SIGNAL_TRIGGERED' &&
-          item.signal === stratStatus.signal &&
-          item.eventDate === today
-      );
-      if (alreadySavedLocally) {
-        recordedSignalsRef.current.add(dedupeKey);
-        continue;
+    if (!activePortfolioId) return;
+    const intervalId = setInterval(async () => {
+      const hasNew = await syncTodayExecutions(activePortfolioId);
+      if (hasNew) {
+        await fetchData();
       }
+    }, 60_000);
 
-      recordedSignalsRef.current.add(dedupeKey);
-
-      const signal = stratStatus.signal;
-      const strategyName = stratStatus.strategyName || null;
-      const fallbackEntry: StrategyLogEntry = {
-        id: `local-${sym}-${signal}-${today}`,
-        portfolioId: activePortfolioId,
-        strategyId: stratStatus.matchedRule?.id || null,
-        strategyName,
-        symbol: sym,
-        eventType: 'SIGNAL_TRIGGERED',
-        actionText: `${signal} signal came${strategyName ? ` (${strategyName})` : ''}`,
-        signal,
-        eventDate: today,
-        loggedAt: new Date().toISOString(),
-        metadata: { signal, price: livePrice },
-        source: 'local',
-      };
-
-      api
-        .post('/api/strategies/logs/signal', {
-          portfolio_id: activePortfolioId,
-          strategy_id: stratStatus.matchedRule?.id || null,
-          strategy_name: strategyName,
-          symbol: sym,
-          signal,
-          price: livePrice,
-          event_date: today,
-        })
-        .then((res) => {
-          if (res?.log) {
-            appendLocalStrategyLog(activePortfolioId, today, res.log);
-          }
-        })
-        .catch(() => {
-          appendLocalStrategyLog(activePortfolioId, today, fallbackEntry);
-        });
-    }
-  }, [activePortfolioId, activeSymbolsKey, portfolioStrategies, livePrices, indicators, indicatorsLoading]);
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, [activePortfolioId]);
 
   const [executingSignalSymbol, setExecutingSignalSymbol] = useState<string | null>(null);
 
@@ -1346,19 +1306,31 @@ export function PortfolioDashboard() {
 
     const currentPrice = group.livePrice || livePrices[symbol]?.price || group.avgBuyPrice || 1;
 
-    // Calculate sizing / quantity according to strategy configuration
+    // Calculate sizing / quantity according to action-specific strategy configuration
     let qty = 1;
-    const sizingType = matchedRule?.sizingType || 'QTY';
-    const sizingVal = Number(matchedRule?.sizingValue) || 0;
+    const isSell = action === 'SELL';
+    const sizingType = isSell
+      ? matchedRule?.exitSizingType || matchedRule?.sizingType || 'DECREASE_PCT'
+      : matchedRule?.entrySizingType || matchedRule?.sizingType || 'QTY';
+    const rawSizingVal = isSell
+      ? (matchedRule?.exitSizingValue !== undefined && matchedRule?.exitSizingValue !== ''
+          ? matchedRule.exitSizingValue
+          : (matchedRule?.sizingValue ?? 100))
+      : (matchedRule?.entrySizingValue !== undefined && matchedRule?.entrySizingValue !== ''
+          ? matchedRule.entrySizingValue
+          : (matchedRule?.sizingValue ?? 1));
+    const sizingVal = Number(rawSizingVal) || 0;
 
     if (sizingType === 'QTY' && sizingVal > 0) {
       qty = sizingVal;
     } else if (sizingType === 'VALUE' && sizingVal > 0 && currentPrice > 0) {
       qty = Math.max(1, Math.floor(sizingVal / currentPrice));
-    } else if (sizingType === 'INCREASE_PCT' && sizingVal > 0) {
-      qty = Math.max(1, Math.round(((group.netQty || 1) * sizingVal) / 100));
-    } else if (sizingType === 'DECREASE_PCT' && sizingVal > 0) {
-      qty = Math.max(1, Math.round(((group.netQty || 1) * sizingVal) / 100));
+    } else if (sizingType === 'INCREASE_PCT' || sizingType === 'DECREASE_PCT') {
+      if (isSell && sizingType === 'DECREASE_PCT' && sizingVal >= 100 && (group.netQty || 0) > 0) {
+        qty = group.netQty;
+      } else if (sizingVal > 0) {
+        qty = Math.max(1, Math.round(((group.netQty || 1) * sizingVal) / 100));
+      }
     }
 
     if (action === 'SELL') {
@@ -1373,7 +1345,7 @@ export function PortfolioDashboard() {
     setExecutingSignalSymbol(symbol);
 
     try {
-      const today = getTodayDateKey();
+      const today = getTodayUtcDateKey();
       const response = await api.post('/api/strategies/executions', {
         portfolio_id: activePortfolioId,
         strategy_id: matchedRule?.id || null,
@@ -1396,6 +1368,7 @@ export function PortfolioDashboard() {
 
       setTodayExecutions(prev => {
         const next = { ...prev, [symbol]: executionRecord };
+        todayExecutionsRef.current = next;
         setLocalExecutions(activePortfolioId, today, next);
         return next;
       });
