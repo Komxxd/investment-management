@@ -102,11 +102,52 @@ const getColumnHeaderLabel = (colId: string, defaultLabel: string, indicatorConf
   return defaultLabel;
 };
 
+const DEFAULT_COLUMN_WIDTHS: Record<string, number> = {
+  symbol: 180,
+  netQty: 105,
+  avgBuyPrice: 115,
+  netCostBasis: 120,
+  livePrice: 115,
+  dma50: 145,
+  dma200: 145,
+  ema20: 145,
+  ema50: 145,
+  ema200: 145,
+  rsi: 125,
+  macd: 155,
+  bollinger: 360,
+  vwap: 145,
+  obv: 140,
+  strategy: 215,
+  currentValue: 125,
+  unrealizedPnL: 130,
+  unrealizedPnLPct: 125,
+  realizedPnL: 125,
+  realizedPnLPct: 120,
+  totalDividend: 110,
+  brokerage: 115,
+  govtTax: 110,
+  totalPnL: 125,
+  totalPnLPct: 120,
+  xirr: 105,
+  portfolioWeight: 120,
+  currentValueWeight: 145,
+  priceChange: 110,
+  changePercent: 115,
+  dayHigh: 115,
+  dayLow: 115,
+  '52wkHigh': 115,
+  '52wkLow': 115,
+  marketCap: 115,
+  volume: 115,
+  avgVolume: 145,
+  tradeValue: 120,
+  dayGain: 120,
+  dayGainPct: 115,
+};
+
 const getColumnHeaderWidth = (colId: string, activeColumnWidths: Record<string, number>) => {
-  if (colId === 'strategy') return Math.max(activeColumnWidths[colId] || 0, 215);
-  if (colId === 'bollinger') return Math.max(activeColumnWidths[colId] || 0, 175);
-  if (colId === 'macd') return Math.max(activeColumnWidths[colId] || 0, 125);
-  return activeColumnWidths[colId] || 100;
+  return Math.max(activeColumnWidths[colId] || 0, DEFAULT_COLUMN_WIDTHS[colId] || 115);
 };
 
 /**
@@ -426,7 +467,7 @@ export const HoldingsTable: React.FC<HoldingsTableProps> = ({
                     );
                   })}
                 </SortableContext>
-                <th className="px-2 py-1.5 text-[9px] sm:text-[10px] text-right w-8 bg-surface"></th>
+                <th className="px-2 py-1.5 text-[9px] sm:text-[10px] text-center w-8 bg-surface"></th>
               </tr>
 
               {filteredSymbolGroups.length > 0 && (
@@ -545,7 +586,7 @@ export const HoldingsTable: React.FC<HoldingsTableProps> = ({
                           });
                         })}
 
-                        <td className="px-2 py-1.5 text-[9px] sm:text-[10px] text-right">
+                        <td className="px-2 py-1.5 text-[9px] sm:text-[10px] text-center">
                           <button
                             onClick={e => {
                               e.stopPropagation();

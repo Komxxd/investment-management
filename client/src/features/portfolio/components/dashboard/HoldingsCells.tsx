@@ -61,12 +61,12 @@ export function renderTotalRowCell(
 
   switch (colId) {
     case 'netCostBasis':
-      return <td key="netCostBasis" className="px-2 py-1.5 text-[9px] sm:text-[10px] text-right font-mono text-primary">{currencySymbol}{fmt(totalInvestment)}</td>;
+      return <td key="netCostBasis" className="px-2 py-1.5 text-[9px] sm:text-[10px] text-center font-mono text-primary">{currencySymbol}{fmt(totalInvestment)}</td>;
     case 'currentValue':
-      return <td key="currentValue" className="px-2 py-1.5 text-[9px] sm:text-[10px] text-right font-mono text-primary">{currencySymbol}{fmt(totalCurrentValue)}</td>;
+      return <td key="currentValue" className="px-2 py-1.5 text-[9px] sm:text-[10px] text-center font-mono text-primary">{currencySymbol}{fmt(totalCurrentValue)}</td>;
     case 'unrealizedPnL':
       return (
-        <td key="unrealizedPnL" className="px-2 py-1.5 text-[9px] sm:text-[10px] text-right font-mono">
+        <td key="unrealizedPnL" className="px-2 py-1.5 text-[9px] sm:text-[10px] text-center font-mono">
           <span className={totalUnrealizedPnL >= 0 ? 'text-success' : 'text-danger'}>
             {totalUnrealizedPnL >= 0 ? '+' : ''}{currencySymbol}{fmt(totalUnrealizedPnL)}
           </span>
@@ -74,7 +74,7 @@ export function renderTotalRowCell(
       );
     case 'unrealizedPnLPct':
       return (
-        <td key="unrealizedPnLPct" className="px-2 py-1.5 text-[9px] sm:text-[10px] text-right font-mono">
+        <td key="unrealizedPnLPct" className="px-2 py-1.5 text-[9px] sm:text-[10px] text-center font-mono">
           <span className={unrealizedPct >= 0 ? 'text-success' : 'text-danger'}>
             {unrealizedPct >= 0 ? '+' : ''}{unrealizedPct.toFixed(2)}%
           </span>
@@ -82,7 +82,7 @@ export function renderTotalRowCell(
       );
     case 'realizedPnL':
       return (
-        <td key="realizedPnL" className="px-2 py-1.5 text-[9px] sm:text-[10px] text-right font-mono">
+        <td key="realizedPnL" className="px-2 py-1.5 text-[9px] sm:text-[10px] text-center font-mono">
           <span className={totalRealizedPnL >= 0 ? 'text-success' : 'text-danger'}>
             {totalRealizedPnL >= 0 ? '+' : ''}{currencySymbol}{fmt(totalRealizedPnL)}
           </span>
@@ -90,7 +90,7 @@ export function renderTotalRowCell(
       );
     case 'realizedPnLPct':
       return (
-        <td key="realizedPnLPct" className="px-2 py-1.5 text-[9px] sm:text-[10px] text-right font-mono">
+        <td key="realizedPnLPct" className="px-2 py-1.5 text-[9px] sm:text-[10px] text-center font-mono">
           {portfolioRealizedCostBasis > 0 ? (
             <span className={portfolioRealizedPct >= 0 ? 'text-success' : 'text-danger'}>
               {portfolioRealizedPct >= 0 ? '+' : ''}{portfolioRealizedPct.toFixed(2)}%
@@ -102,17 +102,17 @@ export function renderTotalRowCell(
       );
     case 'totalDividend':
       return (
-        <td key="totalDividend" className="px-2 py-1.5 text-[9px] sm:text-[10px] text-right font-mono text-success">
+        <td key="totalDividend" className="px-2 py-1.5 text-[9px] sm:text-[10px] text-center font-mono text-success">
           {currencySymbol}{fmt(portfolioTotalDividend)}
         </td>
       );
     case 'brokerage':
-      return <td key="brokerage" className="px-2 py-1.5 text-[9px] sm:text-[10px] text-right font-mono text-primary">{currencySymbol}{fmt(portfolioTotalBrokerage)}</td>;
+      return <td key="brokerage" className="px-2 py-1.5 text-[9px] sm:text-[10px] text-center font-mono text-primary">{currencySymbol}{fmt(portfolioTotalBrokerage)}</td>;
     case 'govtTax':
-      return <td key="govtTax" className="px-2 py-1.5 text-[9px] sm:text-[10px] text-right font-mono text-primary">{currencySymbol}{fmt(portfolioTotalGovtTax)}</td>;
+      return <td key="govtTax" className="px-2 py-1.5 text-[9px] sm:text-[10px] text-center font-mono text-primary">{currencySymbol}{fmt(portfolioTotalGovtTax)}</td>;
     case 'totalPnL':
       return (
-        <td key="totalPnL" className="px-2 py-1.5 text-[9px] sm:text-[10px] text-right font-mono">
+        <td key="totalPnL" className="px-2 py-1.5 text-[9px] sm:text-[10px] text-center font-mono">
           <span className={totalNetPnL >= 0 ? 'text-success' : 'text-danger'}>
             {totalNetPnL >= 0 ? '+' : ''}{currencySymbol}{fmt(totalNetPnL)}
           </span>
@@ -120,7 +120,7 @@ export function renderTotalRowCell(
       );
     case 'totalPnLPct':
       return (
-        <td key="totalPnLPct" className="px-2 py-1.5 text-[9px] sm:text-[10px] text-right font-mono">
+        <td key="totalPnLPct" className="px-2 py-1.5 text-[9px] sm:text-[10px] text-center font-mono">
           <span className={totalNetPct >= 0 ? 'text-success' : 'text-danger'}>
             {totalNetPct >= 0 ? '+' : ''}{totalNetPct.toFixed(2)}%
           </span>
@@ -128,7 +128,7 @@ export function renderTotalRowCell(
       );
     case 'xirr':
       return (
-        <td key="xirr" className="px-2 py-1.5 text-[9px] sm:text-[10px] text-right font-mono">
+        <td key="xirr" className="px-2 py-1.5 text-[9px] sm:text-[10px] text-center font-mono">
           <span className={portfolioXIRR >= 0 ? 'text-success' : 'text-danger'}>
             {portfolioXIRR >= 0 ? '+' : ''}{(portfolioXIRR * 100).toFixed(2)}%
           </span>
@@ -136,7 +136,7 @@ export function renderTotalRowCell(
       );
     case 'dayGain':
       return (
-        <td key="dayGain" className="px-2 py-1.5 text-[9px] sm:text-[10px] text-right font-mono">
+        <td key="dayGain" className="px-2 py-1.5 text-[9px] sm:text-[10px] text-center font-mono">
           <span className={portfolioTotalDayGain >= 0 ? 'text-success' : 'text-danger'}>
             {portfolioTotalDayGain >= 0 ? '+' : ''}{currencySymbol}{fmt(portfolioTotalDayGain)}
           </span>
@@ -144,14 +144,14 @@ export function renderTotalRowCell(
       );
     case 'dayGainPct':
       return (
-        <td key="dayGainPct" className="px-2 py-1.5 text-[9px] sm:text-[10px] text-right font-mono">
+        <td key="dayGainPct" className="px-2 py-1.5 text-[9px] sm:text-[10px] text-center font-mono">
           <span className={portfolioDayGainPct >= 0 ? 'text-success' : 'text-danger'}>
             {portfolioDayGainPct >= 0 ? '+' : ''}{portfolioDayGainPct.toFixed(2)}%
           </span>
         </td>
       );
     default:
-      return <td key={colId} className="px-2 py-1.5 text-[9px] sm:text-[10px] text-right font-mono text-tertiary">—</td>;
+      return <td key={colId} className="px-2 py-1.5 text-[9px] sm:text-[10px] text-center font-mono text-tertiary">—</td>;
   }
 }
 
@@ -188,14 +188,14 @@ function renderMovingAverageCell(
       : undefined;
 
   return (
-    <td key={colId} className={`px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right font-medium truncate ${color}`} title={tooltip}>
+    <td key={colId} className={`px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-center font-medium truncate ${color}`} title={tooltip}>
       {indicatorsLoading && value == null ? (
         <span className="text-tertiary animate-pulse">…</span>
       ) : value != null ? (
-        <div className="flex items-center justify-end gap-1">
+        <div className="flex items-center justify-center gap-1.5">
           <span>{fmtCurrency(value, group.liveData?.currency)}</span>
           {liveP > 0 && (
-            <span className={`text-[8px] font-sans px-1 rounded font-semibold ${liveP >= value ? 'bg-success/15 text-success' : 'bg-danger/15 text-danger'}`}>
+            <span className={`text-[8px] font-sans px-1 rounded font-semibold shrink-0 ${liveP >= value ? 'bg-success/15 text-success' : 'bg-danger/15 text-danger'}`}>
               {diffPct >= 0 ? '+' : ''}{diffPct.toFixed(1)}%
             </span>
           )}
@@ -232,26 +232,26 @@ export function renderHoldingBodyCell(
 
   switch (colId) {
     case 'netQty':
-      return <td key="netQty" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right font-semibold text-primary truncate">{group.netQty.toLocaleString()}</td>;
+      return <td key="netQty" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-center font-semibold text-primary truncate">{group.netQty.toLocaleString()}</td>;
     case 'avgBuyPrice':
-      return <td key="avgBuyPrice" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right text-secondary truncate">{fmtCurrency(group.avgBuyPrice, group.liveData?.currency)}</td>;
+      return <td key="avgBuyPrice" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-center text-secondary truncate">{fmtCurrency(group.avgBuyPrice, group.liveData?.currency)}</td>;
     case 'netCostBasis':
-      return <td key="netCostBasis" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right text-secondary truncate" title="Avg buy price × remaining shares — money still at work">{fmtCurrency(group.netCostBasis, group.liveData?.currency)}</td>;
+      return <td key="netCostBasis" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-center text-secondary truncate" title="Avg buy price × remaining shares — money still at work">{fmtCurrency(group.netCostBasis, group.liveData?.currency)}</td>;
     case 'portfolioWeight': {
       const weight = totalInvestment > 0 ? (group.netCostBasis / totalInvestment) * 100 : 0;
-      return <td key="portfolioWeight" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right text-secondary truncate">{weight.toFixed(2)}%</td>;
+      return <td key="portfolioWeight" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-center text-secondary truncate">{weight.toFixed(2)}%</td>;
     }
     case 'currentValueWeight': {
       const cvWeight = totalCurrentValue > 0 ? (group.currentValue / totalCurrentValue) * 100 : 0;
-      return <td key="currentValueWeight" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right text-secondary truncate">{cvWeight.toFixed(2)}%</td>;
+      return <td key="currentValueWeight" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-center text-secondary truncate">{cvWeight.toFixed(2)}%</td>;
     }
     case 'livePrice':
-      return <td key="livePrice" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right font-medium text-primary truncate">{fmtCurrency(group.livePrice, group.liveData?.currency)}</td>;
+      return <td key="livePrice" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-center font-medium text-primary truncate">{fmtCurrency(group.livePrice, group.liveData?.currency)}</td>;
     case 'currentValue':
-      return <td key="currentValue" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right font-medium text-primary truncate">{fmtCurrency(group.currentValue, group.liveData?.currency)}</td>;
+      return <td key="currentValue" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-center font-medium text-primary truncate">{fmtCurrency(group.currentValue, group.liveData?.currency)}</td>;
     case 'unrealizedPnL':
       return (
-        <td key="unrealizedPnL" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right truncate">
+        <td key="unrealizedPnL" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-center truncate">
           <span className={`font-medium ${group.unrealizedPnL >= 0 ? 'text-success' : 'text-danger'}`}>
             {group.unrealizedPnL >= 0 ? '+' : ''}{fmtCurrency(group.unrealizedPnL, group.liveData?.currency)}
           </span>
@@ -259,7 +259,7 @@ export function renderHoldingBodyCell(
       );
     case 'unrealizedPnLPct':
       return (
-        <td key="unrealizedPnLPct" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right truncate">
+        <td key="unrealizedPnLPct" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-center truncate">
           <span className={`font-medium ${group.unrealizedPnLPct >= 0 ? 'text-success' : 'text-danger'}`}>
             {group.unrealizedPnLPct >= 0 ? '+' : ''}{group.unrealizedPnLPct.toFixed(2)}%
           </span>
@@ -267,7 +267,7 @@ export function renderHoldingBodyCell(
       );
     case 'realizedPnL':
       return (
-        <td key="realizedPnL" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right truncate">
+        <td key="realizedPnL" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-center truncate">
           {group.totalSoldQty > 0 ? (
             <span className={`font-medium ${group.realizedPnL >= 0 ? 'text-success' : 'text-danger'}`}>
               {group.realizedPnL >= 0 ? '+' : ''}{fmtCurrency(group.realizedPnL, group.liveData?.currency)}
@@ -279,7 +279,7 @@ export function renderHoldingBodyCell(
       );
     case 'realizedPnLPct':
       return (
-        <td key="realizedPnLPct" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right truncate">
+        <td key="realizedPnLPct" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-center truncate">
           {group.totalSoldQty > 0 ? (
             <span className={`font-medium ${group.realizedPnLPct >= 0 ? 'text-success' : 'text-danger'}`}>
               {group.realizedPnLPct >= 0 ? '+' : ''}{group.realizedPnLPct.toFixed(2)}%
@@ -291,7 +291,7 @@ export function renderHoldingBodyCell(
       );
     case 'totalDividend':
       return (
-        <td key="totalDividend" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right truncate">
+        <td key="totalDividend" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-center truncate">
           {group.totalDividend > 0 ? (
             <span className="font-medium text-success">{fmtCurrency(group.totalDividend, group.liveData?.currency)}</span>
           ) : (
@@ -300,12 +300,12 @@ export function renderHoldingBodyCell(
         </td>
       );
     case 'brokerage':
-      return <td key="brokerage" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right text-secondary truncate">{fmtCurrency(group.brokerage, group.liveData?.currency)}</td>;
+      return <td key="brokerage" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-center text-secondary truncate">{fmtCurrency(group.brokerage, group.liveData?.currency)}</td>;
     case 'govtTax':
-      return <td key="govtTax" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right text-secondary truncate">{fmtCurrency(group.govtTax, group.liveData?.currency)}</td>;
+      return <td key="govtTax" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-center text-secondary truncate">{fmtCurrency(group.govtTax, group.liveData?.currency)}</td>;
     case 'totalPnL':
       return (
-        <td key="totalPnL" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right truncate">
+        <td key="totalPnL" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-center truncate">
           <span className={`font-medium ${group.totalPnL >= 0 ? 'text-success' : 'text-danger'}`}>
             {group.totalPnL >= 0 ? '+' : ''}{fmtCurrency(group.totalPnL, group.liveData?.currency)}
           </span>
@@ -313,7 +313,7 @@ export function renderHoldingBodyCell(
       );
     case 'totalPnLPct':
       return (
-        <td key="totalPnLPct" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right truncate">
+        <td key="totalPnLPct" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-center truncate">
           <span className={`font-medium ${group.totalPnLPct >= 0 ? 'text-success' : 'text-danger'}`}>
             {group.totalPnLPct >= 0 ? '+' : ''}{group.totalPnLPct.toFixed(2)}%
           </span>
@@ -321,14 +321,14 @@ export function renderHoldingBodyCell(
       );
     case 'xirr':
       return (
-        <td key="xirr" className={`px-2 py-1.5 text-[9px] sm:text-[10px] font-bold ${group.xirr >= 0 ? 'text-success' : 'text-danger'} truncate`}>
+        <td key="xirr" className={`px-2 py-1.5 text-[9px] sm:text-[10px] font-bold text-center ${group.xirr >= 0 ? 'text-success' : 'text-danger'} truncate`}>
           {group.xirr >= 0 ? '+' : ''}{(group.xirr * 100).toFixed(2)}%
         </td>
       );
     case 'priceChange': {
       const priceChange = group.liveData?.change || 0;
       return (
-        <td key="priceChange" className={`px-2 py-1.5 text-[9px] sm:text-[10px] font-medium ${priceChange >= 0 ? 'text-success' : 'text-danger'} truncate`}>
+        <td key="priceChange" className={`px-2 py-1.5 text-[9px] sm:text-[10px] font-medium text-center ${priceChange >= 0 ? 'text-success' : 'text-danger'} truncate`}>
           {priceChange >= 0 ? '+' : ''}{fmtCurrency(priceChange, group.liveData?.currency)}
         </td>
       );
@@ -336,33 +336,33 @@ export function renderHoldingBodyCell(
     case 'changePercent': {
       const changePercent = group.liveData?.changePercent || 0;
       return (
-        <td key="changePercent" className={`px-2 py-1.5 text-[9px] sm:text-[10px] font-medium ${changePercent >= 0 ? 'text-success' : 'text-danger'} truncate`}>
+        <td key="changePercent" className={`px-2 py-1.5 text-[9px] sm:text-[10px] font-medium text-center ${changePercent >= 0 ? 'text-success' : 'text-danger'} truncate`}>
           {changePercent >= 0 ? '+' : ''}{changePercent.toFixed(2)}%
         </td>
       );
     }
     case 'dayHigh':
-      return <td key="dayHigh" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right text-primary truncate">{group.liveData?.dayHigh ? `${currencySymbol}${fmt(group.liveData.dayHigh)}` : '—'}</td>;
+      return <td key="dayHigh" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-center text-primary truncate">{group.liveData?.dayHigh ? `${currencySymbol}${fmt(group.liveData.dayHigh)}` : '—'}</td>;
     case 'dayLow':
-      return <td key="dayLow" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right text-primary truncate">{group.liveData?.dayLow ? `${currencySymbol}${fmt(group.liveData.dayLow)}` : '—'}</td>;
+      return <td key="dayLow" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-center text-primary truncate">{group.liveData?.dayLow ? `${currencySymbol}${fmt(group.liveData.dayLow)}` : '—'}</td>;
     case '52wkHigh':
-      return <td key="52wkHigh" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right text-primary truncate">{group.liveData?.fiftyTwoWeekHigh ? `${currencySymbol}${fmt(group.liveData.fiftyTwoWeekHigh)}` : '—'}</td>;
+      return <td key="52wkHigh" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-center text-primary truncate">{group.liveData?.fiftyTwoWeekHigh ? `${currencySymbol}${fmt(group.liveData.fiftyTwoWeekHigh)}` : '—'}</td>;
     case '52wkLow':
-      return <td key="52wkLow" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right text-primary truncate">{group.liveData?.fiftyTwoWeekLow ? `${currencySymbol}${fmt(group.liveData.fiftyTwoWeekLow)}` : '—'}</td>;
+      return <td key="52wkLow" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-center text-primary truncate">{group.liveData?.fiftyTwoWeekLow ? `${currencySymbol}${fmt(group.liveData.fiftyTwoWeekLow)}` : '—'}</td>;
     case 'marketCap':
       return (
-        <td key="marketCap" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right text-primary truncate">
+        <td key="marketCap" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-center text-primary truncate">
           {group.liveData?.marketCap ? formatCurrencyCompact(group.liveData.marketCap, group.liveData?.currency) : '—'}
         </td>
       );
     case 'volume':
-      return <td key="volume" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right text-primary truncate">{group.liveData?.volume ? group.liveData.volume.toLocaleString() : '—'}</td>;
+      return <td key="volume" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-center text-primary truncate">{group.liveData?.volume ? group.liveData.volume.toLocaleString() : '—'}</td>;
     case 'avgVolume':
-      return <td key="avgVolume" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right text-primary truncate">{group.liveData?.avgVolume ? group.liveData.avgVolume.toLocaleString() : '—'}</td>;
+      return <td key="avgVolume" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-center text-primary truncate">{group.liveData?.avgVolume ? group.liveData.avgVolume.toLocaleString() : '—'}</td>;
     case 'tradeValue': {
       const tradeVal = (group.liveData?.volume || 0) * (group.liveData?.price || 0);
       return (
-        <td key="tradeValue" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right text-primary truncate">
+        <td key="tradeValue" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-center text-primary truncate">
           {tradeVal > 0 ? formatCurrencyCompact(tradeVal, group.liveData?.currency) : '—'}
         </td>
       );
@@ -370,7 +370,7 @@ export function renderHoldingBodyCell(
     case 'dayGain': {
       const dayGain = group.netQty * (group.liveData?.change || 0);
       return (
-        <td key="dayGain" className={`px-2 py-1.5 text-[9px] sm:text-[10px] font-medium ${dayGain >= 0 ? 'text-success' : 'text-danger'} truncate`}>
+        <td key="dayGain" className={`px-2 py-1.5 text-[9px] sm:text-[10px] font-medium text-center ${dayGain >= 0 ? 'text-success' : 'text-danger'} truncate`}>
           {dayGain >= 0 ? '+' : ''}{fmtCurrency(dayGain, group.liveData?.currency)}
         </td>
       );
@@ -378,7 +378,7 @@ export function renderHoldingBodyCell(
     case 'dayGainPct': {
       const dayGainPct = group.liveData?.changePercent || 0;
       return (
-        <td key="dayGainPct" className={`px-2 py-1.5 text-[9px] sm:text-[10px] font-medium ${dayGainPct >= 0 ? 'text-success' : 'text-danger'} truncate`}>
+        <td key="dayGainPct" className={`px-2 py-1.5 text-[9px] sm:text-[10px] font-medium text-center ${dayGainPct >= 0 ? 'text-success' : 'text-danger'} truncate`}>
           {dayGainPct >= 0 ? '+' : ''}{dayGainPct.toFixed(2)}%
         </td>
       );
@@ -390,13 +390,13 @@ export function renderHoldingBodyCell(
       return (
         <td
           key="rsi"
-          className={`px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right font-medium truncate ${rsiColor}`}
+          className={`px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-center font-medium truncate ${rsiColor}`}
           title={rsiVal != null ? `RSI(14): ${rsiVal.toFixed(2)} (${rsiVal >= 70 ? 'Overbought >= 70' : rsiVal <= 30 ? 'Oversold <= 30' : 'Neutral 30-70'})` : undefined}
         >
           {indicatorsLoading && rsiVal == null ? (
             <span className="text-tertiary animate-pulse">…</span>
           ) : rsiVal != null ? (
-            <div className="flex items-center justify-end gap-1">
+            <div className="flex items-center justify-center gap-1">
               <span>{rsiVal.toFixed(2)}</span>
               {symIndicators?.rsiDivergence === 'BULLISH' && (
                 <span className="text-[8px] font-sans px-1 rounded bg-success/20 text-success font-semibold" title="Bullish Divergence: Price Lower Low while RSI Higher Low">
@@ -434,15 +434,15 @@ export function renderHoldingBodyCell(
           ? `MACD (12, 26): ${m.toFixed(2)} | Signal (9): ${s.toFixed(2)} | Hist: ${h != null ? (h >= 0 ? '+' : '') + h.toFixed(2) : '—'}`
           : undefined;
       return (
-        <td key="macd" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right font-medium truncate" title={tooltip}>
+        <td key="macd" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-center font-medium truncate" title={tooltip}>
           {indicatorsLoading && m == null ? (
             <span className="text-tertiary animate-pulse">…</span>
           ) : m != null && s != null ? (
-            <div className="flex items-center justify-end gap-1.5">
+            <div className="flex items-center justify-center gap-1.5">
               <span className={m >= s ? 'text-success' : 'text-danger'}>{m.toFixed(2)}</span>
               <span className="text-[8px] text-tertiary">/ {s.toFixed(2)}</span>
               {h != null && (
-                <span className={`text-[8px] font-sans px-1 rounded font-semibold ${h >= 0 ? 'bg-success/15 text-success' : 'bg-danger/15 text-danger'}`}>
+                <span className={`text-[8px] font-sans px-1 rounded font-semibold shrink-0 ${h >= 0 ? 'bg-success/15 text-success' : 'bg-danger/15 text-danger'}`}>
                   {h >= 0 ? '+' : ''}{h.toFixed(1)}
                 </span>
               )}
@@ -465,42 +465,20 @@ export function renderHoldingBodyCell(
           ? `Bollinger (${indicatorConfig.bbPeriod}, ${indicatorConfig.bbStdDev}): Upper=${u.toFixed(2)} | Mid=${m.toFixed(2)} | Lower=${l.toFixed(2)} | BW=${bw != null ? bw.toFixed(1) + '%' : '—'} | %B=${pctB != null ? pctB.toFixed(2) : '—'}`
           : undefined;
       return (
-        <td key="bollinger" className="px-2 py-1 text-[9px] sm:text-[10px] font-mono text-right font-medium" title={tooltip}>
+        <td
+          key="bollinger"
+          className="px-2 py-1.5 text-[10px] font-mono text-center text-primary whitespace-nowrap font-medium"
+          title={tooltip}
+        >
           {indicatorsLoading && u == null ? (
             <span className="text-tertiary animate-pulse">…</span>
           ) : u != null && l != null && m != null ? (
-            <div className="flex flex-col items-end leading-tight gap-0.5">
-              <div className="flex items-center justify-end gap-1.5 text-[9px]">
-                <span className="text-tertiary text-[8px]">U:</span>
-                <span className={`font-semibold ${liveP > 0 && liveP >= u ? 'text-danger font-bold' : 'text-primary'}`}>
-                  {u >= 1000 ? u.toFixed(1) : u.toFixed(2)}
-                </span>
-                <span className="text-tertiary text-[8px]">L:</span>
-                <span className={`font-semibold ${liveP > 0 && liveP <= l ? 'text-success font-bold' : 'text-primary'}`}>
-                  {l >= 1000 ? l.toFixed(1) : l.toFixed(2)}
-                </span>
-              </div>
-              <div className="flex items-center justify-end gap-1 text-[8.5px]">
-                <span className="text-tertiary text-[8px]">Mid:</span>
-                <span className="text-secondary font-medium">{m >= 1000 ? m.toFixed(1) : m.toFixed(2)}</span>
-              </div>
-              <div className="flex items-center justify-end gap-1.5 text-[8px]">
-                <span className="text-tertiary">BW:</span>
-                <span className="text-secondary font-medium">{bw != null ? `${bw.toFixed(1)}%` : '—'}</span>
-                <span className="text-divider">|</span>
-                <span className="text-tertiary">%B:</span>
-                <span
-                  className={`px-1 py-0.2 rounded font-semibold ${
-                    pctB != null && pctB <= 0
-                      ? 'bg-success/20 text-success'
-                      : pctB != null && pctB >= 1
-                        ? 'bg-danger/20 text-danger'
-                        : 'text-primary'
-                  }`}
-                >
-                  {pctB != null ? pctB.toFixed(2) : '—'}
-                </span>
-              </div>
+            <div className="flex items-center justify-center gap-2.5 text-[10px] font-mono text-primary whitespace-nowrap font-medium">
+              <span>U: {u >= 1000 ? u.toFixed(1) : u.toFixed(2)}</span>
+              <span>Mid: {m >= 1000 ? m.toFixed(1) : m.toFixed(2)}</span>
+              <span>L: {l >= 1000 ? l.toFixed(1) : l.toFixed(2)}</span>
+              <span>BW: {bw != null ? `${bw.toFixed(1)}%` : '—'}</span>
+              <span>%B: {pctB != null ? pctB.toFixed(2) : '—'}</span>
             </div>
           ) : (
             '—'
@@ -519,14 +497,14 @@ export function renderHoldingBodyCell(
           ? `VWAP: ${fmtCurrency(vwapVal, group.liveData?.currency)} (${diffPct >= 0 ? '+' : ''}${diffPct.toFixed(2)}% ${liveP >= vwapVal ? 'above' : 'below'} VWAP)${avgVol ? ` | 20d Avg Vol: ${avgVol.toLocaleString()}` : ''}`
           : undefined;
       return (
-        <td key="vwap" className={`px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right font-medium truncate ${vwapColor}`} title={tooltip}>
+        <td key="vwap" className={`px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-center font-medium truncate ${vwapColor}`} title={tooltip}>
           {indicatorsLoading && vwapVal == null ? (
             <span className="text-tertiary animate-pulse">…</span>
           ) : vwapVal != null ? (
-            <div className="flex items-center justify-end gap-1">
+            <div className="flex items-center justify-center gap-1">
               <span>{fmtCurrency(vwapVal, group.liveData?.currency)}</span>
               {liveP > 0 && (
-                <span className={`text-[8px] font-sans px-1 rounded font-semibold ${liveP >= vwapVal ? 'bg-success/15 text-success' : 'bg-danger/15 text-danger'}`}>
+                <span className={`text-[8px] font-sans px-1 rounded font-semibold shrink-0 ${liveP >= vwapVal ? 'bg-success/15 text-success' : 'bg-danger/15 text-danger'}`}>
                   {diffPct >= 0 ? '+' : ''}{diffPct.toFixed(1)}%
                 </span>
               )}
@@ -546,16 +524,16 @@ export function renderHoldingBodyCell(
           ? `OBV: ${obvVal.toLocaleString()}${obvSig != null ? ` | Signal (20): ${obvSig.toLocaleString()} (${isBullish ? 'Bullish Accumulation' : 'Bearish Distribution'})` : ''}`
           : undefined;
       return (
-        <td key="obv" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-right font-medium truncate" title={tooltip}>
+        <td key="obv" className="px-2 py-1.5 text-[9px] sm:text-[10px] font-mono text-center font-medium truncate" title={tooltip}>
           {indicatorsLoading && obvVal == null ? (
             <span className="text-tertiary animate-pulse">…</span>
           ) : obvVal != null ? (
-            <div className="flex items-center justify-end gap-1">
+            <div className="flex items-center justify-center gap-1">
               <span className={isBullish === true ? 'text-success' : isBullish === false ? 'text-danger' : 'text-primary'}>
                 {fmtCompactVolume(obvVal)}
               </span>
               {isBullish != null && (
-                <span className={`text-[8px] font-sans px-1 rounded font-semibold ${isBullish ? 'bg-success/15 text-success' : 'bg-danger/15 text-danger'}`}>
+                <span className={`text-[8px] font-sans px-1 rounded font-semibold shrink-0 ${isBullish ? 'bg-success/15 text-success' : 'bg-danger/15 text-danger'}`}>
                   {isBullish ? 'Bull ↗' : 'Bear ↘'}
                 </span>
               )}

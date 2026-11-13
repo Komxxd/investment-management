@@ -128,7 +128,7 @@ export function SortableHeaderCell({
       ref={setNodeRef}
       style={{ ...style, width, minWidth: width, maxWidth: width }}
       {...listeners}
-      className={`px-1.5 py-1.5 sm:px-3 sm:py-2 text-[9px] sm:text-[10px] uppercase tracking-wider font-semibold text-secondary cursor-pointer hover:bg-surface-hover transition-colors select-none group relative ${resizingColId === field ? 'bg-surface-hover' : ''} ${isDragging ? 'shadow-md border border-divider cursor-grabbing' : 'bg-surface'} ${isNumber ? 'text-right' : 'text-left'} ${className || ''}`}
+      className={`px-1.5 py-1.5 sm:px-3 sm:py-2 text-[9px] sm:text-[10px] uppercase tracking-wider font-semibold text-secondary cursor-pointer hover:bg-surface-hover transition-colors select-none group relative ${resizingColId === field ? 'bg-surface-hover' : ''} ${isDragging ? 'shadow-md border border-divider cursor-grabbing' : 'bg-surface'} ${isNumber ? 'text-center' : 'text-left'} ${className || ''}`}
       onClick={() => {
         if (isDragging) return;
         onSort(field);
@@ -151,7 +151,7 @@ export function SortableHeaderCell({
           </div>
         </div>
       ) : (
-        <div className={`flex items-center gap-1 overflow-hidden ${isNumber ? 'justify-end' : 'justify-start'}`}>
+        <div className={`flex items-center gap-1 overflow-hidden ${isNumber ? 'justify-center' : 'justify-start'}`}>
           <span className="truncate">{label}</span>
           {sortField === field ? (
             sortDirection === 'asc' ? <ChevronUp className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-primary shrink-0" /> : <ChevronDown className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-primary shrink-0" />
