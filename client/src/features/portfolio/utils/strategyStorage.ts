@@ -80,7 +80,7 @@ export function buildStarterSampleStrategies(
   return [
     {
       id: `${idPrefix}-rsi`,
-      name: 'RSI Divergence & Oversold Reversal (14-period)',
+      name: 'RSI Oversold Reversal (14-period)',
       scope: 'stock',
       targetSymbol: primarySymbol,
       action: 'BUY',
@@ -106,13 +106,6 @@ export function buildStarterSampleStrategies(
           rightType: 'value',
           rightValue: 30,
         },
-        {
-          id: 'c1_entry2',
-          connector: 'OR',
-          leftIndicator: 'rsi',
-          operator: 'BULLISH_DIVERGENCE',
-          rightType: 'value',
-        },
       ],
       exitConditions: [
         {
@@ -121,13 +114,6 @@ export function buildStarterSampleStrategies(
           operator: 'CROSSINGUNDER',
           rightType: 'value',
           rightValue: 70,
-        },
-        {
-          id: 'c1_exit2',
-          connector: 'OR',
-          leftIndicator: 'rsi',
-          operator: 'BEARISH_DIVERGENCE',
-          rightType: 'value',
         },
       ],
       exitSizingType: 'DECREASE_PCT',
@@ -349,14 +335,6 @@ export function buildStarterSampleStrategies(
           rightType: 'indicator',
           rightIndicator: 'vwap',
         },
-        {
-          id: 'c6_entry2',
-          connector: 'AND',
-          leftIndicator: 'volume',
-          operator: '>',
-          rightType: 'indicator',
-          rightIndicator: 'avgVolume',
-        },
       ],
       entryConditions: [
         {
@@ -365,14 +343,6 @@ export function buildStarterSampleStrategies(
           operator: 'CROSSINGOVER',
           rightType: 'indicator',
           rightIndicator: 'vwap',
-        },
-        {
-          id: 'c6_entry2',
-          connector: 'AND',
-          leftIndicator: 'volume',
-          operator: '>',
-          rightType: 'indicator',
-          rightIndicator: 'avgVolume',
         },
       ],
       exitConditions: [
@@ -390,7 +360,7 @@ export function buildStarterSampleStrategies(
     },
     {
       id: `${idPrefix}-obv`,
-      name: 'OBV & Volume Breakout Confirmation',
+      name: 'OBV Positive Trend Confirmation',
       scope: 'stock',
       targetSymbol: primarySymbol,
       action: 'BUY',
@@ -402,44 +372,44 @@ export function buildStarterSampleStrategies(
       conditions: [
         {
           id: 'c7_entry1',
-          leftIndicator: 'obv',
+          leftIndicator: 'price',
           operator: 'CROSSINGOVER',
           rightType: 'indicator',
-          rightIndicator: 'obvSignal',
+          rightIndicator: 'dma50',
         },
         {
           id: 'c7_entry2',
           connector: 'AND',
-          leftIndicator: 'volume',
+          leftIndicator: 'obv',
           operator: '>',
-          rightType: 'indicator',
-          rightIndicator: 'avgVolume',
+          rightType: 'value',
+          rightValue: 0,
         },
       ],
       entryConditions: [
         {
           id: 'c7_entry1',
-          leftIndicator: 'obv',
+          leftIndicator: 'price',
           operator: 'CROSSINGOVER',
           rightType: 'indicator',
-          rightIndicator: 'obvSignal',
+          rightIndicator: 'dma50',
         },
         {
           id: 'c7_entry2',
           connector: 'AND',
-          leftIndicator: 'volume',
+          leftIndicator: 'obv',
           operator: '>',
-          rightType: 'indicator',
-          rightIndicator: 'avgVolume',
+          rightType: 'value',
+          rightValue: 0,
         },
       ],
       exitConditions: [
         {
           id: 'c7_exit',
-          leftIndicator: 'obv',
+          leftIndicator: 'price',
           operator: 'CROSSINGUNDER',
           rightType: 'indicator',
-          rightIndicator: 'obvSignal',
+          rightIndicator: 'dma50',
         },
       ],
       exitSizingType: 'DECREASE_PCT',

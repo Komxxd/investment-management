@@ -167,6 +167,11 @@ export const StrategyActionRuleSection: React.FC<StrategyActionRuleSectionProps>
                     className="bg-surface border border-divider rounded-lg px-2 py-1 text-xs text-primary focus:outline-none focus:border-primary"
                   >
                     <option value="" disabled>Indicator</option>
+                    {cond.leftIndicator && !LEFT_INDICATOR_OPTIONS.some(opt => opt.value === cond.leftIndicator) && (
+                      <option value={cond.leftIndicator} disabled>
+                        {cond.leftIndicator}
+                      </option>
+                    )}
                     {LEFT_INDICATOR_OPTIONS.map(opt => (
                       <option key={opt.value} value={opt.value}>
                         {opt.label}
@@ -182,6 +187,11 @@ export const StrategyActionRuleSection: React.FC<StrategyActionRuleSectionProps>
                     className="bg-surface border border-divider rounded-lg px-2 py-1 text-xs font-mono text-primary focus:outline-none focus:border-primary"
                   >
                     <option value="" disabled>Op</option>
+                    {cond.operator && !OPERATOR_OPTIONS.some(opt => opt.value === cond.operator) && (
+                      <option value={cond.operator} disabled>
+                        {cond.operator}
+                      </option>
+                    )}
                     {OPERATOR_OPTIONS.map(opt => (
                       <option key={opt.value} value={opt.value}>
                         {opt.label}
@@ -237,6 +247,11 @@ export const StrategyActionRuleSection: React.FC<StrategyActionRuleSectionProps>
                           className="bg-surface border border-divider rounded-lg px-2 py-1 text-xs text-primary focus:outline-none focus:border-primary"
                         >
                           <option value="" disabled>Indicator</option>
+                          {cond.rightIndicator && !RIGHT_INDICATOR_OPTIONS.some(opt => opt.value === cond.rightIndicator) && (
+                            <option value={cond.rightIndicator} disabled>
+                              {cond.rightIndicator}
+                            </option>
+                          )}
                           {RIGHT_INDICATOR_OPTIONS.map(opt => (
                             <option key={opt.value} value={opt.value}>
                               {opt.label}

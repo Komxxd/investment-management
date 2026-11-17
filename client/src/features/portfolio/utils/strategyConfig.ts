@@ -96,8 +96,6 @@ export const BLANK_RULE: StrategyRule = {
 
 export const LEFT_INDICATOR_OPTIONS: Array<{ value: IndicatorType; label: string }> = [
   { value: 'rsi', label: 'RSI(14, day)' },
-  { value: 'rsiBullishDiv', label: 'RSI Bullish Divergence' },
-  { value: 'rsiBearishDiv', label: 'RSI Bearish Divergence' },
   { value: 'dma50', label: 'DMA(50)' },
   { value: 'dma200', label: 'DMA(200)' },
   { value: 'ema20', label: 'EMA(20)' },
@@ -112,10 +110,7 @@ export const LEFT_INDICATOR_OPTIONS: Array<{ value: IndicatorType; label: string
   { value: 'bbBandwidth', label: 'BB Bandwidth %' },
   { value: 'bbPercentB', label: 'BB %B' },
   { value: 'vwap', label: 'VWAP' },
-  { value: 'volume', label: 'Candle Volume' },
-  { value: 'avgVolume', label: '20-Period Avg Volume' },
   { value: 'obv', label: 'OBV (On-Balance Volume)' },
-  { value: 'obvSignal', label: 'OBV Signal (20 SMA)' },
   { value: 'price', label: 'Current Price' },
   { value: 'changePct', label: 'Day Change %' },
 ];
@@ -135,10 +130,7 @@ export const RIGHT_INDICATOR_OPTIONS: Array<{ value: IndicatorType; label: strin
   { value: 'bbBandwidth', label: 'BB Bandwidth %' },
   { value: 'bbPercentB', label: 'BB %B' },
   { value: 'vwap', label: 'VWAP' },
-  { value: 'volume', label: 'Candle Volume' },
-  { value: 'avgVolume', label: '20-Period Avg Volume' },
   { value: 'obv', label: 'OBV (On-Balance Volume)' },
-  { value: 'obvSignal', label: 'OBV Signal (20 SMA)' },
   { value: 'rsi', label: 'RSI(14)' },
   { value: 'price', label: 'Current Price' },
 ];
@@ -150,8 +142,6 @@ export const OPERATOR_OPTIONS: Array<{ value: ComparisonOperator; label: string 
   { value: '>=', label: '>=' },
   { value: 'CROSSINGOVER', label: 'CROSSINGOVER' },
   { value: 'CROSSINGUNDER', label: 'CROSSINGUNDER' },
-  { value: 'BULLISH_DIVERGENCE', label: 'BULLISH DIVERGENCE' },
-  { value: 'BEARISH_DIVERGENCE', label: 'BEARISH DIVERGENCE' },
   { value: '==', label: '==' },
 ];
 
